@@ -99,7 +99,10 @@ contract HeadsUpPokerReplay {
                     require(act.amount == callAmt, "CALL_AMT");
                     g.contrib[p] += act.amount;
                     g.total[p] += act.amount;
-                    require(g.total[p] <= maxDeposit[p], p == 0 ? "DEP_A" : "DEP_B");
+                    require(
+                        g.total[p] <= maxDeposit[p],
+                        p == 0 ? "DEP_A" : "DEP_B"
+                    );
                     g.stacks[p] -= act.amount;
                     if (g.stacks[p] == 0) g.allIn[p] = true;
                     g.toCall = 0;
@@ -143,10 +146,16 @@ contract HeadsUpPokerReplay {
                     require(act.amount >= need, "MIN_RAISE");
                 }
                 uint256 toCallBefore = g.toCall;
-                require(act.amount <= g.stacks[p] + toCallBefore, "RAISE_STACK");
+                require(
+                    act.amount <= g.stacks[p] + toCallBefore,
+                    "RAISE_STACK"
+                );
                 g.contrib[p] += act.amount;
                 g.total[p] += act.amount;
-                require(g.total[p] <= maxDeposit[p], p == 0 ? "DEP_A" : "DEP_B");
+                require(
+                    g.total[p] <= maxDeposit[p],
+                    p == 0 ? "DEP_A" : "DEP_B"
+                );
                 g.stacks[p] -= act.amount;
                 if (g.stacks[p] == 0) g.allIn[p] = true;
                 uint256 newDiff = g.contrib[p] - g.contrib[opp];
