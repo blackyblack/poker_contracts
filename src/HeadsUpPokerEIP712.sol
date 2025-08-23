@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {Action} from "./HeadsUpPokerActions.sol";
 
 contract HeadsUpPokerEIP712 {
     using ECDSA for bytes32;
@@ -27,16 +28,6 @@ contract HeadsUpPokerEIP712 {
     // ---------------------------------------------------------------------
     // Struct definitions
     // ---------------------------------------------------------------------
-    struct Action {
-        uint256 channelId;
-        uint256 handId;
-        uint32 seq;
-        uint8 street;
-        uint8 action;
-        uint128 amount;
-        bytes32 prevHash;
-    }
-
     struct CardCommit {
         uint256 channelId;
         uint256 handId;
@@ -139,4 +130,6 @@ contract HeadsUpPokerEIP712 {
     ) external view returns (address) {
         return digestCardCommit(cc).recover(sig);
     }
+
+    // ---------------------------------------------------------------------
 }
