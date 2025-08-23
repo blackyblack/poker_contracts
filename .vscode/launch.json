@@ -72,7 +72,7 @@
         {
             "id": "mochaGrep",
             "type": "promptString",
-            "description": "Mocha grep pattern (часть describe/it)",
+            "description": "Mocha grep pattern",
             "default": ""
         }
     ]
