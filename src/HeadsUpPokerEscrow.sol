@@ -25,18 +25,46 @@ contract HeadsUpPokerEscrow is ReentrancyGuard {
     // ---------------------------------------------------------------------
     // Events
     // ---------------------------------------------------------------------
-    event ChannelOpened(uint256 indexed channelId, address indexed player1, address indexed player2, uint256 amount);
-    event ChannelJoined(uint256 indexed channelId, address indexed player, uint256 amount);
-    event FoldSettled(uint256 indexed channelId, address indexed winner, uint256 amount);
-    event HoleCardsCommitted(uint256 indexed channelId, address indexed player, bytes32 commit);
+    event ChannelOpened(
+        uint256 indexed channelId,
+        address indexed player1,
+        address indexed player2,
+        uint256 amount
+    );
+    event ChannelJoined(
+        uint256 indexed channelId,
+        address indexed player,
+        uint256 amount
+    );
+    event FoldSettled(
+        uint256 indexed channelId,
+        address indexed winner,
+        uint256 amount
+    );
+    event HoleCardsCommitted(
+        uint256 indexed channelId,
+        address indexed player,
+        bytes32 commit
+    );
     event ShowdownStarted(uint256 indexed channelId);
-    event HoleCardsRevealed(uint256 indexed channelId, address indexed player, uint8 card1, uint8 card2);
-    event ShowdownFinalized(uint256 indexed channelId, address indexed winner, uint256 amount);
+    event HoleCardsRevealed(
+        uint256 indexed channelId,
+        address indexed player,
+        uint8 card1,
+        uint8 card2
+    );
+    event ShowdownFinalized(
+        uint256 indexed channelId,
+        address indexed winner,
+        uint256 amount
+    );
 
     // ---------------------------------------------------------------------
     // View helpers
     // ---------------------------------------------------------------------
-    function stacks(uint256 channelId) external view returns (uint256 p1, uint256 p2) {
+    function stacks(
+        uint256 channelId
+    ) external view returns (uint256 p1, uint256 p2) {
         Channel storage ch = channels[channelId];
         return (ch.deposit1, ch.deposit2);
     }
@@ -46,7 +74,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard {
     // ---------------------------------------------------------------------
 
     /// @notice Player1 opens a channel with an opponent by depositing ETH
-    function open(uint256 channelId, address opponent) external payable nonReentrant {
+    function open(
+        uint256 channelId,
+        address opponent
+    ) external payable nonReentrant {
         Channel storage ch = channels[channelId];
         require(ch.player1 == address(0), "EXISTS");
         require(opponent != address(0) && opponent != msg.sender, "BAD_OPP");
@@ -73,7 +104,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard {
     }
 
     /// @notice Winner claims the entire pot when opponent folds
-    function settleFold(uint256 channelId, address winner) external nonReentrant {
+    function settleFold(
+        uint256 channelId,
+        address winner
+    ) external nonReentrant {
         Channel storage ch = channels[channelId];
         require(!ch.showdown, "SHOWDOWN");
         require(winner == ch.player1 || winner == ch.player2, "NOT_PLAYER");
@@ -92,26 +126,43 @@ contract HeadsUpPokerEscrow is ReentrancyGuard {
     }
 
     /// @notice Player submits commitment to their hole cards to start showdown
-    function startShowdown(uint256 channelId, bytes32 commit) external nonReentrant {
+    function startShowdown(
+        uint256 channelId,
+        bytes32 commit
+    ) external nonReentrant {
         Channel storage ch = channels[channelId];
         require(ch.deposit1 > 0 && ch.deposit2 > 0, "NOT_READY");
-        require(msg.sender == ch.player1 || msg.sender == ch.player2, "NOT_PLAYER");
+        require(
+            msg.sender == ch.player1 || msg.sender == ch.player2,
+            "NOT_PLAYER"
+        );
         require(ch.holeCardCommit[msg.sender] == bytes32(0), "COMMITTED");
 
         ch.holeCardCommit[msg.sender] = commit;
         emit HoleCardsCommitted(channelId, msg.sender, commit);
 
-        if (ch.holeCardCommit[ch.player1] != bytes32(0) && ch.holeCardCommit[ch.player2] != bytes32(0)) {
+        if (
+            ch.holeCardCommit[ch.player1] != bytes32(0) &&
+            ch.holeCardCommit[ch.player2] != bytes32(0)
+        ) {
             ch.showdown = true;
             emit ShowdownStarted(channelId);
         }
     }
 
     /// @notice Reveal actual hole cards and verify against commitment
-    function revealHoleCards(uint256 channelId, uint8 card1, uint8 card2, bytes32 salt) external nonReentrant {
+    function revealHoleCards(
+        uint256 channelId,
+        uint8 card1,
+        uint8 card2,
+        bytes32 salt
+    ) external nonReentrant {
         Channel storage ch = channels[channelId];
         require(ch.showdown, "NO_SHOWDOWN");
-        require(msg.sender == ch.player1 || msg.sender == ch.player2, "NOT_PLAYER");
+        require(
+            msg.sender == ch.player1 || msg.sender == ch.player2,
+            "NOT_PLAYER"
+        );
         require(ch.revealedHoleCards[msg.sender].length == 0, "REVEALED");
 
         bytes32 commit = keccak256(abi.encodePacked(card1, card2, salt));
@@ -122,11 +173,18 @@ contract HeadsUpPokerEscrow is ReentrancyGuard {
     }
 
     /// @notice Finalize showdown and send pot to winner after both players revealed
-    function finalizeShowdown(uint256 channelId, address winner) external nonReentrant {
+    function finalizeShowdown(
+        uint256 channelId,
+        address winner
+    ) external nonReentrant {
         Channel storage ch = channels[channelId];
         require(ch.showdown, "NO_SHOWDOWN");
         require(!ch.finalized, "FINALIZED");
-        require(ch.revealedHoleCards[ch.player1].length > 0 && ch.revealedHoleCards[ch.player2].length > 0, "NOT_REVEALED");
+        require(
+            ch.revealedHoleCards[ch.player1].length > 0 &&
+                ch.revealedHoleCards[ch.player2].length > 0,
+            "NOT_REVEALED"
+        );
         require(winner == ch.player1 || winner == ch.player2, "NOT_PLAYER");
 
         // TODO: add verification that winner actually has the best hand

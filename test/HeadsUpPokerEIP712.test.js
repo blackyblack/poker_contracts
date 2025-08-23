@@ -2,8 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("HeadsUpPokerEIP712", function () {
-    let helper;
-    let player1, player2;
+    let contract;
 
     const channelId = 7n;
     const mnemonic = "test test test test test test test test test test test junk";
@@ -27,7 +26,7 @@ describe("HeadsUpPokerEIP712", function () {
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
         const Helper = await ethers.getContractFactory("HeadsUpPokerEIP712");
-        helper = await Helper.deploy();
+        contract = await Helper.deploy();
     });
 
     function domainSeparator(chainId, verifyingContract, channelId) {
@@ -53,7 +52,7 @@ describe("HeadsUpPokerEIP712", function () {
         };
 
         const chainId = (await ethers.provider.getNetwork()).chainId;
-        const verifyingContract = await helper.getAddress();
+        const verifyingContract = await contract.getAddress();
         const domSep = domainSeparator(chainId, verifyingContract, channelId);
         const structHash = ethers.keccak256(
             ethers.AbiCoder.defaultAbiCoder().encode(
@@ -79,11 +78,11 @@ describe("HeadsUpPokerEIP712", function () {
         );
         const wallet1 = ethers.Wallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/0");
         const sig = wallet1.signingKey.sign(digest).serialized;
-        const recovered = await helper.recoverActionSigner(action, sig);
+        const recovered = await contract.recoverActionSigner(action, sig);
         expect(recovered).to.equal(wallet1.address);
 
         const badAction = { ...action, channelId: channelId + 1n };
-        const badRecovered = await helper.recoverActionSigner(badAction, sig);
+        const badRecovered = await contract.recoverActionSigner(badAction, sig);
         expect(badRecovered).to.not.equal(wallet1.address);
     });
 
@@ -100,7 +99,7 @@ describe("HeadsUpPokerEIP712", function () {
         };
 
         const chainId = (await ethers.provider.getNetwork()).chainId;
-        const verifyingContract = await helper.getAddress();
+        const verifyingContract = await contract.getAddress();
         const domSep = domainSeparator(chainId, verifyingContract, channelId);
         const structHash = ethers.keccak256(
             ethers.AbiCoder.defaultAbiCoder().encode(
@@ -137,7 +136,7 @@ describe("HeadsUpPokerEIP712", function () {
         );
         const wallet2 = ethers.Wallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/1");
         const sig = wallet2.signingKey.sign(digest).serialized;
-        const recovered = await helper.recoverCommitSigner(commit, sig);
+        const recovered = await contract.recoverCommitSigner(commit, sig);
         expect(recovered).to.equal(wallet2.address);
     });
 });

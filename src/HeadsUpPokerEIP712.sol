@@ -9,15 +9,18 @@ contract HeadsUpPokerEIP712 {
     // ---------------------------------------------------------------------
     // Typehashes
     // ---------------------------------------------------------------------
-    bytes32 private constant EIP712DOMAIN_TYPEHASH = keccak256(
-        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract,uint256 channelId)"
-    );
-    bytes32 private constant ACTION_TYPEHASH = keccak256(
-        "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 street,uint8 action,uint128 amount,bytes32 prevHash)"
-    );
-    bytes32 private constant CARD_COMMIT_TYPEHASH = keccak256(
-        "CardCommit(uint256 channelId,uint256 handId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
-    );
+    bytes32 private constant EIP712DOMAIN_TYPEHASH =
+        keccak256(
+            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract,uint256 channelId)"
+        );
+    bytes32 private constant ACTION_TYPEHASH =
+        keccak256(
+            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 street,uint8 action,uint128 amount,bytes32 prevHash)"
+        );
+    bytes32 private constant CARD_COMMIT_TYPEHASH =
+        keccak256(
+            "CardCommit(uint256 channelId,uint256 handId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
+        );
     bytes32 private constant NAME_HASH = keccak256(bytes("HeadsUpPoker"));
     bytes32 private constant VERSION_HASH = keccak256(bytes("1"));
 
@@ -52,17 +55,20 @@ contract HeadsUpPokerEIP712 {
         return _domainSeparator(channelId);
     }
 
-    function _domainSeparator(uint256 channelId) internal view returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                EIP712DOMAIN_TYPEHASH,
-                NAME_HASH,
-                VERSION_HASH,
-                block.chainid,
-                address(this),
-                channelId
-            )
-        );
+    function _domainSeparator(
+        uint256 channelId
+    ) internal view returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    EIP712DOMAIN_TYPEHASH,
+                    NAME_HASH,
+                    VERSION_HASH,
+                    block.chainid,
+                    address(this),
+                    channelId
+                )
+            );
     }
 
     // ---------------------------------------------------------------------
@@ -81,9 +87,14 @@ contract HeadsUpPokerEIP712 {
                 act.prevHash
             )
         );
-        return keccak256(
-            abi.encodePacked("\x19\x01", _domainSeparator(act.channelId), structHash)
-        );
+        return
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    _domainSeparator(act.channelId),
+                    structHash
+                )
+            );
     }
 
     function digestCardCommit(
@@ -102,9 +113,14 @@ contract HeadsUpPokerEIP712 {
                 cc.prevHash
             )
         );
-        return keccak256(
-            abi.encodePacked("\x19\x01", _domainSeparator(cc.channelId), structHash)
-        );
+        return
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    _domainSeparator(cc.channelId),
+                    structHash
+                )
+            );
     }
 
     // ---------------------------------------------------------------------
@@ -124,4 +140,3 @@ contract HeadsUpPokerEIP712 {
         return digestCardCommit(cc).recover(sig);
     }
 }
-
