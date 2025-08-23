@@ -13,7 +13,7 @@ describe("HeadsUpPokerEscrow", function () {
     });
 
     describe("Channel Creation", function () {
-        const channelId = ethers.keccak256(ethers.toUtf8Bytes("test-channel-1"));
+        const channelId = 1n;
         const deposit = ethers.parseEther("1.0");
 
         it("should allow player1 to open a channel", async function () {
@@ -48,7 +48,7 @@ describe("HeadsUpPokerEscrow", function () {
     });
 
     describe("Channel Joining", function () {
-        const channelId = ethers.keccak256(ethers.toUtf8Bytes("test-channel-2"));
+        const channelId = 2n;
         const deposit = ethers.parseEther("1.0");
 
         beforeEach(async function () {
@@ -66,7 +66,7 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should reject joining non-existent channel", async function () {
-            const nonExistentId = ethers.keccak256(ethers.toUtf8Bytes("non-existent"));
+            const nonExistentId = 999n;
 
             await expect(escrow.connect(player2).join(nonExistentId, { value: deposit }))
                 .to.be.revertedWith("NO_CHANNEL");
@@ -91,7 +91,7 @@ describe("HeadsUpPokerEscrow", function () {
     });
 
     describe("Fold Settlement", function () {
-        const channelId = ethers.keccak256(ethers.toUtf8Bytes("test-channel-3"));
+        const channelId = 3n;
         const deposit = ethers.parseEther("1.0");
 
         beforeEach(async function () {
@@ -100,14 +100,14 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should allow fold settlement for player1 as winner", async function () {
-            const initialBalance = await ethers.provider.getBalance(player1);
+            const initialBalance = await ethers.provider.getBalance(player1.address);
 
             const tx = await escrow.settleFold(channelId, player1.address);
             await expect(tx)
                 .to.emit(escrow, "FoldSettled")
                 .withArgs(channelId, player1.address, deposit * 2n);
 
-            const finalBalance = await ethers.provider.getBalance(player1);
+            const finalBalance = await ethers.provider.getBalance(player1.address);
             expect(finalBalance).to.be.greaterThan(initialBalance);
 
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
@@ -116,14 +116,14 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should allow fold settlement for player2 as winner", async function () {
-            const initialBalance = await ethers.provider.getBalance(player2);
+            const initialBalance = await ethers.provider.getBalance(player2.address);
 
             const tx = await escrow.settleFold(channelId, player2.address);
             await expect(tx)
                 .to.emit(escrow, "FoldSettled")
                 .withArgs(channelId, player2.address, deposit * 2n);
 
-            const finalBalance = await ethers.provider.getBalance(player2);
+            const finalBalance = await ethers.provider.getBalance(player2.address);
             expect(finalBalance).to.be.greaterThan(initialBalance);
         });
 
@@ -134,7 +134,7 @@ describe("HeadsUpPokerEscrow", function () {
     });
 
     describe("Showdown Flow", function () {
-        const channelId = ethers.keccak256(ethers.toUtf8Bytes("test-channel-4"));
+        const channelId = 4n;
         const deposit = ethers.parseEther("1.0");
 
         // Test hole cards and salt
@@ -187,7 +187,7 @@ describe("HeadsUpPokerEscrow", function () {
             });
 
             it("should reject commitment on channel not ready", async function () {
-                const newChannelId = ethers.keccak256(ethers.toUtf8Bytes("not-ready"));
+                const newChannelId = 5n;
                 await escrow.connect(player1).open(newChannelId, player2.address, { value: deposit });
 
                 await expect(escrow.connect(player1).startShowdown(newChannelId, commit_p1))
@@ -227,7 +227,7 @@ describe("HeadsUpPokerEscrow", function () {
             });
 
             it("should reject reveal before showdown started", async function () {
-                const newChannelId = ethers.keccak256(ethers.toUtf8Bytes("no-showdown"));
+                const newChannelId = 6n;
                 await escrow.connect(player1).open(newChannelId, player2.address, { value: deposit });
                 await escrow.connect(player2).join(newChannelId, { value: deposit });
 
@@ -245,13 +245,13 @@ describe("HeadsUpPokerEscrow", function () {
             });
 
             it("should finalize showdown with player1 as winner", async function () {
-                const initialBalance = await ethers.provider.getBalance(player1);
+                const initialBalance = await ethers.provider.getBalance(player1.address);
 
                 await expect(escrow.finalizeShowdown(channelId, player1.address))
                     .to.emit(escrow, "ShowdownFinalized")
                     .withArgs(channelId, player1.address, deposit * 2n);
 
-                const finalBalance = await ethers.provider.getBalance(player1);
+                const finalBalance = await ethers.provider.getBalance(player1.address);
                 expect(finalBalance).to.be.greaterThan(initialBalance);
 
                 const [p1Stack, p2Stack] = await escrow.stacks(channelId);
@@ -260,13 +260,13 @@ describe("HeadsUpPokerEscrow", function () {
             });
 
             it("should finalize showdown with player2 as winner", async function () {
-                const initialBalance = await ethers.provider.getBalance(player2);
+                const initialBalance = await ethers.provider.getBalance(player2.address);
 
                 await expect(escrow.finalizeShowdown(channelId, player2.address))
                     .to.emit(escrow, "ShowdownFinalized")
                     .withArgs(channelId, player2.address, deposit * 2n);
 
-                const finalBalance = await ethers.provider.getBalance(player2);
+                const finalBalance = await ethers.provider.getBalance(player2.address);
                 expect(finalBalance).to.be.greaterThan(initialBalance);
             });
 
@@ -283,7 +283,7 @@ describe("HeadsUpPokerEscrow", function () {
             });
 
             it("should reject finalizing before both reveals", async function () {
-                const newChannelId = ethers.keccak256(ethers.toUtf8Bytes("partial-reveal"));
+                const newChannelId = 7n;
                 await escrow.connect(player1).open(newChannelId, player2.address, { value: deposit });
                 await escrow.connect(player2).join(newChannelId, { value: deposit });
                 await escrow.connect(player1).startShowdown(newChannelId, commit_p1);
@@ -295,7 +295,7 @@ describe("HeadsUpPokerEscrow", function () {
             });
 
             it("should reject finalizing before showdown started", async function () {
-                const newChannelId = ethers.keccak256(ethers.toUtf8Bytes("no-showdown-2"));
+                const newChannelId = 8n;
                 await escrow.connect(player1).open(newChannelId, player2.address, { value: deposit });
                 await escrow.connect(player2).join(newChannelId, { value: deposit });
 
@@ -306,14 +306,14 @@ describe("HeadsUpPokerEscrow", function () {
     });
 
     describe("Security and Access Control", function () {
-        const channelId = ethers.keccak256(ethers.toUtf8Bytes("security-test"));
+        const channelId = 9n;
         const deposit = ethers.parseEther("1.0");
 
         it("should prevent fold settlement during showdown", async function () {
             await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
 
-            commit = ethers.solidityPackedKeccak256(
+            const commit = ethers.solidityPackedKeccak256(
                 ["uint8", "uint8", "bytes32"], [1, 2, ethers.keccak256(ethers.toUtf8Bytes("salt"))]
             );
 
@@ -326,7 +326,7 @@ describe("HeadsUpPokerEscrow", function () {
     });
 
     describe("View Functions", function () {
-        const channelId = ethers.keccak256(ethers.toUtf8Bytes("view-test"));
+        const channelId = 10n;
         const deposit1 = ethers.parseEther("1.0");
         const deposit2 = ethers.parseEther("2.0");
 
