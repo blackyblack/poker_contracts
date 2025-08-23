@@ -50,7 +50,7 @@ describe("HeadsUpPokerReplay", function () {
         const stackB = 10n;
         const [end, folder] = await replay.replayAndGetEndState(actions, stackA, stackB);
         expect(end).to.equal(0n); // End.FOLD
-        expect(folder).to.equal(ethers.ZeroAddress);
+        expect(folder).to.equal(0n);
     });
 
     it("reaches showdown after checks on all streets", async function () {
@@ -68,7 +68,7 @@ describe("HeadsUpPokerReplay", function () {
         ]);
         const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
         expect(end).to.equal(1n); // End.SHOWDOWN
-        expect(folder).to.equal(ethers.ZeroAddress);
+        expect(folder).to.equal(0n);
     });
 
     it("reverts when big blind amount is incorrect", async function () {

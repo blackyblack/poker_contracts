@@ -33,7 +33,7 @@ contract HeadsUpPokerReplay {
         Action[] calldata actions,
         uint256 stackA,
         uint256 stackB
-    ) external pure returns (End end, address folder) {
+    ) external pure returns (End end, uint8 folder) {
         require(actions.length >= 2, "NO_BLINDS");
 
         Action calldata sb = actions[0];
@@ -85,7 +85,7 @@ contract HeadsUpPokerReplay {
 
             if (act.action == ACT_FOLD) {
                 require(act.amount == 0, "FOLD_AMT");
-                folder = p == 0 ? address(0) : address(1);
+                folder = uint8(p);
                 end = End.FOLD;
                 return (end, folder);
             }
@@ -106,7 +106,7 @@ contract HeadsUpPokerReplay {
                     g.lastRaise = bigBlind;
                     g.checked = false;
                     if (g.allIn[0] && g.allIn[1]) {
-                        return (End.SHOWDOWN, address(0));
+                        return (End.SHOWDOWN, 0);
                     }
                     g.street++;
                     require(g.street <= 3, "STREET_OVER");
@@ -119,7 +119,7 @@ contract HeadsUpPokerReplay {
                     if (g.checked) {
                         g.street++;
                         if (g.street == 4) {
-                            return (End.SHOWDOWN, address(0));
+                            return (End.SHOWDOWN, 0);
                         }
                         g.contrib[0] = 0;
                         g.contrib[1] = 0;
