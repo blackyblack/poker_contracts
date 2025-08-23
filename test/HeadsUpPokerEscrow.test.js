@@ -313,9 +313,9 @@ describe("HeadsUpPokerEscrow", function () {
             await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
 
-            const commit = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+            commit = ethers.solidityPackedKeccak256(
                 ["uint8", "uint8", "bytes32"], [1, 2, ethers.keccak256(ethers.toUtf8Bytes("salt"))]
-            ));
+            );
 
             await escrow.connect(player1).startShowdown(channelId, commit);
             await escrow.connect(player2).startShowdown(channelId, commit);

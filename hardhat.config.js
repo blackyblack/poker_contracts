@@ -6,6 +6,3 @@ module.exports = {
         sources: "src"
     }
 };
-module.exports.mocha = {
-    timeout: 0
-};
