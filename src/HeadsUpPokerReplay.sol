@@ -32,9 +32,7 @@ contract HeadsUpPokerReplay {
     function replayAndGetEndState(
         Action[] calldata actions,
         uint256 stackA,
-        uint256 stackB,
-        uint256 depositA,
-        uint256 depositB
+        uint256 stackB
     ) external pure returns (End end, address folder) {
         require(actions.length >= 2, "NO_BLINDS");
 
@@ -61,8 +59,6 @@ contract HeadsUpPokerReplay {
         g.contrib[1] = bb.amount;
         g.total[0] = sb.amount;
         g.total[1] = bb.amount;
-        require(g.total[0] <= depositA, "DEP_A");
-        require(g.total[1] <= depositB, "DEP_B");
         if (g.stacks[0] == 0) g.allIn[0] = true;
         if (g.stacks[1] == 0) g.allIn[1] = true;
         g.actor = 0; // small blind acts first preflop
@@ -71,7 +67,7 @@ contract HeadsUpPokerReplay {
         g.lastRaise = bigBlind;
         g.checked = false;
 
-        uint256[2] memory maxDep = [depositA, depositB];
+        uint256[2] memory maxDeposit = [stackA, stackB];
 
         for (uint256 i = 2; i < actions.length; i++) {
             Action calldata act = actions[i];
@@ -103,7 +99,7 @@ contract HeadsUpPokerReplay {
                     require(act.amount == callAmt, "CALL_AMT");
                     g.contrib[p] += act.amount;
                     g.total[p] += act.amount;
-                    require(g.total[p] <= maxDep[p], p == 0 ? "DEP_A" : "DEP_B");
+                    require(g.total[p] <= maxDeposit[p], p == 0 ? "DEP_A" : "DEP_B");
                     g.stacks[p] -= act.amount;
                     if (g.stacks[p] == 0) g.allIn[p] = true;
                     g.toCall = 0;
@@ -150,7 +146,7 @@ contract HeadsUpPokerReplay {
                 require(act.amount <= g.stacks[p] + toCallBefore, "RAISE_STACK");
                 g.contrib[p] += act.amount;
                 g.total[p] += act.amount;
-                require(g.total[p] <= maxDep[p], p == 0 ? "DEP_A" : "DEP_B");
+                require(g.total[p] <= maxDeposit[p], p == 0 ? "DEP_A" : "DEP_B");
                 g.stacks[p] -= act.amount;
                 if (g.stacks[p] == 0) g.allIn[p] = true;
                 uint256 newDiff = g.contrib[p] - g.contrib[opp];
