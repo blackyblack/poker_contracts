@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { ACTION } = require("./actions");
 
 // Helper to build actions with proper hashes and sequence numbers
 function buildActions(specs) {
@@ -41,9 +42,9 @@ describe("HeadsUpPokerReplay", function () {
     it("returns fold when small blind folds preflop", async function () {
         // small blind, big blind, small blind folds
         const actions = buildActions([
-            { street: 0, action: 0, amount: 1n },
-            { street: 0, action: 1, amount: 2n },
-            { street: 0, action: 2, amount: 0n }
+            { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
+            { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
+            { street: 0, action: ACTION.FOLD, amount: 0n }
         ]);
         const stackA = 10n;
         const stackB = 10n;
@@ -55,15 +56,15 @@ describe("HeadsUpPokerReplay", function () {
     it("reaches showdown after checks on all streets", async function () {
         // blinds, call, then check down to showdown
         const actions = buildActions([
-            { street: 0, action: 0, amount: 1n }, // SB
-            { street: 0, action: 1, amount: 2n }, // BB
-            { street: 0, action: 3, amount: 1n }, // SB calls
-            { street: 1, action: 3, amount: 0n }, // BB checks
-            { street: 1, action: 3, amount: 0n }, // SB checks -> move to street 2
-            { street: 2, action: 3, amount: 0n }, // BB checks
-            { street: 2, action: 3, amount: 0n }, // SB checks -> move to street 3
-            { street: 3, action: 3, amount: 0n }, // BB checks
-            { street: 3, action: 3, amount: 0n }  // SB checks -> showdown
+            { street: 0, action: ACTION.SMALL_BLIND, amount: 1n }, // SB
+            { street: 0, action: ACTION.BIG_BLIND, amount: 2n }, // BB
+            { street: 0, action: ACTION.CHECK_CALL, amount: 1n }, // SB calls
+            { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+            { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // SB checks -> move to street 2
+            { street: 2, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+            { street: 2, action: ACTION.CHECK_CALL, amount: 0n }, // SB checks -> move to street 3
+            { street: 3, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+            { street: 3, action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
         ]);
         const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
         expect(end).to.equal(1n); // End.SHOWDOWN
@@ -73,8 +74,8 @@ describe("HeadsUpPokerReplay", function () {
     it("reverts when big blind amount is incorrect", async function () {
         // big blind should be exactly twice the small blind
         const actions = buildActions([
-            { street: 0, action: 0, amount: 1n },
-            { street: 0, action: 1, amount: 3n } // wrong amount
+            { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
+            { street: 0, action: ACTION.BIG_BLIND, amount: 3n } // wrong amount
         ]);
         await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("BB_AMT");
     });

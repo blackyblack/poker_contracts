@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { ACTION } = require("./actions");
 
 describe("HeadsUpPokerEIP712", function () {
     let contract;
@@ -46,7 +47,7 @@ describe("HeadsUpPokerEIP712", function () {
             handId: 1n,
             seq: 1,
             street: 1,
-            action: 3,
+            action: ACTION.CHECK_CALL,
             amount: 100n,
             prevHash: ethers.ZeroHash
         };
