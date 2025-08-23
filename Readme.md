@@ -1,0 +1,1 @@
+Contracts that resolve settlements for Mental Poker game. Freezes desposit when game starts, unlocks deposits and moves the pot as soon as game is settled.
