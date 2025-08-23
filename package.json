@@ -1,0 +1,16 @@
+{
+    "name": "poker_contracts",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "compile": "hardhat compile",
+        "test": "hardhat test"
+    },
+    "devDependencies": {
+        "hardhat": "^2.22.0",
+        "@nomicfoundation/hardhat-toolbox": "^4.0.0"
+    },
+    "dependencies": {
+        "@openzeppelin/contracts": "^5.0.2"
+    }
+}
