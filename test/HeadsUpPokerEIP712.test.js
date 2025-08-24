@@ -140,5 +140,46 @@ describe("HeadsUpPokerEIP712", function () {
         const recovered = await contract.recoverCommitSigner(commit, sig);
         expect(recovered).to.equal(wallet2.address);
     });
+
+    it("verifies cosigned commits and opens", async function () {
+        const code = ethers.toUtf8Bytes("card");
+        const salt = ethers.id("salt");
+        const commitHash = ethers.keccak256(ethers.concat([code, salt]));
+
+        const commit = {
+            channelId,
+            handId: 9n,
+            seq: 3,
+            role: 0,
+            index: 2,
+            dealRef: ethers.ZeroHash,
+            commitHash,
+            prevHash: ethers.ZeroHash
+        };
+
+        const digest = await contract.digestCardCommit(commit);
+        const wallet1 = ethers.HDNodeWallet.fromPhrase(
+            mnemonic,
+            "",
+            "m/44'/60'/0'/0/0"
+        );
+        const wallet2 = ethers.HDNodeWallet.fromPhrase(
+            mnemonic,
+            "",
+            "m/44'/60'/0'/0/1"
+        );
+        const sig1 = wallet1.signingKey.sign(digest).serialized;
+        const sig2 = wallet2.signingKey.sign(digest).serialized;
+
+        await contract.verifyCoSignedCommits([commit], [sig1, sig2]);
+
+        const slot = (commit.role << 8) | commit.index;
+        await expect(contract.checkOpen(slot, code, salt)).to.not.be.reverted;
+
+        const badSalt = ethers.id("bad");
+        await expect(contract.checkOpen(slot, code, badSalt)).to.be.revertedWith(
+            "BAD_OPEN"
+        );
+    });
 });
 

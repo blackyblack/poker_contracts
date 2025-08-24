@@ -132,4 +132,87 @@ contract HeadsUpPokerEIP712 {
     }
 
     // ---------------------------------------------------------------------
+    // Commit verification / opening
+    // ---------------------------------------------------------------------
+
+    /// @dev mapping of compact slot => commit hash
+    mapping(uint256 => bytes32) private _commitBySlot;
+
+    /// @notice Verify a batch of co-signed card commitments
+    /// @dev Expects two signatures per commit. Signers must remain
+    /// consistent across the entire batch. Each slot (role/index pair)
+    /// may only appear once. Returns a compact array mapping slot to
+    /// commit hash where the array index represents the slot.
+    function verifyCoSignedCommits(
+        CardCommit[] calldata commits,
+        bytes[] calldata sigs
+    ) external returns (bytes32[] memory) {
+        require(commits.length * 2 == sigs.length, "SIG_COUNT");
+
+        uint256 bitmapLo;
+        uint256 bitmapHi;
+        uint256 maxSlot;
+        address signerA;
+        address signerB;
+
+        for (uint256 i = 0; i < commits.length; i++) {
+            CardCommit calldata cc = commits[i];
+            uint256 slot = (uint256(cc.role) << 8) | uint256(cc.index);
+
+            // ensure unique slot
+            if (slot < 256) {
+                uint256 mask = 1 << slot;
+                require(bitmapLo & mask == 0, "DUP_SLOT");
+                bitmapLo |= mask;
+            } else {
+                uint256 mask = 1 << (slot - 256);
+                require(bitmapHi & mask == 0, "DUP_SLOT");
+                bitmapHi |= mask;
+            }
+
+            bytes32 digest = digestCardCommit(cc);
+            address a = digest.recover(sigs[2 * i]);
+            address b = digest.recover(sigs[2 * i + 1]);
+            require(a != address(0) && b != address(0) && a != b, "BAD_SIG");
+
+            if (i == 0) {
+                signerA = a;
+                signerB = b;
+            } else {
+                require(
+                    (a == signerA && b == signerB) ||
+                        (a == signerB && b == signerA),
+                    "SIG_MISMATCH"
+                );
+            }
+
+            _commitBySlot[slot] = cc.commitHash;
+            if (slot > maxSlot) maxSlot = slot;
+        }
+
+        bytes32[] memory map = new bytes32[](maxSlot + 1);
+        for (uint256 i = 0; i < commits.length; i++) {
+            uint256 slot = (uint256(commits[i].role) << 8) |
+                uint256(commits[i].index);
+            map[slot] = commits[i].commitHash;
+        }
+        return map;
+    }
+
+    /// @notice Verify an opening against previously stored commitment
+    /// @param slot compact role/index slot identifier
+    /// @param code revealed code being opened
+    /// @param salt salt used in original commitment
+    function checkOpen(
+        uint256 slot,
+        bytes calldata code,
+        bytes32 salt
+    ) external view {
+        bytes32 expected = _commitBySlot[slot];
+        require(expected != bytes32(0), "NO_COMMIT");
+        bytes32 actual = keccak256(abi.encodePacked(code, salt));
+        require(actual == expected, "BAD_OPEN");
+    }
+
+    // ---------------------------------------------------------------------
 }
