@@ -138,5 +138,224 @@ describe("HeadsUpPokerEIP712", function () {
         const recovered = await contract.recoverCommitSigner(commit, sig);
         expect(recovered).to.equal(wallet2.address);
     });
+
+    describe("verifyCoSignedCommits", function () {
+        it("should verify commits with valid co-signatures from both roles", async function () {
+            const [player1, player2] = await ethers.getSigners();
+            
+            // Create test commits - one for each role for slot 0
+            const commits = [
+                {
+                    channelId,
+                    handId: 1n,
+                    seq: 1,
+                    role: 0, // Player 1
+                    index: 0, // slot 0
+                    dealRef: ethers.keccak256(ethers.toUtf8Bytes("deal1")),
+                    commitHash: ethers.keccak256(ethers.toUtf8Bytes("commit1")),
+                    prevHash: ethers.ZeroHash
+                },
+                {
+                    channelId,
+                    handId: 1n,
+                    seq: 2,
+                    role: 1, // Player 2
+                    index: 0, // same slot 0
+                    dealRef: ethers.keccak256(ethers.toUtf8Bytes("deal1")),
+                    commitHash: ethers.keccak256(ethers.toUtf8Bytes("commit1")), // Same commitHash for the slot
+                    prevHash: ethers.ZeroHash
+                }
+            ];
+
+            const chainId = (await ethers.provider.getNetwork()).chainId;
+            const verifyingContract = await contract.getAddress();
+            const domSep = domainSeparator(chainId, verifyingContract, channelId);
+
+            // Create signatures for each commit (one signature per commit)
+            const sigs = [];
+            const wallet1 = ethers.Wallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/0");
+            const wallet2 = ethers.Wallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/1");
+            const wallets = [wallet1, wallet2];
+
+            for (let i = 0; i < commits.length; i++) {
+                const commit = commits[i];
+                const structHash = ethers.keccak256(
+                    ethers.AbiCoder.defaultAbiCoder().encode(
+                        [
+                            "bytes32", "uint256", "uint256", "uint32", "uint8", "uint8",
+                            "bytes32", "bytes32", "bytes32"
+                        ],
+                        [
+                            CARD_COMMIT_TYPEHASH,
+                            commit.channelId,
+                            commit.handId,
+                            commit.seq,
+                            commit.role,
+                            commit.index,
+                            commit.dealRef,
+                            commit.commitHash,
+                            commit.prevHash
+                        ]
+                    )
+                );
+                const digest = ethers.keccak256(
+                    ethers.concat([
+                        ethers.toUtf8Bytes("\x19\x01"),
+                        ethers.getBytes(domSep),
+                        ethers.getBytes(structHash)
+                    ])
+                );
+
+                // Each commit signed by the corresponding wallet (role-based)
+                sigs.push(wallets[commit.role].signingKey.sign(digest).serialized);
+            }
+
+            const result = await contract.verifyCoSignedCommits(commits, sigs);
+            expect(result.slots).to.deep.equal([0]);
+            expect(result.commitHashes[0]).to.equal(commits[0].commitHash);
+        });
+
+        it("should reject commits with mismatched slots", async function () {
+            const commits = [
+                {
+                    channelId,
+                    handId: 1n,
+                    seq: 1,
+                    role: 0,
+                    index: 0, // slot 0
+                    dealRef: ethers.keccak256(ethers.toUtf8Bytes("deal1")),
+                    commitHash: ethers.keccak256(ethers.toUtf8Bytes("commit1")),
+                    prevHash: ethers.ZeroHash
+                },
+                {
+                    channelId,
+                    handId: 1n,
+                    seq: 2,
+                    role: 1,
+                    index: 1, // Different slot - should fail
+                    dealRef: ethers.keccak256(ethers.toUtf8Bytes("deal2")),
+                    commitHash: ethers.keccak256(ethers.toUtf8Bytes("commit2")),
+                    prevHash: ethers.ZeroHash
+                }
+            ];
+
+            const sigs = ["0x00", "0x00"]; // Dummy sigs for this test
+            await expect(contract.verifyCoSignedCommits(commits, sigs))
+                .to.be.revertedWith("SLOT_MISMATCH");
+        });
+
+        it("should reject commits with wrong signature count", async function () {
+            const commits = [{
+                channelId,
+                handId: 1n,
+                seq: 1,
+                role: 0,
+                index: 0,
+                dealRef: ethers.keccak256(ethers.toUtf8Bytes("deal1")),
+                commitHash: ethers.keccak256(ethers.toUtf8Bytes("commit1")),
+                prevHash: ethers.ZeroHash
+            }];
+
+            const sigs = ["0x00"]; // Odd number
+            await expect(contract.verifyCoSignedCommits(commits, sigs))
+                .to.be.revertedWith("MUST_HAVE_PAIRS");
+        });
+    });
+
+    describe("checkOpen", function () {
+        beforeEach(async function () {
+            // First verify some commits so we have data to check against
+            const testCards = ethers.toUtf8Bytes("test cards");
+            const commits = [
+                {
+                    channelId,
+                    handId: 1n,
+                    seq: 1,
+                    role: 0,
+                    index: 5, // slot 5
+                    dealRef: ethers.keccak256(ethers.toUtf8Bytes("deal1")),
+                    commitHash: ethers.keccak256(ethers.concat([testCards, ethers.ZeroHash])),
+                    prevHash: ethers.ZeroHash
+                },
+                {
+                    channelId,
+                    handId: 1n,
+                    seq: 2,
+                    role: 1,
+                    index: 5, // same slot 5
+                    dealRef: ethers.keccak256(ethers.toUtf8Bytes("deal1")),
+                    commitHash: ethers.keccak256(ethers.concat([testCards, ethers.ZeroHash])),
+                    prevHash: ethers.ZeroHash
+                }
+            ];
+
+            const chainId = (await ethers.provider.getNetwork()).chainId;
+            const verifyingContract = await contract.getAddress();
+            const domSep = domainSeparator(chainId, verifyingContract, channelId);
+
+            const wallet1 = ethers.Wallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/0");
+            const wallet2 = ethers.Wallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/1");
+            const wallets = [wallet1, wallet2];
+
+            const sigs = [];
+            for (let i = 0; i < commits.length; i++) {
+                const commit = commits[i];
+                const structHash = ethers.keccak256(
+                    ethers.AbiCoder.defaultAbiCoder().encode(
+                        [
+                            "bytes32", "uint256", "uint256", "uint32", "uint8", "uint8",
+                            "bytes32", "bytes32", "bytes32"
+                        ],
+                        [
+                            CARD_COMMIT_TYPEHASH,
+                            commit.channelId,
+                            commit.handId,
+                            commit.seq,
+                            commit.role,
+                            commit.index,
+                            commit.dealRef,
+                            commit.commitHash,
+                            commit.prevHash
+                        ]
+                    )
+                );
+                const digest = ethers.keccak256(
+                    ethers.concat([
+                        ethers.toUtf8Bytes("\x19\x01"),
+                        ethers.getBytes(domSep),
+                        ethers.getBytes(structHash)
+                    ])
+                );
+
+                sigs.push(wallets[commit.role].signingKey.sign(digest).serialized);
+            }
+
+            await contract.verifyCoSignedCommits(commits, sigs);
+        });
+
+        it("should return true for correct card reveal", async function () {
+            const code = ethers.toUtf8Bytes("test cards");
+            const salt = ethers.ZeroHash;
+            
+            const result = await contract.checkOpen(5, code, salt);
+            expect(result).to.be.true;
+        });
+
+        it("should return false for incorrect card reveal", async function () {
+            const code = ethers.toUtf8Bytes("wrong cards");
+            const salt = ethers.ZeroHash;
+            
+            const result = await contract.checkOpen(5, code, salt);
+            expect(result).to.be.false;
+        });
+
+        it("should revert for non-existent slot", async function () {
+            const code = ethers.toUtf8Bytes("any cards");
+            const salt = ethers.ZeroHash;
+            
+            await expect(contract.checkOpen(99, code, salt))
+                .to.be.revertedWith("NO_COMMIT");
+        });
+    });
 });
 

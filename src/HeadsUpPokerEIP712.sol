@@ -114,6 +114,11 @@ contract HeadsUpPokerEIP712 {
     }
 
     // ---------------------------------------------------------------------
+    // Storage for verified commits
+    // ---------------------------------------------------------------------
+    mapping(uint8 => bytes32) private verifiedCommits;
+
+    // ---------------------------------------------------------------------
     // Signature recovery
     // ---------------------------------------------------------------------
     function recoverActionSigner(
@@ -128,6 +133,86 @@ contract HeadsUpPokerEIP712 {
         bytes calldata sig
     ) external view returns (address) {
         return digestCardCommit(cc).recover(sig);
+    }
+
+    // ---------------------------------------------------------------------
+    // Commit verification functions
+    // ---------------------------------------------------------------------
+    
+    /// @notice Verify co-signed commits ensuring one commit per slot with both signatures
+    /// @param commits Array of card commits to verify (must include commits from both roles for each slot)
+    /// @param sigs Array of signatures corresponding to commits (one signature per commit)
+    /// @return slots Array of verified slots
+    /// @return commitHashes Array of corresponding commit hashes
+    function verifyCoSignedCommits(
+        CardCommit[] calldata commits,
+        bytes[] calldata sigs
+    ) external returns (uint8[] memory slots, bytes32[] memory commitHashes) {
+        require(sigs.length == commits.length, "INVALID_SIG_COUNT");
+        require(commits.length % 2 == 0, "MUST_HAVE_PAIRS");
+        
+        uint256 numSlots = commits.length / 2;
+        slots = new uint8[](numSlots);
+        commitHashes = new bytes32[](numSlots);
+        
+        // Track commits by slot and role
+        bool[256][2] memory tempSlotRoleUsed; // [role][slot]
+        
+        // First pass: validate all commits and signatures
+        for (uint256 i = 0; i < commits.length; i++) {
+            CardCommit calldata commit = commits[i];
+            bytes calldata sig = sigs[i];
+            
+            require(commit.role <= 1, "INVALID_ROLE");
+            require(!tempSlotRoleUsed[commit.role][commit.index], "DUPLICATE_ROLE_SLOT");
+            
+            // Verify signature
+            address signer = digestCardCommit(commit).recover(sig);
+            require(signer != address(0), "INVALID_SIGNER");
+            
+            tempSlotRoleUsed[commit.role][commit.index] = true;
+        }
+        
+        // Second pass: ensure we have both roles for each slot and collect results
+        uint256 slotIndex = 0;
+        for (uint256 i = 0; i < commits.length; i += 2) {
+            CardCommit calldata commit1 = commits[i];
+            CardCommit calldata commit2 = commits[i + 1];
+            
+            // Ensure these commits are for the same slot but different roles
+            require(commit1.index == commit2.index, "SLOT_MISMATCH");
+            require(commit1.role != commit2.role, "SAME_ROLE");
+            require((commit1.role == 0 && commit2.role == 1) || 
+                    (commit1.role == 1 && commit2.role == 0), "INVALID_ROLE_PAIR");
+            
+            // Store verified commit (use role 0's commitHash as canonical)
+            uint8 slot = commit1.index;
+            bytes32 commitHash = commit1.role == 0 ? commit1.commitHash : commit2.commitHash;
+            verifiedCommits[slot] = commitHash;
+            
+            slots[slotIndex] = slot;
+            commitHashes[slotIndex] = commitHash;
+            slotIndex++;
+        }
+    }
+    
+    /// @notice Check if opened cards match the committed hash for a slot
+    /// @param slot The slot index to check
+    /// @param code The cards being revealed (packed as bytes)
+    /// @param salt The salt used in the original commitment
+    /// @return True if the opened cards match the stored commitment
+    function checkOpen(
+        uint8 slot,
+        bytes calldata code,
+        bytes32 salt
+    ) external view returns (bool) {
+        bytes32 storedCommit = verifiedCommits[slot];
+        require(storedCommit != bytes32(0), "NO_COMMIT");
+        
+        // Recompute commitment hash using the same pattern as in escrow
+        bytes32 recomputedCommit = keccak256(abi.encodePacked(code, salt));
+        
+        return recomputedCommit == storedCommit;
     }
 
     // ---------------------------------------------------------------------
