@@ -92,11 +92,11 @@ contract HeadsUpPokerReplay {
 
             if (act.action == ACT_CHECK_CALL) {
                 if (g.toCall > 0) {
+                    require(act.amount == 0, "CALL_AMT");
                     uint256 callAmt = g.toCall;
                     if (g.stacks[p] < callAmt) {
                         callAmt = g.stacks[p];
                     }
-                    // Amount is ignored for calls - auto-calculate based on available chips
                     g.contrib[p] += callAmt;
                     g.total[p] += callAmt;
                     require(
