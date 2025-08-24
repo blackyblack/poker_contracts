@@ -15,7 +15,7 @@ describe("HeadsUpPokerEIP712", function () {
     );
     const ACTION_TYPEHASH = ethers.keccak256(
         ethers.toUtf8Bytes(
-            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 street,uint8 action,uint128 amount,bytes32 prevHash)"
+            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
         )
     );
     const CARD_COMMIT_TYPEHASH = ethers.keccak256(
@@ -46,7 +46,6 @@ describe("HeadsUpPokerEIP712", function () {
             channelId,
             handId: 1n,
             seq: 1,
-            street: 1,
             action: ACTION.CHECK_CALL,
             amount: 100n,
             prevHash: ethers.ZeroHash
@@ -57,13 +56,12 @@ describe("HeadsUpPokerEIP712", function () {
         const domSep = domainSeparator(chainId, verifyingContract, channelId);
         const structHash = ethers.keccak256(
             ethers.AbiCoder.defaultAbiCoder().encode(
-                ["bytes32", "uint256", "uint256", "uint32", "uint8", "uint8", "uint128", "bytes32"],
+                ["bytes32", "uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
                 [
                     ACTION_TYPEHASH,
                     action.channelId,
                     action.handId,
                     action.seq,
-                    action.street,
                     action.action,
                     action.amount,
                     action.prevHash

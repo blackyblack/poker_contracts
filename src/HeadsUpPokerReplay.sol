@@ -39,14 +39,12 @@ contract HeadsUpPokerReplay {
         Action calldata sb = actions[0];
         require(sb.prevHash == bytes32(0), "SB_PREV");
         require(sb.action == ACT_SMALL_BLIND, "SB_ACT");
-        require(sb.street == 0, "SB_STREET");
         require(sb.amount > 0 && sb.amount <= stackA, "SB_AMT");
 
         Action calldata bb = actions[1];
         require(bb.seq > sb.seq, "SEQ1");
         require(bb.prevHash == _hashAction(sb), "BB_PREV");
         require(bb.action == ACT_BIG_BLIND, "BB_ACT");
-        require(bb.street == 0, "BB_STREET");
         require(bb.amount == sb.amount * 2, "BB_AMT");
         require(bb.amount <= stackB, "BB_STACK");
 
@@ -75,7 +73,6 @@ contract HeadsUpPokerReplay {
 
             require(act.seq > prev.seq, "SEQ");
             require(act.prevHash == _hashAction(prev), "PREV_HASH");
-            require(act.street == g.street, "BAD_STREET");
             require(act.action > ACT_BIG_BLIND, "BLIND_ONLY_START");
 
             uint256 p = g.actor;
@@ -181,7 +178,6 @@ contract HeadsUpPokerReplay {
                     act.channelId,
                     act.handId,
                     act.seq,
-                    act.street,
                     act.action,
                     act.amount,
                     act.prevHash
