@@ -546,7 +546,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n }, // SB calls, move to flop
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls (amount ignored), move to flop
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // SB checks, move to turn
                 { street: 2, action: ACTION.CHECK_CALL, amount: 0n } // BB checks
@@ -555,7 +555,7 @@ describe("HeadsUpPokerReplay", function () {
             const nextAction = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n },
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // amount ignored
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 2, action: ACTION.CHECK_CALL, amount: 0n },
@@ -572,7 +572,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n },
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // amount ignored
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 2, action: ACTION.CHECK_CALL, amount: 0n },
@@ -583,6 +583,41 @@ describe("HeadsUpPokerReplay", function () {
             const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
             expect(folder).to.equal(0n);
+        });
+
+        it("ignores any amount specified for calls", async function () {
+            // Test that various amounts (correct, incorrect, too high, too low) all work the same
+            const testAmounts = [0n, 1n, 2n, 999n]; // 1 is correct call amount
+            
+            for (const amount of testAmounts) {
+                const actions = buildActions([
+                    { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
+                    { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
+                    { street: 0, action: ACTION.CHECK_CALL, amount: amount } // Should work regardless of amount
+                ]);
+                const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
+                expect(end).to.equal(1n); // Should reach next street/showdown for all amounts
+            }
+        });
+
+        it("correctly calculates all-in amount when player has exactly enough", async function () {
+            const actions = buildActions([
+                { street: 0, action: ACTION.SMALL_BLIND, amount: 5n },
+                { street: 0, action: ACTION.BIG_BLIND, amount: 10n },
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // SB calls with exactly 5 remaining
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 10n, 10n); // SB has exactly 10, 5 remaining after blind
+            expect(end).to.equal(1n); // Should progress to next street
+        });
+
+        it("handles call when player has more than enough chips", async function () {
+            const actions = buildActions([
+                { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
+                { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // SB has plenty of chips to call 1
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 100n, 100n); // Both players have 100 chips
+            expect(end).to.equal(1n); // Should progress to next street
         });
     });
 
