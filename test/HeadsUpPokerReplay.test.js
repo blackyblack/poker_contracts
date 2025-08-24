@@ -71,7 +71,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n }, // SB
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n }, // BB
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n }, // SB calls
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls (amount ignored)
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // SB checks -> move to street 2
                 { street: 2, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
@@ -89,7 +89,7 @@ describe("HeadsUpPokerReplay", function () {
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
                 { street: 0, action: ACTION.BET_RAISE, amount: 9n }, // SB goes all-in
-                { street: 0, action: ACTION.CHECK_CALL, amount: 8n } // BB calls all-in
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // BB calls (amount ignored, auto all-in)
             ]);
             const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
@@ -501,13 +501,14 @@ describe("HeadsUpPokerReplay", function () {
     });
 
     describe("Check/Call Action Tests", function () {
-        it("reverts when call amount is incorrect", async function () {
+        it("accepts call regardless of amount specified", async function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 2n } // Should be 1 to call
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // Amount is ignored - auto-calculates to 1
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("CALL_AMT");
+            const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(1n); // End.SHOWDOWN (moves to next street)
         });
 
         it("reverts when check has non-zero amount", async function () {
@@ -520,24 +521,25 @@ describe("HeadsUpPokerReplay", function () {
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("CHECK_AMT");
         });
 
-        it("handles all-in call with less than full amount", async function () {
+        it("handles all-in call with amount ignored", async function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
                 { street: 0, action: ACTION.BET_RAISE, amount: 9n }, // SB all-in, BB needs to call 8 total
-                { street: 0, action: ACTION.CHECK_CALL, amount: 7n } // BB calls all remaining
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // BB calls (amount ignored, auto-calculated)
             ]);
             const [end] = await replay.replayAndGetEndState(actions, 10n, 9n); // BB has only 9
             expect(end).to.equal(1n); // End.SHOWDOWN (both all-in)
         });
 
-        it("reverts when call exceeds deposit limit", async function () {
+        it("automatically goes all-in when insufficient chips to call", async function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 5n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 10n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 5n } // SB tries to call 5, but has only 4 left
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // SB auto all-in with remaining 4 chips
             ]);
-            await expect(replay.replayAndGetEndState(actions, 9n, 10n)).to.be.revertedWith("CALL_AMT");
+            const [end] = await replay.replayAndGetEndState(actions, 9n, 10n); // SB has only 9 total, 4 remaining
+            expect(end).to.equal(1n); // End.SHOWDOWN (SB goes all-in)
         });
 
         it("progresses street after both players check", async function () {

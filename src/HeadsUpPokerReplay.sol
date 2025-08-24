@@ -96,14 +96,14 @@ contract HeadsUpPokerReplay {
                     if (g.stacks[p] < callAmt) {
                         callAmt = g.stacks[p];
                     }
-                    require(act.amount == callAmt, "CALL_AMT");
-                    g.contrib[p] += act.amount;
-                    g.total[p] += act.amount;
+                    // Amount is ignored for calls - auto-calculate based on available chips
+                    g.contrib[p] += callAmt;
+                    g.total[p] += callAmt;
                     require(
                         g.total[p] <= maxDeposit[p],
                         p == 0 ? "DEP_A" : "DEP_B"
                     );
-                    g.stacks[p] -= act.amount;
+                    g.stacks[p] -= callAmt;
                     if (g.stacks[p] == 0) g.allIn[p] = true;
                     g.toCall = 0;
                     g.lastRaise = bigBlind;
