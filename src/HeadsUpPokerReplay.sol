@@ -108,7 +108,8 @@ contract HeadsUpPokerReplay {
                     g.toCall = 0;
                     g.lastRaise = bigBlind;
                     g.checked = false;
-                    if (g.allIn[0] && g.allIn[1]) {
+                    // if someone has all-in and no bet to call, we go to showdown
+                    if (g.allIn[0] || g.allIn[1]) {
                         return (End.SHOWDOWN, 0);
                     }
                     g.street++;
