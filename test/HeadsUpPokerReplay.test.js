@@ -71,7 +71,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n }, // SB
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n }, // BB
-                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls (amount ignored)
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // SB checks -> move to street 2
                 { street: 2, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
@@ -89,7 +89,7 @@ describe("HeadsUpPokerReplay", function () {
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
                 { street: 0, action: ACTION.BET_RAISE, amount: 9n }, // SB goes all-in
-                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // BB calls (amount ignored, auto all-in)
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // BB calls
             ]);
             const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
@@ -399,7 +399,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n }, // SB calls
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
                 { street: 0, action: ACTION.FOLD, amount: 0n } // BB folds
             ]);
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("BAD_STREET");
@@ -460,7 +460,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n }, // SB calls, move to flop
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { street: 1, action: ACTION.FOLD, amount: 0n } // SB folds
             ]);
@@ -473,7 +473,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n },
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // SB checks, move to turn
                 { street: 2, action: ACTION.FOLD, amount: 0n } // BB folds
@@ -487,7 +487,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n },
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
                 { street: 2, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
@@ -501,32 +501,40 @@ describe("HeadsUpPokerReplay", function () {
     });
 
     describe("Check/Call Action Tests", function () {
-        it("accepts call regardless of amount specified", async function () {
+        it("reverts when call amount is incorrect", async function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // Amount is ignored - auto-calculates to 1
+                { street: 0, action: ACTION.CHECK_CALL, amount: 2n } // Should be 0 for calls
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
-            expect(end).to.equal(1n); // End.SHOWDOWN (moves to next street)
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("CALL_AMT");
+        });
+
+        it("reverts when call has any non-zero amount", async function () {
+            const actions = buildActions([
+                { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
+                { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
+                { street: 0, action: ACTION.CHECK_CALL, amount: 1n } // Should be 0 for calls
+            ]);
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("CALL_AMT");
         });
 
         it("reverts when check has non-zero amount", async function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n }, // SB calls
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
                 { street: 1, action: ACTION.CHECK_CALL, amount: 1n } // BB checks, should be 0
             ]);
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("CHECK_AMT");
         });
 
-        it("handles all-in call with amount ignored", async function () {
+        it("handles all-in call with correct amount", async function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
                 { street: 0, action: ACTION.BET_RAISE, amount: 9n }, // SB all-in, BB needs to call 8 total
-                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // BB calls (amount ignored, auto-calculated)
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // BB calls with amount 0
             ]);
             const [end] = await replay.replayAndGetEndState(actions, 10n, 9n); // BB has only 9
             expect(end).to.equal(1n); // End.SHOWDOWN (both all-in)
@@ -546,7 +554,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls (amount ignored), move to flop
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls with amount 0, move to flop
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // SB checks, move to turn
                 { street: 2, action: ACTION.CHECK_CALL, amount: 0n } // BB checks
@@ -555,7 +563,7 @@ describe("HeadsUpPokerReplay", function () {
             const nextAction = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // amount ignored
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 2, action: ACTION.CHECK_CALL, amount: 0n },
@@ -572,7 +580,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // amount ignored
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 2, action: ACTION.CHECK_CALL, amount: 0n },
@@ -585,20 +593,7 @@ describe("HeadsUpPokerReplay", function () {
             expect(folder).to.equal(0n);
         });
 
-        it("ignores any amount specified for calls", async function () {
-            // Test that various amounts (correct, incorrect, too high, too low) all work the same
-            const testAmounts = [0n, 1n, 2n, 999n]; // 1 is correct call amount
-            
-            for (const amount of testAmounts) {
-                const actions = buildActions([
-                    { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
-                    { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                    { street: 0, action: ACTION.CHECK_CALL, amount: amount } // Should work regardless of amount
-                ]);
-                const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
-                expect(end).to.equal(1n); // Should reach next street/showdown for all amounts
-            }
-        });
+
 
         it("correctly calculates all-in amount when player has exactly enough", async function () {
             const actions = buildActions([
@@ -735,7 +730,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n }, // SB calls, move to flop
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
                 { street: 1, action: ACTION.BET_RAISE, amount: 3n }, // BB bets on flop
                 { street: 1, action: ACTION.FOLD, amount: 0n } // SB folds
             ]);
@@ -751,7 +746,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n },
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n },
                 { street: 2, action: ACTION.CHECK_CALL, amount: 0n },
@@ -769,7 +764,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 5n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 10n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 5n } // SB calls, both all-in
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // SB calls, both all-in
             ]);
             const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
@@ -781,7 +776,7 @@ describe("HeadsUpPokerReplay", function () {
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
                 { street: 0, action: ACTION.BET_RAISE, amount: 4n }, // SB all-in with 5 total
-                { street: 0, action: ACTION.CHECK_CALL, amount: 3n }, // BB calls
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // BB calls
             ]);
             const [end, folder] = await replay.replayAndGetEndState(actions, 5n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN (SB all-in)
@@ -794,10 +789,10 @@ describe("HeadsUpPokerReplay", function () {
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
                 { street: 0, action: ACTION.BET_RAISE, amount: 3n }, // SB raises
                 { street: 0, action: ACTION.BET_RAISE, amount: 5n }, // BB re-raises  
-                { street: 0, action: ACTION.CHECK_CALL, amount: 3n }, // SB calls, move to flop
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { street: 1, action: ACTION.BET_RAISE, amount: 2n }, // SB bets
-                { street: 1, action: ACTION.CHECK_CALL, amount: 2n }, // BB calls, move to turn
+                { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // BB calls, move to turn
                 { street: 2, action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { street: 2, action: ACTION.CHECK_CALL, amount: 0n } // SB checks, move to river
             ]);
@@ -809,7 +804,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n },
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n } // Game not finished
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n } // Game not finished
             ]);
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("HAND_NOT_DONE");
         });
@@ -821,13 +816,13 @@ describe("HeadsUpPokerReplay", function () {
                 { street: 0, action: ACTION.BET_RAISE, amount: 3n }, // SB min raise
                 { street: 0, action: ACTION.BET_RAISE, amount: 5n }, // BB re-raise
                 { street: 0, action: ACTION.BET_RAISE, amount: 7n }, // SB re-raise again
-                { street: 0, action: ACTION.CHECK_CALL, amount: 4n }, // SB calls, move to turn
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n }, // BB calls, move to turn
                 { street: 1, action: ACTION.BET_RAISE, amount: 10n }, // BB bets bigger
-                { street: 1, action: ACTION.CHECK_CALL, amount: 10n }, // SB calls, move to river
+                { street: 1, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to river
                 { street: 2, action: ACTION.BET_RAISE, amount: 20n }, // BB bets bigger
-                { street: 2, action: ACTION.CHECK_CALL, amount: 20n }, // SB calls, move to river
+                { street: 2, action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to river
                 { street: 3, action: ACTION.BET_RAISE, amount: 47n }, // BB all-in with remaining
-                { street: 3, action: ACTION.CHECK_CALL, amount: 47n } // SB calls all-in
+                { street: 3, action: ACTION.CHECK_CALL, amount: 0n } // SB calls all-in
             ]);
             const [end, folder] = await replay.replayAndGetEndState(actions, 100n, 88n);
             expect(end).to.equal(1n); // End.SHOWDOWN
@@ -838,7 +833,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { street: 0, action: ACTION.SMALL_BLIND, amount: 1n }, // Player 0 (SB) acts
                 { street: 0, action: ACTION.BIG_BLIND, amount: 2n },   // Player 1 (BB) acts  
-                { street: 0, action: ACTION.CHECK_CALL, amount: 1n },  // Player 0 (SB) acts - calls
+                { street: 0, action: ACTION.CHECK_CALL, amount: 0n },  // Player 0 (SB) acts - calls
                 // Now on flop, BB acts first (player 1)
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n },  // Player 1 (BB) checks
                 { street: 1, action: ACTION.CHECK_CALL, amount: 0n },  // Player 0 (SB) checks
