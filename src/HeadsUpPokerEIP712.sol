@@ -1,19 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Action} from "./HeadsUpPokerActions.sol";
 
-contract HeadsUpPokerEIP712 {
+/// @title HeadsUpPokerEIP712
+/// @notice Helper contract for hashing and recovering EIP712 signed messages
+contract HeadsUpPokerEIP712 is EIP712 {
     using ECDSA for bytes32;
 
     // ---------------------------------------------------------------------
     // Typehashes
     // ---------------------------------------------------------------------
-    bytes32 private constant EIP712DOMAIN_TYPEHASH =
-        keccak256(
-            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract,uint256 channelId)"
-        );
     bytes32 private constant ACTION_TYPEHASH =
         keccak256(
             "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
@@ -22,8 +21,6 @@ contract HeadsUpPokerEIP712 {
         keccak256(
             "CardCommit(uint256 channelId,uint256 handId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
         );
-    bytes32 private constant NAME_HASH = keccak256(bytes("HeadsUpPoker"));
-    bytes32 private constant VERSION_HASH = keccak256(bytes("1"));
 
     // ---------------------------------------------------------------------
     // Struct definitions
@@ -39,27 +36,13 @@ contract HeadsUpPokerEIP712 {
         bytes32 prevHash;
     }
 
+    constructor() EIP712("HeadsUpPoker", "1") {}
+
     // ---------------------------------------------------------------------
     // Domain separator
     // ---------------------------------------------------------------------
-    function DOMAIN_SEPARATOR(uint256 channelId) public view returns (bytes32) {
-        return _domainSeparator(channelId);
-    }
-
-    function _domainSeparator(
-        uint256 channelId
-    ) internal view returns (bytes32) {
-        return
-            keccak256(
-                abi.encode(
-                    EIP712DOMAIN_TYPEHASH,
-                    NAME_HASH,
-                    VERSION_HASH,
-                    block.chainid,
-                    address(this),
-                    channelId
-                )
-            );
+    function DOMAIN_SEPARATOR() public view returns (bytes32) {
+        return _domainSeparatorV4();
     }
 
     // ---------------------------------------------------------------------
@@ -77,14 +60,7 @@ contract HeadsUpPokerEIP712 {
                 act.prevHash
             )
         );
-        return
-            keccak256(
-                abi.encodePacked(
-                    "\x19\x01",
-                    _domainSeparator(act.channelId),
-                    structHash
-                )
-            );
+        return _hashTypedDataV4(structHash);
     }
 
     function digestCardCommit(
@@ -103,14 +79,7 @@ contract HeadsUpPokerEIP712 {
                 cc.prevHash
             )
         );
-        return
-            keccak256(
-                abi.encodePacked(
-                    "\x19\x01",
-                    _domainSeparator(cc.channelId),
-                    structHash
-                )
-            );
+        return _hashTypedDataV4(structHash);
     }
 
     // ---------------------------------------------------------------------
@@ -129,6 +98,5 @@ contract HeadsUpPokerEIP712 {
     ) external view returns (address) {
         return digestCardCommit(cc).recover(sig);
     }
-
-    // ---------------------------------------------------------------------
 }
+

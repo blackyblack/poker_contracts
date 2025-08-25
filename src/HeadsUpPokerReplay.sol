@@ -15,6 +15,11 @@ contract HeadsUpPokerReplay {
     uint8 private constant ACT_CHECK_CALL = 3;
     uint8 private constant ACT_BET_RAISE = 4;
 
+    bytes32 private constant ACTION_TYPEHASH =
+        keccak256(
+            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
+        );
+
     struct Game {
         uint256[2] stacks;
         uint256[2] contrib;
@@ -25,6 +30,14 @@ contract HeadsUpPokerReplay {
         uint256 toCall;
         uint256 lastRaise;
         bool checked;
+        bool reopen;
+    }
+
+    function handGenesis(
+        uint256 chId,
+        uint256 handId
+    ) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked("HUP_GENESIS", chId, handId));
     }
 
     /// @notice Replays a sequence of actions and returns the terminal state
@@ -37,12 +50,13 @@ contract HeadsUpPokerReplay {
         require(actions.length >= 2, "NO_BLINDS");
 
         Action calldata sb = actions[0];
-        require(sb.prevHash == bytes32(0), "SB_PREV");
+        require(sb.prevHash == handGenesis(sb.channelId, sb.handId), "SB_PREV");
         require(sb.action == ACT_SMALL_BLIND, "SB_ACT");
+        require(sb.seq == 0, "SB_SEQ");
         require(sb.amount > 0 && sb.amount <= stackA, "SB_AMT");
 
         Action calldata bb = actions[1];
-        require(bb.seq > sb.seq, "SEQ1");
+        require(bb.seq == 1, "BB_SEQ");
         require(bb.prevHash == _hashAction(sb), "BB_PREV");
         require(bb.action == ACT_BIG_BLIND, "BB_ACT");
         require(bb.amount == sb.amount * 2, "BB_AMT");
@@ -64,6 +78,12 @@ contract HeadsUpPokerReplay {
         g.toCall = g.contrib[1] - g.contrib[0];
         g.lastRaise = bigBlind;
         g.checked = false;
+        g.reopen = true;
+
+        // If both players are all-in after blinds, go directly to showdown
+        if (g.allIn[0] && g.allIn[1]) {
+            return (End.SHOWDOWN, 0);
+        }
 
         uint256[2] memory maxDeposit = [stackA, stackB];
 
@@ -77,6 +97,15 @@ contract HeadsUpPokerReplay {
 
             uint256 p = g.actor;
             uint256 opp = 1 - p;
+
+            // allow to move to showdown if someone is all-in
+            if (g.allIn[p]) {
+                if (g.allIn[opp]) {
+                    return (End.SHOWDOWN, 0);
+                }
+                require(act.action == ACT_CHECK_CALL && act.amount == 0, "PLAYER_ALLIN");
+                return (End.SHOWDOWN, 0);
+            }
 
             require(!g.allIn[p], "PLAYER_ALLIN");
 
@@ -96,6 +125,8 @@ contract HeadsUpPokerReplay {
                     }
                     g.contrib[p] += callAmt;
                     g.total[p] += callAmt;
+                    // DEP_A, DEP_B checks are never reached
+                    // keep for invariant checking
                     require(
                         g.total[p] <= maxDeposit[p],
                         p == 0 ? "DEP_A" : "DEP_B"
@@ -105,6 +136,7 @@ contract HeadsUpPokerReplay {
                     g.toCall = 0;
                     g.lastRaise = bigBlind;
                     g.checked = false;
+                    g.reopen = true;
                     // if someone has all-in and no bet to call, we go to showdown
                     if (g.allIn[0] || g.allIn[1]) {
                         return (End.SHOWDOWN, 0);
@@ -115,50 +147,77 @@ contract HeadsUpPokerReplay {
                     g.contrib[1] = 0;
                     g.actor = 1;
                     continue;
-                } else {
-                    require(act.amount == 0, "CHECK_AMT");
-                    if (g.checked) {
-                        g.street++;
-                        if (g.street == 4) {
-                            return (End.SHOWDOWN, 0);
-                        }
-                        g.contrib[0] = 0;
-                        g.contrib[1] = 0;
-                        g.actor = 1;
-                        g.checked = false;
-                    } else {
-                        g.checked = true;
-                        g.actor = uint8(opp);
-                    }
-                    continue;
                 }
+                // to call is 0, so this is a check
+                require(act.amount == 0, "CHECK_AMT");
+                if (g.checked) {
+                    g.street++;
+                    if (g.street == 4) {
+                        return (End.SHOWDOWN, 0);
+                    }
+                    g.contrib[0] = 0;
+                    g.contrib[1] = 0;
+                    g.actor = 1;
+                    g.checked = false;
+                    g.reopen = true;
+                    g.lastRaise = bigBlind;
+                } else {
+                    g.checked = true;
+                    g.actor = uint8(opp);
+                }
+                continue;
             }
 
             if (act.action == ACT_BET_RAISE) {
                 require(act.amount > 0, "RAISE_ZERO");
-                uint256 minRaise = g.lastRaise;
-                uint256 need = g.toCall + minRaise;
-                if (g.stacks[p] + g.toCall <= need) {
-                    require(act.amount == g.stacks[p], "RAISE_ALLIN_AMT");
-                } else {
-                    require(act.amount >= need, "MIN_RAISE");
-                }
+
+                uint256 prevStack = g.stacks[p];
+                require(act.amount <= prevStack, "RAISE_STACK");
+
                 uint256 toCallBefore = g.toCall;
-                require(
-                    act.amount <= g.stacks[p] + toCallBefore,
-                    "RAISE_STACK"
-                );
+                uint256 minRaise = g.lastRaise;
+
+                if (toCallBefore > 0) {
+                    // check the bet was raised
+                    require(act.amount > toCallBefore, "RAISE_INC");
+
+                    uint256 raiseInc = act.amount - toCallBefore;
+
+                    if (raiseInc < minRaise) {
+                        // allow short all-in that does not re-open
+                        require(act.amount == prevStack, "MIN_RAISE");
+                        g.reopen = false;
+                    } else {
+                        // full raise
+                        require(g.reopen, "NO_REOPEN");
+                        g.reopen = true;
+                        g.lastRaise = raiseInc;
+                    }
+                } else {
+                    // starting a bet
+                    if (act.amount < minRaise) {
+                        // allow short all-in that does not re-open
+                        require(act.amount == prevStack, "MIN_RAISE");
+                        g.reopen = false;
+                    } else {
+                        g.reopen = true;
+                        g.lastRaise = act.amount;
+                    }
+                }
+
                 g.contrib[p] += act.amount;
                 g.total[p] += act.amount;
+                // DEP_A, DEP_B checks are never reached
+                // keep for invariant checking
                 require(
                     g.total[p] <= maxDeposit[p],
                     p == 0 ? "DEP_A" : "DEP_B"
                 );
-                g.stacks[p] -= act.amount;
+
+                g.stacks[p] = prevStack - act.amount;
                 if (g.stacks[p] == 0) g.allIn[p] = true;
+
                 uint256 newDiff = g.contrib[p] - g.contrib[opp];
-                g.lastRaise = newDiff - toCallBefore;
-                require(g.lastRaise > 0, "RAISE_INC");
                 g.toCall = newDiff;
                 g.checked = false;
                 g.actor = uint8(opp);
@@ -175,6 +234,7 @@ contract HeadsUpPokerReplay {
         return
             keccak256(
                 abi.encode(
+                    ACTION_TYPEHASH,
                     act.channelId,
                     act.handId,
                     act.seq,
