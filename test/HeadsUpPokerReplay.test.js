@@ -797,20 +797,16 @@ describe("HeadsUpPokerReplay", function () {
             await expect(replay.replayAndGetEndState(actions, 1n, 10n)).to.be.revertedWith("HAND_NOT_DONE");
         });
 
-        it("reveals potential bug: both players all-in from blinds creates deadlock", async function () {
-            // This test reveals a potential issue in the contract logic
-            // When both players go all-in from posting blinds, the contract requires actions
-            // but line 96 prevents all-in players from acting
+        it("handles both players all-in from blinds by going to showdown", async function () {
+            // When both players go all-in from posting blinds, contract should
+            // automatically go to showdown instead of expecting more actions
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 5n },
                 { action: ACTION.BIG_BLIND, amount: 10n }
-                // Both players are now all-in, but contract expects more actions
+                // Both players are now all-in, should go directly to showdown
             ]);
-            // This should either:
-            // 1. Automatically go to showdown (preferred), OR  
-            // 2. Allow the SB to act even though technically all-in
-            // Currently this will revert with "HAND_NOT_DONE" because no more actions are possible
-            await expect(replay.replayAndGetEndState(actions, 5n, 10n)).to.be.revertedWith("HAND_NOT_DONE");
+            const [end] = await replay.replayAndGetEndState(actions, 5n, 10n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
         it("handles player all-in from big blind posting only", async function () {

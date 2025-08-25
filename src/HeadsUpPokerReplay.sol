@@ -80,6 +80,11 @@ contract HeadsUpPokerReplay {
         g.checked = false;
         g.reopen = true;
 
+        // If both players are all-in after blinds, go directly to showdown
+        if (g.allIn[0] && g.allIn[1]) {
+            return (End.SHOWDOWN, 0);
+        }
+
         uint256[2] memory maxDeposit = [stackA, stackB];
 
         for (uint256 i = 2; i < actions.length; i++) {
