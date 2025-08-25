@@ -48,7 +48,12 @@ describe("HeadsUpPokerEIP712", function () {
             seq: 1,
             action: ACTION.CHECK_CALL,
             amount: 100n,
-            prevHash: ethers.ZeroHash
+            prevHash: ethers.keccak256(
+                ethers.solidityPacked(
+                    ["string", "uint256", "uint256"],
+                    ["HUP_GENESIS", channelId, 1n]
+                )
+            )
         };
 
         const chainId = (await ethers.provider.getNetwork()).chainId;
