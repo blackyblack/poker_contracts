@@ -98,6 +98,15 @@ contract HeadsUpPokerReplay {
             uint256 p = g.actor;
             uint256 opp = 1 - p;
 
+            // allow to move to showdown if someone is all-in
+            if (g.allIn[p]) {
+                if (g.allIn[opp]) {
+                    return (End.SHOWDOWN, 0);
+                }
+                require(act.action == ACT_CHECK_CALL && act.amount == 0, "PLAYER_ALLIN");
+                return (End.SHOWDOWN, 0);
+            }
+
             require(!g.allIn[p], "PLAYER_ALLIN");
 
             if (act.action == ACT_FOLD) {
