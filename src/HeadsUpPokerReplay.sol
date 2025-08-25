@@ -133,25 +133,25 @@ contract HeadsUpPokerReplay {
                     g.contrib[1] = 0;
                     g.actor = 1;
                     continue;
-                } else {
-                    require(act.amount == 0, "CHECK_AMT");
-                    if (g.checked) {
-                        g.street++;
-                        if (g.street == 4) {
-                            return (End.SHOWDOWN, 0);
-                        }
-                        g.contrib[0] = 0;
-                        g.contrib[1] = 0;
-                        g.actor = 1;
-                        g.checked = false;
-                        g.reopen = true;
-                        g.lastRaise = bigBlind;
-                    } else {
-                        g.checked = true;
-                        g.actor = uint8(opp);
-                    }
-                    continue;
                 }
+                // to call is 0, so this is a check
+                require(act.amount == 0, "CHECK_AMT");
+                if (g.checked) {
+                    g.street++;
+                    if (g.street == 4) {
+                        return (End.SHOWDOWN, 0);
+                    }
+                    g.contrib[0] = 0;
+                    g.contrib[1] = 0;
+                    g.actor = 1;
+                    g.checked = false;
+                    g.reopen = true;
+                    g.lastRaise = bigBlind;
+                } else {
+                    g.checked = true;
+                    g.actor = uint8(opp);
+                }
+                continue;
             }
 
             if (act.action == ACT_BET_RAISE) {
@@ -171,11 +171,8 @@ contract HeadsUpPokerReplay {
 
                     if (raiseInc < minRaise) {
                         // allow short all-in that does not re-open
-                        if (act.amount == prevStack) {
-                            g.reopen = false;
-                        } else {
-                            revert("MIN_RAISE");
-                        }
+                        require(act.amount == prevStack, "MIN_RAISE");
+                        g.reopen = false;
                     } else {
                         // full raise
                         require(g.reopen, "NO_REOPEN");
@@ -186,11 +183,8 @@ contract HeadsUpPokerReplay {
                     // starting a bet
                     if (act.amount < minRaise) {
                         // allow short all-in that does not re-open
-                        if (act.amount == prevStack) {
-                            g.reopen = false;
-                        } else {
-                            revert("MIN_RAISE");
-                        }
+                        require(act.amount == prevStack, "MIN_RAISE");
+                        g.reopen = false;
                     } else {
                         g.reopen = true;
                         g.lastRaise = act.amount;
