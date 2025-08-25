@@ -855,6 +855,30 @@ describe("HeadsUpPokerReplay", function () {
             const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
+
+        it("handles edge case: only big blind all-in from blinds", async function () {
+            // BB goes all-in from posting blind, SB still has chips to act
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                // Only BB is all-in, SB can still act
+                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 10n, 2n); // BB has exactly 2
+            expect(end).to.equal(1n); // End.SHOWDOWN
+        });
+
+        it("verifies normal play still works when neither player all-in from blinds", async function () {
+            // Normal case where neither player is all-in after blinds  
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
+                { action: ACTION.CHECK_CALL, amount: 0n } // BB checks, advance to flop
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 100n, 100n);
+            expect(end).to.equal(1n); // Should work normally - not affected by fix
+        });
     });
 
     describe("Missing Coverage - Street Transitions", function () {
