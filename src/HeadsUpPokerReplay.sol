@@ -15,6 +15,11 @@ contract HeadsUpPokerReplay {
     uint8 private constant ACT_CHECK_CALL = 3;
     uint8 private constant ACT_BET_RAISE = 4;
 
+    bytes32 private constant ACTION_TYPEHASH =
+        keccak256(
+            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
+        );
+
     struct Game {
         uint256[2] stacks;
         uint256[2] contrib;
@@ -175,6 +180,7 @@ contract HeadsUpPokerReplay {
         return
             keccak256(
                 abi.encode(
+                    ACTION_TYPEHASH,
                     act.channelId,
                     act.handId,
                     act.seq,
