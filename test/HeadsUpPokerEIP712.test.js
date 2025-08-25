@@ -10,7 +10,7 @@ describe("HeadsUpPokerEIP712", function () {
 
     const DOMAIN_TYPEHASH = ethers.keccak256(
         ethers.toUtf8Bytes(
-            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract,uint256 channelId)"
+            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
         )
     );
     const ACTION_TYPEHASH = ethers.keccak256(
@@ -30,13 +30,13 @@ describe("HeadsUpPokerEIP712", function () {
         contract = await Helper.deploy();
     });
 
-    function domainSeparator(chainId, verifyingContract, channelId) {
+    function domainSeparator(chainId, verifyingContract) {
         const nameHash = ethers.keccak256(ethers.toUtf8Bytes("HeadsUpPoker"));
         const versionHash = ethers.keccak256(ethers.toUtf8Bytes("1"));
         return ethers.keccak256(
             ethers.AbiCoder.defaultAbiCoder().encode(
-                ["bytes32", "bytes32", "bytes32", "uint256", "address", "uint256"],
-                [DOMAIN_TYPEHASH, nameHash, versionHash, chainId, verifyingContract, channelId]
+                ["bytes32", "bytes32", "bytes32", "uint256", "address"],
+                [DOMAIN_TYPEHASH, nameHash, versionHash, chainId, verifyingContract]
             )
         );
     }
@@ -58,7 +58,7 @@ describe("HeadsUpPokerEIP712", function () {
 
         const chainId = (await ethers.provider.getNetwork()).chainId;
         const verifyingContract = await contract.getAddress();
-        const domSep = domainSeparator(chainId, verifyingContract, channelId);
+        const domSep = domainSeparator(chainId, verifyingContract);
         const structHash = ethers.keccak256(
             ethers.AbiCoder.defaultAbiCoder().encode(
                 ["bytes32", "uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
@@ -104,7 +104,7 @@ describe("HeadsUpPokerEIP712", function () {
 
         const chainId = (await ethers.provider.getNetwork()).chainId;
         const verifyingContract = await contract.getAddress();
-        const domSep = domainSeparator(chainId, verifyingContract, channelId);
+        const domSep = domainSeparator(chainId, verifyingContract);
         const structHash = ethers.keccak256(
             ethers.AbiCoder.defaultAbiCoder().encode(
                 [
