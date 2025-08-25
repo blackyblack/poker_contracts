@@ -797,20 +797,16 @@ describe("HeadsUpPokerReplay", function () {
             await expect(replay.replayAndGetEndState(actions, 1n, 10n)).to.be.revertedWith("HAND_NOT_DONE");
         });
 
-        it("reveals potential bug: both players all-in from blinds creates deadlock", async function () {
-            // This test reveals a potential issue in the contract logic
-            // When both players go all-in from posting blinds, the contract requires actions
-            // but line 96 prevents all-in players from acting
+        it("handles both players all-in from blinds by going to showdown", async function () {
+            // When both players go all-in from posting blinds, contract should
+            // automatically go to showdown instead of expecting more actions
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 5n },
                 { action: ACTION.BIG_BLIND, amount: 10n }
-                // Both players are now all-in, but contract expects more actions
+                // Both players are now all-in, should go directly to showdown
             ]);
-            // This should either:
-            // 1. Automatically go to showdown (preferred), OR  
-            // 2. Allow the SB to act even though technically all-in
-            // Currently this will revert with "HAND_NOT_DONE" because no more actions are possible
-            await expect(replay.replayAndGetEndState(actions, 5n, 10n)).to.be.revertedWith("HAND_NOT_DONE");
+            const [end] = await replay.replayAndGetEndState(actions, 5n, 10n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
         it("handles player all-in from big blind posting only", async function () {
@@ -858,6 +854,30 @@ describe("HeadsUpPokerReplay", function () {
             ]);
             const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
+        });
+
+        it("handles edge case: only big blind all-in from blinds", async function () {
+            // BB goes all-in from posting blind, SB still has chips to act
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                // Only BB is all-in, SB can still act
+                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 10n, 2n); // BB has exactly 2
+            expect(end).to.equal(1n); // End.SHOWDOWN
+        });
+
+        it("verifies normal play still works when neither player all-in from blinds", async function () {
+            // Normal case where neither player is all-in after blinds  
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
+                { action: ACTION.CHECK_CALL, amount: 0n } // BB checks, advance to flop
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 100n, 100n);
+            expect(end).to.equal(1n); // Should work normally - not affected by fix
         });
     });
 
