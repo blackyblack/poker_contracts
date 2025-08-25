@@ -80,6 +80,11 @@ contract HeadsUpPokerReplay {
         g.checked = false;
         g.reopen = true;
 
+        // If both players are all-in after blinds, go directly to showdown
+        if (g.allIn[0] && g.allIn[1]) {
+            return (End.SHOWDOWN, 0);
+        }
+
         uint256[2] memory maxDeposit = [stackA, stackB];
 
         for (uint256 i = 2; i < actions.length; i++) {
@@ -92,6 +97,15 @@ contract HeadsUpPokerReplay {
 
             uint256 p = g.actor;
             uint256 opp = 1 - p;
+
+            // allow to move to showdown if someone is all-in
+            if (g.allIn[p]) {
+                if (g.allIn[opp]) {
+                    return (End.SHOWDOWN, 0);
+                }
+                require(act.action == ACT_CHECK_CALL && act.amount == 0, "PLAYER_ALLIN");
+                return (End.SHOWDOWN, 0);
+            }
 
             require(!g.allIn[p], "PLAYER_ALLIN");
 
