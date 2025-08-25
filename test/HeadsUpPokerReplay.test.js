@@ -16,7 +16,7 @@ function buildActions(specs) {
     const abi = ethers.AbiCoder.defaultAbiCoder();
     const channelId = 1n;
     const handId = 1n;
-    let seq = 1;
+    let seq = 0;
     let prevHash = GENESIS;
     const actions = [];
     for (const spec of specs) {
@@ -119,6 +119,28 @@ describe("HeadsUpPokerReplay", function () {
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("NO_BLINDS");
         });
 
+        it("reverts when small blind sequence is wrong", async function () {
+            const actions = [
+                {
+                    channelId: 1n,
+                    handId: 1n,
+                    seq: 2,
+                    action: ACTION.SMALL_BLIND,
+                    amount: 1n,
+                    prevHash: GENESIS
+                },
+                {
+                    channelId: 1n,
+                    handId: 1n,
+                    seq: 3,
+                    action: ACTION.BIG_BLIND,
+                    amount: 2n,
+                    prevHash: GENESIS
+                }
+            ];
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("SB_SEQ");
+        });
+
         it("reverts when only one action provided", async function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n }
@@ -153,7 +175,7 @@ describe("HeadsUpPokerReplay", function () {
                 {
                     channelId: 1n,
                     handId: 1n,
-                    seq: 1,
+                    seq: 0,
                     action: ACTION.BIG_BLIND, // Should be SMALL_BLIND
                     amount: 1n,
                     prevHash: GENESIS
@@ -175,7 +197,7 @@ describe("HeadsUpPokerReplay", function () {
                 {
                     channelId: 1n,
                     handId: 1n,
-                    seq: 1,
+                    seq: 0,
                     action: ACTION.SMALL_BLIND,
                     amount: 0n, // Should be > 0
                     prevHash: GENESIS
@@ -197,7 +219,7 @@ describe("HeadsUpPokerReplay", function () {
                 {
                     channelId: 1n,
                     handId: 1n,
-                    seq: 1,
+                    seq: 0,
                     action: ACTION.SMALL_BLIND,
                     amount: 11n, // Exceeds stack of 10
                     prevHash: GENESIS
@@ -214,11 +236,11 @@ describe("HeadsUpPokerReplay", function () {
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("SB_AMT");
         });
 
-        it("reverts when big blind sequence is not greater", async function () {
+        it("reverts when big blind sequence is wrong", async function () {
             const sbAction = {
                 channelId: 1n,
                 handId: 1n,
-                seq: 5,
+                seq: 0,
                 action: ACTION.SMALL_BLIND,
                 amount: 1n,
                 prevHash: GENESIS
@@ -226,7 +248,7 @@ describe("HeadsUpPokerReplay", function () {
             const bbAction = {
                 channelId: 1n,
                 handId: 1n,
-                seq: 5, // Same seq, should be greater
+                seq: 0, // Same seq, should be greater
                 action: ACTION.BIG_BLIND,
                 amount: 2n,
                 prevHash: ethers.keccak256(
@@ -244,7 +266,7 @@ describe("HeadsUpPokerReplay", function () {
                     )
                 )
             };
-            await expect(replay.replayAndGetEndState([sbAction, bbAction], 10n, 10n)).to.be.revertedWith("SEQ1");
+            await expect(replay.replayAndGetEndState([sbAction, bbAction], 10n, 10n)).to.be.revertedWith("BB_SEQ");
         });
 
         it("reverts when big blind prevHash is incorrect", async function () {
@@ -254,7 +276,7 @@ describe("HeadsUpPokerReplay", function () {
             const badBB = {
                 channelId: 1n,
                 handId: 1n,
-                seq: 2,
+                seq: 1,
                 action: ACTION.BIG_BLIND,
                 amount: 2n,
                 prevHash: ethers.keccak256("0x1234") // Wrong hash
@@ -266,7 +288,7 @@ describe("HeadsUpPokerReplay", function () {
             const sbAction = {
                 channelId: 1n,
                 handId: 1n,
-                seq: 1,
+                seq: 0,
                 action: ACTION.SMALL_BLIND,
                 amount: 1n,
                 prevHash: GENESIS
@@ -274,7 +296,7 @@ describe("HeadsUpPokerReplay", function () {
             const bbAction = {
                 channelId: 1n,
                 handId: 1n,
-                seq: 2,
+                seq: 1,
                 action: ACTION.FOLD, // Should be BIG_BLIND
                 amount: 2n,
                 prevHash: ethers.keccak256(
@@ -323,7 +345,7 @@ describe("HeadsUpPokerReplay", function () {
             const badAction = {
                 channelId: 1n,
                 handId: 1n,
-                seq: 2, // Same as previous, should be 3
+                seq: 1, // Same as previous, should be 2
                 action: ACTION.FOLD,
                 amount: 0n,
                 prevHash: ethers.keccak256(
@@ -614,7 +636,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 10n },
                 { action: ACTION.BET_RAISE, amount: 4n } // Should be 5 to go all-in (5+4=9 total
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("RAISE_ALLIN_AMT");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("RAISE_INC");
         });
 
         it("reverts when raise doesn't increase the bet", async function () {
@@ -633,7 +655,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.BET_RAISE, amount: 8n } // Total 9 > stack 8
             ]);
-            await expect(replay.replayAndGetEndState(actions, 8n, 10n)).to.be.revertedWith("DEP_A");
+            await expect(replay.replayAndGetEndState(actions, 8n, 10n)).to.be.revertedWith("RAISE_STACK");
         });
 
         it("handles re-raise scenario with underraised bet", async function () {
@@ -641,10 +663,10 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.BET_RAISE, amount: 3n }, // SB raises to 4 total
-                { action: ACTION.BET_RAISE, amount: 4n }, // BB re-raises to 6 total (2+4)
+                { action: ACTION.BET_RAISE, amount: 3n }, // BB re-raises to 5 total (2+3)
             ]);
-            // This should revert since the re-raise must be at least the size of the previous raise (3)
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("RAISE_INC");
+            // This should revert since the re-raise must be at least the size of the previous raise (2)
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("MIN_RAISE");
         });
 
         it("handles re-raise scenario", async function () {
@@ -671,6 +693,16 @@ describe("HeadsUpPokerReplay", function () {
             const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
+        });
+
+        it("prevents re-raise after short all-in", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 2n }, // SB short all-in to 3
+                { action: ACTION.BET_RAISE, amount: 3n } // BB attempts re-raise
+            ]);
+            await expect(replay.replayAndGetEndState(actions, 3n, 10n)).to.be.revertedWith("NO_REOPEN");
         });
     });
 
