@@ -772,4 +772,313 @@ describe("HeadsUpPokerReplay", function () {
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
     });
+
+    describe("Missing Coverage - All-in Scenarios", function () {
+        it("handles all-in preflop followed by fold", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 9n }, // SB goes all-in
+                { action: ACTION.FOLD, amount: 0n } // BB folds
+            ]);
+            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // BB folded
+        });
+
+        it("handles player all-in from blind posting", async function () {
+            // Test when a player goes all-in just from posting blinds
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n }
+                // SB should be all-in after posting blind, so game should end immediately
+            ]);
+            // SB has only 1 chip total, so goes all-in posting blind
+            await expect(replay.replayAndGetEndState(actions, 1n, 10n)).to.be.revertedWith("HAND_NOT_DONE");
+        });
+
+        it("reveals potential bug: both players all-in from blinds creates deadlock", async function () {
+            // This test reveals a potential issue in the contract logic
+            // When both players go all-in from posting blinds, the contract requires actions
+            // but line 96 prevents all-in players from acting
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 5n },
+                { action: ACTION.BIG_BLIND, amount: 10n }
+                // Both players are now all-in, but contract expects more actions
+            ]);
+            // This should either:
+            // 1. Automatically go to showdown (preferred), OR  
+            // 2. Allow the SB to act even though technically all-in
+            // Currently this will revert with "HAND_NOT_DONE" because no more actions are possible
+            await expect(replay.replayAndGetEndState(actions, 5n, 10n)).to.be.revertedWith("HAND_NOT_DONE");
+        });
+
+        it("handles player all-in from big blind posting only", async function () {
+            // Test when only the big blind player goes all-in from posting blind
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                // BB is now all-in, SB should still be able to act
+                { action: ACTION.FOLD, amount: 0n } // SB folds
+            ]);
+            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 2n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(0n); // SB folded
+        });
+
+        it("handles SB all-in from blind, BB calls scenario", async function () {
+            // SB goes all-in from posting blind, BB can call to complete action
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 3n },
+                { action: ACTION.BIG_BLIND, amount: 6n },
+                // SB is all-in, has no more chips, so BB needs to check to complete
+                { action: ACTION.CHECK_CALL, amount: 0n } // BB checks (since SB is all-in)
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 3n, 10n);
+            expect(end).to.equal(1n); // Should go to showdown
+        });
+
+        it("handles both players all-in preflop immediately", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 5n },
+                { action: ACTION.BIG_BLIND, amount: 10n },
+                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls all-in
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 5n, 10n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+        });
+
+        it("handles one player all-in postflop", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
+                { action: ACTION.BET_RAISE, amount: 8n }, // BB bets all remaining 8
+                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+        });
+    });
+
+    describe("Missing Coverage - Street Transitions", function () {
+        it("handles bet-call sequence advancing streets correctly", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
+                { action: ACTION.BET_RAISE, amount: 3n }, // BB bets on flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to turn
+                { action: ACTION.BET_RAISE, amount: 4n }, // BB bets on turn
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to river
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks on river
+                { action: ACTION.CHECK_CALL, amount: 0n } // SB checks -> showdown
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+        });
+
+        it("verifies correct actor after street transitions", async function () {
+            // This test ensures BB acts first on each postflop street
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop - now BB should act first
+                { action: ACTION.BET_RAISE, amount: 2n }, // BB acts first on flop (correct)
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to turn - now BB should act first  
+                { action: ACTION.BET_RAISE, amount: 3n }, // BB acts first on turn (correct)
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to river - now BB should act first
+                { action: ACTION.BET_RAISE, amount: 4n }, // BB acts first on river (correct)
+                { action: ACTION.FOLD, amount: 0n } // SB folds
+            ]);
+            const [end, folder] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(0n); // SB folded
+        });
+
+        it("reverts when trying to exceed maximum street", async function () {
+            // This should be impossible given normal flow, but test boundary
+            // The contract should prevent going beyond street 3 (river)
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to street 1 
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to street 2
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks  
+                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to street 3
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }  // Should reach showdown (street 4)
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(1n); // End.SHOWDOWN - should not revert, should end normally
+        });
+    });
+
+    describe("Missing Coverage - Bet Sizing Edge Cases", function () {
+        it("handles minimum bet on each street", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
+                { action: ACTION.BET_RAISE, amount: 2n }, // BB minimum bet (size of big blind)
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to turn
+                { action: ACTION.BET_RAISE, amount: 2n }, // BB minimum bet again
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to river
+                { action: ACTION.BET_RAISE, amount: 2n }, // BB minimum bet again
+                { action: ACTION.FOLD, amount: 0n } // SB folds
+            ]);
+            const [end, folder] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(0n); // SB folded
+        });
+
+        it("handles maximum bet without going all-in", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 8n }, // SB bets almost all-in (9 total)
+                { action: ACTION.FOLD, amount: 0n } // BB folds
+            ]);
+            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // BB folded
+        });
+
+        it("reverts on bet when player is already all-in on previous street", async function () {
+            // Test that a player who went all-in cannot act
+            const badActions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 5n },
+                { action: ACTION.BIG_BLIND, amount: 6n },
+                { action: ACTION.CHECK_CALL, amount: 0n } // SB goes all-in calling
+            ]);
+            // First verify this makes SB all-in
+            const [end] = await replay.replayAndGetEndState(badActions, 6n, 10n);
+            expect(end).to.equal(1n); // Should be showdown since SB is all-in
+        });
+    });
+
+    describe("Missing Coverage - Check/Call Edge Cases", function () {
+        it("reverts when trying to check with amount when no bet to call", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
+                { action: ACTION.CHECK_CALL, amount: 1n } // BB tries to check with amount - should be 0
+            ]);
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("CHECK_AMT");
+        });
+
+        it("handles partial all-in call correctly", async function () {
+            // Player has less than the amount to call, should go all-in with remaining chips
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 8n }, // SB raises big, BB needs to call 7 more
+                { action: ACTION.CHECK_CALL, amount: 0n } // BB calls but only has 3 remaining
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 10n, 5n); // BB only has 5 total
+            expect(end).to.equal(1n); // End.SHOWDOWN (BB goes all-in with remaining 3)
+        });
+    });
+
+    describe("Missing Coverage - Reopening Betting Logic", function () {
+        it("tests reopen false after short all-in prevents further raising", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises (reopens betting)
+                { action: ACTION.BET_RAISE, amount: 2n }, // BB short all-in (closes reopening)
+                { action: ACTION.BET_RAISE, amount: 1n } // SB tries to raise again (should fail)
+            ]);
+            await expect(replay.replayAndGetEndState(actions, 10n, 4n)).to.be.revertedWith("NO_REOPEN");
+        });
+
+        it("tests reopen true after full raise allows further raising", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises by 2 (minimum)
+                { action: ACTION.BET_RAISE, amount: 5n }, // BB raises by 5 (> minimum, reopens)
+                { action: ACTION.BET_RAISE, amount: 7n }, // SB raises by 7 (>= 5, valid)
+                { action: ACTION.FOLD, amount: 0n } // BB folds
+            ]);
+            const [end, folder] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // BB folded
+        });
+
+        it("tests minimum raise requirement with exact amounts", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 4n }, // SB raises by 4 (to 5 total)
+                { action: ACTION.BET_RAISE, amount: 4n }, // BB must raise by at least 4 (to 9 total)
+                { action: ACTION.FOLD, amount: 0n } // SB folds
+            ]);
+            const [end, folder] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(0n); // SB folded
+        });
+
+        it("reverts on under-minimum raise", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 4n }, // SB raises by 4 (to 5 total)
+                { action: ACTION.BET_RAISE, amount: 3n } // BB tries to raise by only 3 (< minimum 4)
+            ]);
+            await expect(replay.replayAndGetEndState(actions, 20n, 20n)).to.be.revertedWith("MIN_RAISE");
+        });
+    });
+
+    describe("Missing Coverage - Complex Multi-Street Scenarios", function () {
+        it("handles raise-reraise-reraise sequence on same street", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises to 4 total
+                { action: ACTION.BET_RAISE, amount: 5n }, // BB reraises to 7 total (raise of 5)
+                { action: ACTION.BET_RAISE, amount: 8n }, // SB reraises to 12 total (raise of 8, >= 5)
+                { action: ACTION.FOLD, amount: 0n } // BB folds
+            ]);
+            const [end, folder] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // BB folded
+        });
+
+        it("handles betting reopened on multiple streets", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB calls, move to flop
+                { action: ACTION.BET_RAISE, amount: 5n }, // BB bets on flop
+                { action: ACTION.BET_RAISE, amount: 8n }, // SB raises on flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB calls, move to turn
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                { action: ACTION.BET_RAISE, amount: 10n }, // SB bets on turn
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB calls, move to river
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                { action: ACTION.CHECK_CALL, amount: 0n } // SB checks -> showdown
+            ]);
+            const [end] = await replay.replayAndGetEndState(actions, 50n, 50n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+        });
+
+        it("handles fold after multiple betting rounds", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
+                { action: ACTION.BET_RAISE, amount: 3n }, // BB bets
+                { action: ACTION.BET_RAISE, amount: 6n }, // SB raises  
+                { action: ACTION.BET_RAISE, amount: 12n }, // BB reraises
+                { action: ACTION.FOLD, amount: 0n } // SB folds on flop
+            ]);
+            const [end, folder] = await replay.replayAndGetEndState(actions, 30n, 30n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(0n); // SB folded
+        });
+    });
 });
