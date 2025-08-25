@@ -2,6 +2,12 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("./actions");
 
+const ACTION_TYPEHASH = ethers.keccak256(
+    ethers.toUtf8Bytes(
+        "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
+    )
+);
+
 // Helper to build actions with proper hashes and sequence numbers
 function buildActions(specs) {
     const abi = ethers.AbiCoder.defaultAbiCoder();
@@ -22,8 +28,16 @@ function buildActions(specs) {
         actions.push(act);
         prevHash = ethers.keccak256(
             abi.encode(
-                ["uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
-                [act.channelId, act.handId, act.seq, act.action, act.amount, act.prevHash]
+                ["bytes32", "uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
+                [
+                    ACTION_TYPEHASH,
+                    act.channelId,
+                    act.handId,
+                    act.seq,
+                    act.action,
+                    act.amount,
+                    act.prevHash
+                ]
             )
         );
     }
@@ -214,8 +228,16 @@ describe("HeadsUpPokerReplay", function () {
                 amount: 2n,
                 prevHash: ethers.keccak256(
                     ethers.AbiCoder.defaultAbiCoder().encode(
-                        ["uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
-                        [sbAction.channelId, sbAction.handId, sbAction.seq, sbAction.action, sbAction.amount, sbAction.prevHash]
+                        ["bytes32", "uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
+                        [
+                            ACTION_TYPEHASH,
+                            sbAction.channelId,
+                            sbAction.handId,
+                            sbAction.seq,
+                            sbAction.action,
+                            sbAction.amount,
+                            sbAction.prevHash
+                        ]
                     )
                 )
             };
@@ -254,8 +276,16 @@ describe("HeadsUpPokerReplay", function () {
                 amount: 2n,
                 prevHash: ethers.keccak256(
                     ethers.AbiCoder.defaultAbiCoder().encode(
-                        ["uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
-                        [sbAction.channelId, sbAction.handId, sbAction.seq, sbAction.action, sbAction.amount, sbAction.prevHash]
+                        ["bytes32", "uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
+                        [
+                            ACTION_TYPEHASH,
+                            sbAction.channelId,
+                            sbAction.handId,
+                            sbAction.seq,
+                            sbAction.action,
+                            sbAction.amount,
+                            sbAction.prevHash
+                        ]
                     )
                 )
             };
@@ -295,8 +325,16 @@ describe("HeadsUpPokerReplay", function () {
                 amount: 0n,
                 prevHash: ethers.keccak256(
                     ethers.AbiCoder.defaultAbiCoder().encode(
-                        ["uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
-                        [actions[1].channelId, actions[1].handId, actions[1].seq, actions[1].action, actions[1].amount, actions[1].prevHash]
+                        ["bytes32", "uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
+                        [
+                            ACTION_TYPEHASH,
+                            actions[1].channelId,
+                            actions[1].handId,
+                            actions[1].seq,
+                            actions[1].action,
+                            actions[1].amount,
+                            actions[1].prevHash
+                        ]
                     )
                 )
             };
@@ -350,8 +388,16 @@ describe("HeadsUpPokerReplay", function () {
                 amount: 0n,
                 prevHash: ethers.keccak256(
                     ethers.AbiCoder.defaultAbiCoder().encode(
-                        ["uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
-                        [actions[1].channelId, actions[1].handId, actions[1].seq, actions[1].action, actions[1].amount, actions[1].prevHash]
+                        ["bytes32", "uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
+                        [
+                            ACTION_TYPEHASH,
+                            actions[1].channelId,
+                            actions[1].handId,
+                            actions[1].seq,
+                            actions[1].action,
+                            actions[1].amount,
+                            actions[1].prevHash
+                        ]
                     )
                 )
             };
