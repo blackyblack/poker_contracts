@@ -2,6 +2,9 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("./actions");
 
+const GENESIS = ethers.keccak256(
+    ethers.solidityPacked(["string", "uint256", "uint256"], ["HUP_GENESIS", 1n, 1n]));
+
 const ACTION_TYPEHASH = ethers.keccak256(
     ethers.toUtf8Bytes(
         "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
@@ -14,7 +17,7 @@ function buildActions(specs) {
     const channelId = 1n;
     const handId = 1n;
     let seq = 1;
-    let prevHash = ethers.ZeroHash;
+    let prevHash = GENESIS;
     const actions = [];
     for (const spec of specs) {
         const act = {
@@ -123,7 +126,7 @@ describe("HeadsUpPokerReplay", function () {
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("NO_BLINDS");
         });
 
-        it("reverts when small blind has non-zero prevHash", async function () {
+        it("reverts when small blind prevHash is incorrect", async function () {
             const actions = [
                 {
                     channelId: 1n,
@@ -131,7 +134,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 1,
                     action: ACTION.SMALL_BLIND,
                     amount: 1n,
-                    prevHash: ethers.keccak256("0x1234") // Should be zero
+                    prevHash: ethers.keccak256("0x1234") // Should be genesis
                 },
                 {
                     channelId: 1n,
@@ -139,7 +142,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 1,
                     action: ACTION.BIG_BLIND,
                     amount: 1n,
-                    prevHash: ethers.ZeroHash
+                    prevHash: GENESIS
                 }
             ];
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("SB_PREV");
@@ -153,7 +156,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 1,
                     action: ACTION.BIG_BLIND, // Should be SMALL_BLIND
                     amount: 1n,
-                    prevHash: ethers.ZeroHash
+                    prevHash: GENESIS
                 },
                 {
                     channelId: 1n,
@@ -161,7 +164,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 1,
                     action: ACTION.BIG_BLIND,
                     amount: 1n,
-                    prevHash: ethers.ZeroHash
+                    prevHash: GENESIS
                 }
             ];
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("SB_ACT");
@@ -175,7 +178,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 1,
                     action: ACTION.SMALL_BLIND,
                     amount: 0n, // Should be > 0
-                    prevHash: ethers.ZeroHash
+                    prevHash: GENESIS
                 },
                 {
                     channelId: 1n,
@@ -183,7 +186,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 1,
                     action: ACTION.BIG_BLIND,
                     amount: 1n,
-                    prevHash: ethers.ZeroHash
+                    prevHash: GENESIS
                 }
             ];
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("SB_AMT");
@@ -197,7 +200,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 1,
                     action: ACTION.SMALL_BLIND,
                     amount: 11n, // Exceeds stack of 10
-                    prevHash: ethers.ZeroHash
+                    prevHash: GENESIS
                 },
                 {
                     channelId: 1n,
@@ -205,7 +208,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 1,
                     action: ACTION.BIG_BLIND,
                     amount: 1n,
-                    prevHash: ethers.ZeroHash
+                    prevHash: GENESIS
                 }
             ];
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("SB_AMT");
@@ -218,7 +221,7 @@ describe("HeadsUpPokerReplay", function () {
                 seq: 5,
                 action: ACTION.SMALL_BLIND,
                 amount: 1n,
-                prevHash: ethers.ZeroHash
+                prevHash: GENESIS
             };
             const bbAction = {
                 channelId: 1n,
@@ -266,7 +269,7 @@ describe("HeadsUpPokerReplay", function () {
                 seq: 1,
                 action: ACTION.SMALL_BLIND,
                 amount: 1n,
-                prevHash: ethers.ZeroHash
+                prevHash: GENESIS
             };
             const bbAction = {
                 channelId: 1n,

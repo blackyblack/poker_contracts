@@ -32,6 +32,13 @@ contract HeadsUpPokerReplay {
         bool checked;
     }
 
+    function handGenesis(
+        uint256 chId,
+        uint256 handId
+    ) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked("HUP_GENESIS", chId, handId));
+    }
+
     /// @notice Replays a sequence of actions and returns the terminal state
     /// @dev Reverts when an invalid transition is encountered
     function replayAndGetEndState(
@@ -42,7 +49,10 @@ contract HeadsUpPokerReplay {
         require(actions.length >= 2, "NO_BLINDS");
 
         Action calldata sb = actions[0];
-        require(sb.prevHash == bytes32(0), "SB_PREV");
+        require(
+            sb.prevHash == handGenesis(sb.channelId, sb.handId),
+            "SB_PREV"
+        );
         require(sb.action == ACT_SMALL_BLIND, "SB_ACT");
         require(sb.amount > 0 && sb.amount <= stackA, "SB_AMT");
 
