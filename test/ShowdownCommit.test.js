@@ -234,17 +234,25 @@ describe("verifyCoSignedCommits & startShowdown", function () {
       .withArgs(2);
   });
 
-  it("reverts when a slot is missing", async () => {
+  it("allows partial commit sets", async () => {
     const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
-    commits.pop();
-    sigs.pop();
-    sigs.pop();
+    // Remove the last commit (river card)
+    const partialCommits = commits.slice(0, -1);
+    const partialSigs = sigs.slice(0, -2);
+    // Set river card and salt to 0 since it's not committed
+    const partialBoard = [...board];
+    partialBoard[4] = 0;
+    const partialBoardSalts = [...boardSalts];
+    partialBoardSalts[4] = ZERO32;
 
-    await expect(
-      escrow
-        .connect(player1)
-        .startShowdown(channelId, handId, commits, sigs, board, boardSalts, myHole, mySalts)
-    ).to.be.revertedWith("missing commit slot(s)");
+    const tx = await escrow
+      .connect(player1)
+      .startShowdown(channelId, handId, partialCommits, partialSigs, partialBoard, partialBoardSalts, myHole, mySalts);
+    
+    const sd = await escrow.getShowdown(channelId);
+    expect(sd.inProgress).to.equal(true);
+    // Check that the commit mask reflects the partial set (all except river)
+    expect(sd.lockedCommitMask).to.equal(0x1EF); // Binary: 111101111 (missing bit 8 for river)
   });
 
   it("happy path stores hashes and cards", async () => {
@@ -265,5 +273,73 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     expect(sd.initiatorHole.map(Number)).to.deep.equal(myHole);
     expect(sd.oppHoleHash1).to.equal(objs[2].cc.commitHash);
     expect(sd.oppHoleHash2).to.equal(objs[3].cc.commitHash);
+  });
+
+  it("allows submitting additional commits during reveal window", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts, dom } = await setup();
+    
+    // Start with partial commits (missing river card)
+    const partialCommits = commits.slice(0, -1);
+    const partialSigs = sigs.slice(0, -2);
+    const partialBoard = [...board];
+    partialBoard[4] = 0;
+    const partialBoardSalts = [...boardSalts];
+    partialBoardSalts[4] = ZERO32;
+
+    await escrow
+      .connect(player1)
+      .startShowdown(channelId, handId, partialCommits, partialSigs, partialBoard, partialBoardSalts, myHole, mySalts);
+
+    // Submit additional commit for river card
+    const riverCommit = commits[8]; // River card commit
+    const riverSigs = [sigs[16], sigs[17]]; // River card signatures
+    const fullBoard = board;
+    const fullBoardSalts = boardSalts;
+
+    await escrow
+      .connect(player2)
+      .submitAdditionalCommits(
+        channelId,
+        handId,
+        [riverCommit],
+        riverSigs,
+        fullBoard,
+        fullBoardSalts,
+        myHole,
+        mySalts
+      );
+
+    const sd = await escrow.getShowdown(channelId);
+    expect(sd.lockedCommitMask).to.equal(0x1FF); // All slots now committed
+  });
+
+  it("allows forfeit finalization when opponent holes not opened", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
+    
+    // Start with commits that don't include opponent holes
+    const partialCommits = commits.slice(0, 2).concat(commits.slice(4)); // Skip opponent holes
+    const partialSigs = [];
+    for (let i = 0; i < 2; i++) {
+      partialSigs.push(sigs[i * 2], sigs[i * 2 + 1]);
+    }
+    for (let i = 4; i < 9; i++) {
+      partialSigs.push(sigs[i * 2], sigs[i * 2 + 1]);
+    }
+
+    await escrow
+      .connect(player1)
+      .startShowdown(channelId, handId, partialCommits, partialSigs, board, boardSalts, myHole, mySalts);
+
+    // Fast forward past reveal window
+    await ethers.provider.send("evm_increaseTime", [3601]); // 1 hour + 1 second
+    await ethers.provider.send("evm_mine");
+
+    const initialBalance = await ethers.provider.getBalance(player1.address);
+
+    // Finalize - should forfeit to initiator (player1)
+    await escrow.finalizeShowdownWithCommits(channelId, [0, 0], [ZERO32, ZERO32]);
+
+    const finalBalance = await ethers.provider.getBalance(player1.address);
+    expect(finalBalance).to.be.greaterThan(initialBalance);
   });
 });

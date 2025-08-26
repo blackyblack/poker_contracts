@@ -18,7 +18,7 @@ contract HeadsUpPokerEIP712 {
         keccak256(
             "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
         );
-    bytes32 private constant CARD_COMMIT_TYPEHASH =
+    bytes32 internal constant CARD_COMMIT_TYPEHASH =
         keccak256(
             "CardCommit(uint256 channelId,uint256 handId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
         );
