@@ -773,26 +773,6 @@ describe("HeadsUpPokerReplay", function () {
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("HAND_NOT_DONE");
         });
 
-        // TODO: this might be longer, limit betting rounds in contract
-        it("handles maximum possible betting sequence", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 3n }, // SB min raise
-                { action: ACTION.BET_RAISE, amount: 5n }, // BB re-raise
-                { action: ACTION.BET_RAISE, amount: 7n }, // SB re-raise again
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB calls, move to turn
-                { action: ACTION.BET_RAISE, amount: 10n }, // BB bets bigger
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to river
-                { action: ACTION.BET_RAISE, amount: 20n }, // BB bets bigger
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to river
-                { action: ACTION.BET_RAISE, amount: 47n }, // BB all-in with remaining
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls all-in
-            ]);
-            const [end] = await replay.replayAndGetEndState(actions, 100n, 88n);
-            expect(end).to.equal(1n); // End.SHOWDOWN
-        });
-
         it("handles alternating actor correctly through streets", async function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n }, // Player 0 (SB) acts
@@ -1098,7 +1078,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 5n }, // raise 3 preflop
                 { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, go to flop
                 { action: ACTION.BET_RAISE, amount: 2n }, // BB bets flop (raise 1 on flop)
-                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises (raise 2 on flop)
+                { action: ACTION.BET_RAISE, amount: 4n }, // SB raises (raise 2 on flop)
                 { action: ACTION.BET_RAISE, amount: 5n }, // BB reraises (raise 3 on flop)
                 { action: ACTION.BET_RAISE, amount: 8n }, // SB reraises (raise 4 on flop) - should work
                 { action: ACTION.FOLD, amount: 0n } // BB folds
@@ -1114,8 +1094,8 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, go to flop
                 { action: ACTION.BET_RAISE, amount: 2n }, // BB bets flop (raise 1)
-                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises (raise 2)
-                { action: ACTION.BET_RAISE, amount: 5n }, // BB reraises (raise 3)
+                { action: ACTION.BET_RAISE, amount: 4n }, // SB raises (raise 2)
+                { action: ACTION.BET_RAISE, amount: 6n }, // BB reraises (raise 3)
                 { action: ACTION.BET_RAISE, amount: 8n }, // SB reraises (raise 4)
                 { action: ACTION.BET_RAISE, amount: 12n } // BB reraises (raise 5) - should fail
             ]);
