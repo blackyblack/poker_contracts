@@ -51,6 +51,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint16 lockedCommitMask;
         bytes32[9] lockedCommitHashes;
         bytes32[9] lockedDealRefs;
+        uint32[9] lockedCommitSeqs;
         uint32 maxSeq;
     }
 
@@ -248,6 +249,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         returns (
             bytes32[9] memory hashes,
             bytes32[9] memory dealRefs,
+            uint32[9] memory seqs,
             uint16 presentMask,
             uint32 maxSeq
         )
@@ -283,6 +285,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
                 hashes[slot] = cc.commitHash;
                 dealRefs[slot] = cc.dealRef;
+                seqs[slot] = cc.seq;
                 presentMask |= bit;
             }
         }
@@ -309,6 +312,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         (
             bytes32[9] memory newHashes,
             bytes32[9] memory newDealRefs,
+            uint32[9] memory newSeqs,
             uint16 newMask,
             uint32 newMaxSeq
         ) = verifyCoSignedCommits(
@@ -328,8 +332,19 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             for (uint8 slot = 0; slot < 9; slot++) {
                 uint16 bit = uint16(1) << slot;
                 if (((newMask & oldMask) & bit) != 0) {
-                    require(newHashes[slot] == sd.lockedCommitHashes[slot], "HASH_MISMATCH");
-                    require(newDealRefs[slot] == sd.lockedDealRefs[slot], "REF_MISMATCH");
+                    // Allow override if new commit has higher sequence number
+                    if (newSeqs[slot] > sd.lockedCommitSeqs[slot]) {
+                        // Override is allowed, continue to merging
+                        continue;
+                    }
+                    if (newSeqs[slot] == sd.lockedCommitSeqs[slot]) {
+                        // Same sequence number - require exact match
+                        require(newHashes[slot] == sd.lockedCommitHashes[slot], "HASH_MISMATCH");
+                        require(newDealRefs[slot] == sd.lockedDealRefs[slot], "REF_MISMATCH");
+                        continue;
+                    }
+                    // Lower sequence number - not allowed
+                    revert("SEQ_TOO_LOW");
                 }
             }
         }
@@ -338,9 +353,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint16 mergedMask = oldMask | newMask;
         for (uint8 slot2 = 0; slot2 < 9; slot2++) {
             uint16 bit2 = uint16(1) << slot2;
-            if (((newMask & ~oldMask) & bit2) != 0) {
-                sd.lockedCommitHashes[slot2] = newHashes[slot2];
-                sd.lockedDealRefs[slot2] = newDealRefs[slot2];
+            if ((newMask & bit2) != 0) {
+                // Update slot if it's new OR if it's an override with higher seq
+                if ((oldMask & bit2) == 0 || newSeqs[slot2] > sd.lockedCommitSeqs[slot2]) {
+                    sd.lockedCommitHashes[slot2] = newHashes[slot2];
+                    sd.lockedDealRefs[slot2] = newDealRefs[slot2];
+                    sd.lockedCommitSeqs[slot2] = newSeqs[slot2];
+                }
             }
         }
         sd.lockedCommitMask = mergedMask;
@@ -447,23 +466,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return showdowns[channelId];
     }
 
-    /// @notice Check if opponent holes are available for finalization
-    function canFinalize(
-        uint256 channelId
-    ) external view returns (bool oppHolesAvailable, bool expired) {
-        ShowdownState storage sd = showdowns[channelId];
-        if (!sd.inProgress) return (false, false);
-
-        Channel storage ch = channels[channelId];
-        uint8 opp1 = sd.initiator == ch.player1 ? SLOT_B1 : SLOT_A1;
-        uint8 opp2 = sd.initiator == ch.player1 ? SLOT_B2 : SLOT_A2;
-
-        oppHolesAvailable =
-            (sd.lockedCommitMask & (uint16(1) << opp1)) != 0 &&
-            (sd.lockedCommitMask & (uint16(1) << opp2)) != 0;
-        expired = block.timestamp > sd.deadline;
-    }
-
     /// @notice Player submits commitments and openings to start showdown
     function startShowdown(
         uint256 channelId,
@@ -523,6 +525,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             holeSalts,
             onBehalfOf,
             false
+        );
+
+        // Require initiator to open both hole cards
+        uint8 initiatorSlot1 = onBehalfOf == ch.player1 ? SLOT_A1 : SLOT_B1;
+        uint8 initiatorSlot2 = onBehalfOf == ch.player1 ? SLOT_A2 : SLOT_B2;
+        require(
+            (sd.lockedCommitMask & (uint16(1) << initiatorSlot1)) != 0 &&
+            (sd.lockedCommitMask & (uint16(1) << initiatorSlot2)) != 0,
+            "INITIATOR_HOLES_REQUIRED"
         );
 
         emit ShowdownStarted(channelId);
