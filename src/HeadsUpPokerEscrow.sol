@@ -154,7 +154,19 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ch.player1 = msg.sender;
         ch.player2 = opponent;
         ch.deposit1 = msg.value;
+        ch.deposit2 = 0; // Reset deposit2 for channel reuse
         ch.finalized = false;
+
+        // Reset showdown state when reusing channel
+        ShowdownState storage sd = showdowns[channelId];
+        if (sd.inProgress) {
+            sd.inProgress = false;
+            sd.initiator = address(0);
+            sd.opponent = address(0);
+            sd.deadline = 0;
+            sd.lockedCommitMask = 0;
+            sd.maxSeq = 0;
+        }
 
         emit ChannelOpened(channelId, msg.sender, opponent, msg.value);
     }

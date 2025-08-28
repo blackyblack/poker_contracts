@@ -214,6 +214,32 @@ describe("HeadsUpPokerEscrow", function () {
             await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
                 .to.be.revertedWith("EXISTS");
         });
+
+        it("should allow winner to accumulate winnings over multiple games", async function () {
+            // First game
+            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player2).join(channelId, { value: deposit });
+            await escrow.settleFold(channelId, player1.address);
+            
+            // Check winnings from first game
+            let [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit * 2n);
+            expect(p2Stack).to.equal(0);
+            
+            // Withdraw winnings
+            await escrow.connect(player1).withdraw(channelId);
+            
+            // Second game with different stakes
+            const deposit2 = ethers.parseEther("2.0");
+            await escrow.connect(player1).open(channelId, player2.address, { value: deposit2 });
+            await escrow.connect(player2).join(channelId, { value: deposit2 });
+            await escrow.settleFold(channelId, player1.address);
+            
+            // Check winnings from second game
+            [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit2 * 2n);
+            expect(p2Stack).to.equal(0);
+        });
     });
 
     describe("Pot to Deposit", function () {
