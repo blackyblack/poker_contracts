@@ -16,11 +16,11 @@ contract HeadsUpPokerEIP712 {
         );
     bytes32 private constant ACTION_TYPEHASH =
         keccak256(
-            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
+            "Action(uint256 channelId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
         );
     bytes32 internal constant CARD_COMMIT_TYPEHASH =
         keccak256(
-            "CardCommit(uint256 channelId,uint256 handId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
+            "CardCommit(uint256 channelId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
         );
     bytes32 private constant NAME_HASH = keccak256(bytes("HeadsUpPoker"));
     bytes32 private constant VERSION_HASH = keccak256(bytes("1"));
@@ -30,7 +30,6 @@ contract HeadsUpPokerEIP712 {
     // ---------------------------------------------------------------------
     struct CardCommit {
         uint256 channelId;
-        uint256 handId;
         uint32 seq;
         uint8 role;
         uint8 index;
@@ -70,7 +69,6 @@ contract HeadsUpPokerEIP712 {
             abi.encode(
                 ACTION_TYPEHASH,
                 act.channelId,
-                act.handId,
                 act.seq,
                 act.action,
                 act.amount,
@@ -94,7 +92,6 @@ contract HeadsUpPokerEIP712 {
             abi.encode(
                 CARD_COMMIT_TYPEHASH,
                 cc.channelId,
-                cc.handId,
                 cc.seq,
                 cc.role,
                 cc.index,

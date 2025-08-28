@@ -27,6 +27,8 @@ contract HeadsUpPokerReplay {
         bool checked;
     }
 
+    // TODO: return the final pot size
+
     /// @notice Replays a sequence of actions and returns the terminal state
     /// @dev Reverts when an invalid transition is encountered
     function replayAndGetEndState(
@@ -176,7 +178,6 @@ contract HeadsUpPokerReplay {
             keccak256(
                 abi.encode(
                     act.channelId,
-                    act.handId,
                     act.seq,
                     act.action,
                     act.amount,

@@ -11,7 +11,7 @@ const NAME_HASH = ethers.keccak256(ethers.toUtf8Bytes("HeadsUpPoker"));
 const VERSION_HASH = ethers.keccak256(ethers.toUtf8Bytes("1"));
 const CARD_COMMIT_TYPEHASH = ethers.keccak256(
   ethers.toUtf8Bytes(
-    "CardCommit(uint256 channelId,uint256 handId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
+    "CardCommit(uint256 channelId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
   )
 );
 
@@ -43,11 +43,11 @@ function toSlotKey(role, index) {
   throw new Error("bad role/index");
 }
 
-function commitHash(dom, channelId, handId, slot, dealRef, card, salt) {
+function commitHash(dom, channelId, slot, dealRef, card, salt) {
   return ethers.keccak256(
     ethers.solidityPacked(
-      ["bytes32", "uint256", "uint256", "uint8", "bytes32", "uint8", "bytes32"],
-      [dom, channelId, handId, slot, dealRef, card, salt]
+      ["bytes32", "uint256", "uint8", "bytes32", "uint8", "bytes32"],
+      [dom, channelId, slot, dealRef, card, salt]
     )
   );
 }
@@ -59,7 +59,6 @@ function commitDigest(dom, cc) {
       [
         "bytes32",
         "uint256",
-        "uint256",
         "uint32",
         "uint8",
         "uint8",
@@ -70,7 +69,6 @@ function commitDigest(dom, cc) {
       [
         CARD_COMMIT_TYPEHASH,
         cc.channelId,
-        cc.handId,
         cc.seq,
         cc.role,
         cc.index,
@@ -90,14 +88,13 @@ async function signCommit(a, b, dom, cc) {
   return [sigA, sigB];
 }
 
-async function buildCommit(a, b, dom, channelId, handId, role, index, card, seq) {
+async function buildCommit(a, b, dom, channelId, role, index, card, seq) {
   const slot = toSlotKey(role, index);
   const dealRef = ethers.hexlify(ethers.randomBytes(32));
   const salt = ethers.hexlify(ethers.randomBytes(32));
-  const cHash = commitHash(dom, channelId, handId, slot, dealRef, card, salt);
+  const cHash = commitHash(dom, channelId, slot, dealRef, card, salt);
   const cc = {
     channelId,
-    handId,
     seq,
     role,
     index,
@@ -111,13 +108,12 @@ async function buildCommit(a, b, dom, channelId, handId, role, index, card, seq)
 
 describe("verifyCoSignedCommits & startShowdown", function () {
   let escrow;
-  let player1, player2, other;
+  let player1, player2;
   const channelId = 1n;
-  const handId = 1n;
   const deposit = ethers.parseEther("1");
 
   beforeEach(async () => {
-    [player1, player2, other] = await ethers.getSigners();
+    [player1, player2] = await ethers.getSigners();
     const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
     escrow = await Escrow.deploy();
     await escrow.open(channelId, player2.address, { value: deposit });
@@ -155,7 +151,6 @@ describe("verifyCoSignedCommits & startShowdown", function () {
         wallet2,
         dom,
         channelId,
-        handId,
         role,
         index,
         card,
@@ -187,7 +182,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     await expect(
       escrow
         .connect(player1)
-        .startShowdown(channelId, handId, commits, sigs, board, boardSalts, myHole, mySalts)
+        .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts)
     )
       .to.be.revertedWithCustomError(escrow, "CommitDuplicate")
       .withArgs(2);
@@ -200,23 +195,10 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     await expect(
       escrow
         .connect(player1)
-        .startShowdown(channelId, handId, commits, sigs, board, boardSalts, myHole, mySalts)
+        .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts)
     )
       .to.be.revertedWithCustomError(escrow, "CommitWrongChannel")
       .withArgs(0);
-  });
-
-  it("reverts on wrong handId", async () => {
-    const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
-    commits[1].handId = handId + 1n;
-
-    await expect(
-      escrow
-        .connect(player1)
-        .startShowdown(channelId, handId, commits, sigs, board, boardSalts, myHole, mySalts)
-    )
-      .to.be.revertedWithCustomError(escrow, "CommitWrongHand")
-      .withArgs(1);
   });
 
   it("reverts on bad B signature", async () => {
@@ -228,7 +210,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     await expect(
       escrow
         .connect(player1)
-        .startShowdown(channelId, handId, commits, sigs, board, boardSalts, myHole, mySalts)
+        .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts)
     )
       .to.be.revertedWithCustomError(escrow, "CommitWrongSignerB")
       .withArgs(2);
@@ -247,19 +229,19 @@ describe("verifyCoSignedCommits & startShowdown", function () {
 
     const tx = await escrow
       .connect(player1)
-      .startShowdown(channelId, handId, partialCommits, partialSigs, partialBoard, partialBoardSalts, myHole, mySalts);
+      .startShowdown(channelId, partialCommits, partialSigs, partialBoard, partialBoardSalts, myHole, mySalts);
     
     const sd = await escrow.getShowdown(channelId);
     expect(sd.inProgress).to.equal(true);
     // Check that the commit mask reflects the partial set (all except river)
-    expect(sd.lockedCommitMask).to.equal(0x1EF); // Binary: 111101111 (missing bit 8 for river)
+    expect(Number(sd.lockedCommitMask)).to.equal(0xFF); // bits 0..7 set
   });
 
   it("happy path stores hashes and cards", async () => {
     const { commits, sigs, board, boardSalts, myHole, mySalts, objs } = await setup();
     const tx = await escrow
       .connect(player1)
-      .startShowdown(channelId, handId, commits, sigs, board, boardSalts, myHole, mySalts);
+      .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts);
     const rcpt = await tx.wait();
     const block = await ethers.provider.getBlock(rcpt.blockNumber);
 
@@ -276,7 +258,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
   });
 
   it("allows submitting additional commits during reveal window", async () => {
-    const { commits, sigs, board, boardSalts, myHole, mySalts, dom } = await setup();
+    const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
     
     // Start with partial commits (missing river card)
     const partialCommits = commits.slice(0, -1);
@@ -288,11 +270,14 @@ describe("verifyCoSignedCommits & startShowdown", function () {
 
     await escrow
       .connect(player1)
-      .startShowdown(channelId, handId, partialCommits, partialSigs, partialBoard, partialBoardSalts, myHole, mySalts);
+      .startShowdown(channelId, partialCommits, partialSigs, partialBoard, partialBoardSalts, myHole, mySalts);
 
     // Submit additional commit for river card
     const riverCommit = commits[8]; // River card commit
+    // Also submit turn card to pass overlap check
+    const turnCommit = commits[7]; // Turn card commit
     const riverSigs = [sigs[16], sigs[17]]; // River card signatures
+    const turnSigs = [sigs[14], sigs[15]]; // Turn card signatures
     const fullBoard = board;
     const fullBoardSalts = boardSalts;
 
@@ -300,9 +285,8 @@ describe("verifyCoSignedCommits & startShowdown", function () {
       .connect(player2)
       .submitAdditionalCommits(
         channelId,
-        handId,
-        [riverCommit],
-        riverSigs,
+        [turnCommit, riverCommit],
+        [...turnSigs, ...riverSigs],
         fullBoard,
         fullBoardSalts,
         myHole,
@@ -310,7 +294,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
       );
 
     const sd = await escrow.getShowdown(channelId);
-    expect(sd.lockedCommitMask).to.equal(0x1FF); // All slots now committed
+    expect(Number(sd.lockedCommitMask)).to.equal(0x1FF); // All slots now committed
   });
 
   it("allows forfeit finalization when opponent holes not opened", async () => {
@@ -328,7 +312,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
 
     await escrow
       .connect(player1)
-      .startShowdown(channelId, handId, partialCommits, partialSigs, board, boardSalts, myHole, mySalts);
+      .startShowdown(channelId, partialCommits, partialSigs, board, boardSalts, myHole, mySalts);
 
     // Fast forward past reveal window
     await ethers.provider.send("evm_increaseTime", [3601]); // 1 hour + 1 second

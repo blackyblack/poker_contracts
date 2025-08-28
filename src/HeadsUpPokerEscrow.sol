@@ -32,7 +32,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     // ------------------------------------------------------------------
     error CommitDuplicate(uint8 slot);
     error CommitWrongChannel(uint8 slot);
-    error CommitWrongHand(uint8 slot);
     error CommitWrongSignerA(uint8 slot);
     error CommitWrongSignerB(uint8 slot);
     error CommitUnexpected(uint8 slot);
@@ -50,7 +49,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint8[5] board;
         uint8[2] initiatorHole;
         uint16 lockedCommitMask;
-        uint256 lockedHandId;
         bytes32[9] lockedCommitHashes;
         bytes32[9] lockedDealRefs;
         uint32 maxSeq;
@@ -194,7 +192,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function verifyCoSignedCommits(
         uint256 channelId,
-        uint256 handId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
         uint16 allowedMask,
@@ -224,7 +221,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                 seenMask |= bit;
 
                 if (cc.channelId != channelId) revert CommitWrongChannel(slot);
-                if (cc.handId != handId) revert CommitWrongHand(slot);
 
                 if (cc.seq > maxSeq) {
                     maxSeq = cc.seq;
@@ -245,6 +241,155 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                 presentMask |= bit;
             }
         }
+    }
+
+    // Applies a batch of commits/openings.
+    function _applyCommitUpdate(
+        uint256 channelId,
+        HeadsUpPokerEIP712.CardCommit[] calldata commits,
+        bytes[] calldata sigs,
+        uint8[5] calldata boardCodes,
+        bytes32[5] calldata boardSalts,
+        uint8[2] calldata holeCodes,
+        bytes32[2] calldata holeSalts,
+        address submitter,
+        bool requireOverlap
+    ) internal returns (uint16 finalMask, uint32 finalMaxSeq) {
+        Channel storage ch = channels[channelId];
+        ShowdownState storage sd = showdowns[channelId];
+
+        address addrA = ch.player1;
+        address addrB = ch.player2;
+
+        (
+            bytes32[9] memory newHashes,
+            bytes32[9] memory newDealRefs,
+            uint16 newMask,
+            uint32 newMaxSeq
+        ) = verifyCoSignedCommits(
+                channelId,
+                commits,
+                sigs,
+                MASK_ALL,
+                addrA,
+                addrB
+            );
+
+        uint16 oldMask = sd.lockedCommitMask;
+
+        // check for overlap with existing locked set if required
+        if (requireOverlap && oldMask != 0) {
+            require((newMask & oldMask) != 0, "NO_OVERLAP");
+            for (uint8 slot = 0; slot < 9; slot++) {
+                uint16 bit = uint16(1) << slot;
+                if (((newMask & oldMask) & bit) != 0) {
+                    require(newHashes[slot] == sd.lockedCommitHashes[slot], "HASH_MISMATCH");
+                    require(newDealRefs[slot] == sd.lockedDealRefs[slot], "REF_MISMATCH");
+                }
+            }
+        }
+
+        // merge new commits into locked set
+        uint16 mergedMask = oldMask | newMask;
+        for (uint8 slot2 = 0; slot2 < 9; slot2++) {
+            uint16 bit2 = uint16(1) << slot2;
+            if (((newMask & ~oldMask) & bit2) != 0) {
+                sd.lockedCommitHashes[slot2] = newHashes[slot2];
+                sd.lockedDealRefs[slot2] = newDealRefs[slot2];
+            }
+        }
+        sd.lockedCommitMask = mergedMask;
+
+        if (newMaxSeq > sd.maxSeq) {
+            sd.maxSeq = newMaxSeq;
+        }
+
+        uint8 submitterSlot1;
+        uint8 submitterSlot2;
+        uint8 opp1;
+        uint8 opp2;
+        if (submitter == addrA) {
+            submitterSlot1 = SLOT_A1;
+            submitterSlot2 = SLOT_A2;
+            opp1 = SLOT_B1;
+            opp2 = SLOT_B2;
+        } else {
+            submitterSlot1 = SLOT_B1;
+            submitterSlot2 = SLOT_B2;
+            opp1 = SLOT_A1;
+            opp2 = SLOT_A2;
+        }
+
+        if ((newMask & (uint16(1) << opp1)) != 0) {
+            sd.oppHoleHash1 = newHashes[opp1];
+        }
+        if ((newMask & (uint16(1) << opp2)) != 0) {
+            sd.oppHoleHash2 = newHashes[opp2];
+        }
+
+        bytes32 domainSeparator = _domainSeparator(channelId);
+
+        // Board
+        for (uint256 i = 0; i < 5; i++) {
+            uint8 slot = uint8(SLOT_FLOP1 + i);
+            uint16 bit = uint16(1) << slot;
+            if (((newMask & bit) == 0)) {
+                continue;
+            }
+            bytes32 h = keccak256(
+                abi.encodePacked(
+                    domainSeparator,
+                    channelId,
+                    slot,
+                    newDealRefs[slot],
+                    boardCodes[i],
+                    boardSalts[i]
+                )
+            );
+            require(h == newHashes[slot], "BOARD_OPEN");
+            sd.board[i] = boardCodes[i];
+        }
+
+        for (uint256 i = 0; i < 2; i++) {
+            uint8 slot = i == 0 ? submitterSlot1 : submitterSlot2;
+            uint16 bit = uint16(1) << slot;
+            if (((newMask & bit) == 0)) {
+                continue;
+            }
+            bytes32 h = keccak256(
+                abi.encodePacked(
+                    domainSeparator,
+                    channelId,
+                    slot,
+                    newDealRefs[slot],
+                    holeCodes[i],
+                    holeSalts[i]
+                )
+            );
+            require(h == newHashes[slot], "HOLE_OPEN");
+            if (submitter == sd.initiator) {
+                sd.initiatorHole[i] = holeCodes[i];
+            }
+        }
+
+        return (sd.lockedCommitMask, sd.maxSeq);
+    }
+
+    function _forfeitToInitiator(uint256 channelId) internal {
+        Channel storage ch = channels[channelId];
+        ShowdownState storage sd = showdowns[channelId];
+
+        if (ch.finalized) return;
+        ch.finalized = true;
+
+        uint256 pot = ch.deposit1 + ch.deposit2;
+        ch.deposit1 = 0;
+        ch.deposit2 = 0;
+
+        (bool ok, ) = payable(sd.initiator).call{value: pot}("");
+        require(ok, "PAY_FAIL");
+
+        emit ShowdownFinalized(channelId, sd.initiator, pot);
     }
 
     function getShowdown(
@@ -273,7 +418,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     /// @notice Player submits commitments and openings to start showdown
     function startShowdown(
         uint256 channelId,
-        uint256 handId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
         uint8[5] calldata boardCodes,
@@ -284,125 +428,35 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         Channel storage ch = channels[channelId];
         require(ch.deposit1 > 0 && ch.deposit2 > 0, "NOT_READY");
         // TODO: not required to be sent by a player, could be a third party
-        require(
-            msg.sender == ch.player1 || msg.sender == ch.player2,
-            "NOT_PLAYER"
-        );
+        require(msg.sender == ch.player1 || msg.sender == ch.player2, "NOT_PLAYER");
 
         ShowdownState storage sd = showdowns[channelId];
         require(!sd.inProgress, "IN_PROGRESS");
 
-        address addrA = ch.player1;
-        address addrB = ch.player2;
-
-        (
-            bytes32[9] memory hashes,
-            bytes32[9] memory dealRefs,
-            uint16 presentMask,
-            uint32 maxSeq
-        ) = verifyCoSignedCommits(
-                channelId,
-                handId,
-                commits,
-                sigs,
-                MASK_ALL,
-                addrA,
-                addrB);
-
-        // Store the initial commit state (partial commits allowed)
-        sd.lockedCommitMask = presentMask;
-        sd.lockedHandId = handId;
-        sd.lockedCommitHashes = hashes;
-        sd.lockedDealRefs = dealRefs;
-        sd.maxSeq = maxSeq;
-
-        // Determine roles
-        uint8 slot1;
-        uint8 slot2;
-        uint8 opp1;
-        uint8 opp2;
-
-        // TODO: allow third party to submit by specifying who they are opening for
-        if (msg.sender == addrA) {
-            slot1 = SLOT_A1;
-            slot2 = SLOT_A2;
-            opp1 = SLOT_B1;
-            opp2 = SLOT_B2;
-            sd.initiator = addrA;
-            sd.opponent = addrB;
-        } else {
-            slot1 = SLOT_B1;
-            slot2 = SLOT_B2;
-            opp1 = SLOT_A1;
-            opp2 = SLOT_A2;
-            sd.initiator = addrB;
-            sd.opponent = addrA;
-        }
-
-        // Store opponent hole card hashes if present
-        if (presentMask & (uint16(1) << opp1) != 0) {
-            sd.oppHoleHash1 = hashes[opp1];
-        }
-        if (presentMask & (uint16(1) << opp2) != 0) {
-            sd.oppHoleHash2 = hashes[opp2];
-        }
-
-        bytes32 domainSeparator = _domainSeparator(channelId);
-
-        // Verify and store board openings if provided
-        for (uint256 i = 0; i < 5; i++) {
-            uint8 slot = uint8(SLOT_FLOP1 + i);
-            uint16 bit = uint16(1) << slot;
-            if (presentMask & bit == 0) {
-                continue;
-            }
-            bytes32 h = keccak256(
-                abi.encodePacked(
-                    domainSeparator,
-                    channelId,
-                    handId,
-                    slot,
-                    dealRefs[slot],
-                    boardCodes[i],
-                    boardSalts[i]
-                )
-            );
-            require(h == hashes[slot], "BOARD_OPEN");
-            sd.board[i] = boardCodes[i];
-        }
-
-        // Verify and store initiator hole card openings if provided
-        for (uint256 i = 0; i < 2; i++) {
-            uint8 slot = i == 0 ? slot1 : slot2;
-            uint16 bit = uint16(1) << slot;
-            if (presentMask & bit == 0) {
-                continue;
-            }
-            bytes32 h = keccak256(
-                abi.encodePacked(
-                    domainSeparator,
-                    channelId,
-                    handId,
-                    slot,
-                    dealRefs[slot],
-                    holeCodes[i],
-                    holeSalts[i]
-                )
-            );
-            require(h == hashes[slot], "HOLE_OPEN");
-            sd.initiatorHole[i] = holeCodes[i];
-        }
-
+        sd.initiator = msg.sender;
+        sd.opponent = msg.sender == ch.player1 ? ch.player2 : ch.player1;
         sd.deadline = block.timestamp + revealWindow;
         sd.inProgress = true;
 
+        _applyCommitUpdate(
+            channelId,
+            commits,
+            sigs,
+            boardCodes,
+            boardSalts,
+            holeCodes,
+            holeSalts,
+            msg.sender,
+            false
+        );
+
         emit ShowdownStarted(channelId);
+        emit CommitsUpdated(channelId, msg.sender, sd.lockedCommitMask, sd.maxSeq);
     }
 
-    /// @notice Submit additional commits during reveal window (superset or higher seq)
+    /// @notice Submit additional commits during reveal window
     function submitAdditionalCommits(
         uint256 channelId,
-        uint256 handId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
         uint8[5] calldata boardCodes,
@@ -412,128 +466,25 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         // TODO: allow third party to submit by specifying who they are opening for
-        require(
-            msg.sender == ch.player1 || msg.sender == ch.player2,
-            "NOT_PLAYER"
-        );
+        require(msg.sender == ch.player1 || msg.sender == ch.player2, "NOT_PLAYER");
 
         ShowdownState storage sd = showdowns[channelId];
         require(sd.inProgress, "NO_SHOWDOWN");
         require(block.timestamp <= sd.deadline, "EXPIRED");
 
-        address addrA = ch.player1;
-        address addrB = ch.player2;
-
-        (
-            bytes32[9] memory newHashes,
-            bytes32[9] memory newDealRefs,
-            uint16 newMask,
-            uint32 newMaxSeq
-        ) = verifyCoSignedCommits(
-                channelId,
-                handId,
-                commits,
-                sigs,
-                MASK_ALL,
-                addrA,
-                addrB
-            );
-
-        // Check if this is a valid update (superset or higher seq)
-        bool isSuperset = (newMask & sd.lockedCommitMask) ==
-            sd.lockedCommitMask &&
-            newMask != sd.lockedCommitMask;
-        bool isHigherSeq = newMaxSeq > sd.maxSeq;
-        bool isSameHandWithSuperset = handId == sd.lockedHandId && isSuperset;
-        bool isNewerHandWithHigherSeq = handId > sd.lockedHandId && isHigherSeq;
-
-        require(
-            isSameHandWithSuperset || isNewerHandWithHigherSeq,
-            "NOT_IMPROVEMENT"
+        _applyCommitUpdate(
+            channelId,
+            commits,
+            sigs,
+            boardCodes,
+            boardSalts,
+            holeCodes,
+            holeSalts,
+            msg.sender,
+            // require non-empty overlap with the existing locked set
+            true
         );
-
-        // Update locked commit state
-        sd.lockedCommitMask = newMask;
-        sd.lockedCommitHashes = newHashes;
-        sd.lockedDealRefs = newDealRefs;
-        sd.lockedHandId = handId;
-        sd.maxSeq = newMaxSeq;
-
-        // Determine roles for this submitter
-        uint8 slot1;
-        uint8 slot2;
-        uint8 opp1;
-        uint8 opp2;
-        // TODO: allow third party to submit by specifying who they are opening for
-        if (msg.sender == addrA) {
-            slot1 = SLOT_A1;
-            slot2 = SLOT_A2;
-            opp1 = SLOT_B1;
-            opp2 = SLOT_B2;
-        } else {
-            slot1 = SLOT_B1;
-            slot2 = SLOT_B2;
-            opp1 = SLOT_A1;
-            opp2 = SLOT_A2;
-        }
-
-        // Update opponent hole card hashes if present
-        if (newMask & (uint16(1) << opp1) != 0) {
-            sd.oppHoleHash1 = newHashes[opp1];
-        }
-        if (newMask & (uint16(1) << opp2) != 0) {
-            sd.oppHoleHash2 = newHashes[opp2];
-        }
-
-        bytes32 domainSeparator = _domainSeparator(channelId);
-
-        // Verify and update board openings if provided
-        for (uint256 i = 0; i < 5; i++) {
-            uint8 slot = uint8(SLOT_FLOP1 + i);
-            uint16 bit = uint16(1) << slot;
-            if (newMask & bit == 0) {
-                continue;
-            }
-            bytes32 h = keccak256(
-                abi.encodePacked(
-                    domainSeparator,
-                    channelId,
-                    handId,
-                    slot,
-                    newDealRefs[slot],
-                    boardCodes[i],
-                    boardSalts[i]
-                )
-            );
-            require(h == newHashes[slot], "BOARD_OPEN");
-            sd.board[i] = boardCodes[i];
-        }
-
-        // Verify and update submitter hole card openings if provided
-        for (uint256 i = 0; i < 2; i++) {
-            uint8 slot = i == 0 ? slot1 : slot2;
-            uint16 bit = uint16(1) << slot;
-            if (newMask & bit == 0) {
-                continue;
-            }
-            bytes32 h = keccak256(
-                abi.encodePacked(
-                    domainSeparator,
-                    channelId,
-                    handId,
-                    slot,
-                    newDealRefs[slot],
-                    holeCodes[i],
-                    holeSalts[i]
-                )
-            );
-            require(h == newHashes[slot], "HOLE_OPEN");
-            if (msg.sender == sd.initiator) {
-                sd.initiatorHole[i] = holeCodes[i];
-            }
-        }
-
-        emit CommitsUpdated(channelId, msg.sender, newMask, newMaxSeq);
+        emit CommitsUpdated(channelId, msg.sender, sd.lockedCommitMask, sd.maxSeq);
     }
 
     /// @notice Finalize showdown using best commit set locked in dispute
@@ -549,31 +500,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         require(sd.inProgress, "NO_SHOWDOWN");
         require(block.timestamp > sd.deadline, "STILL_REVEALING");
 
-        // Check if opponent holes are available in commits
-        uint8 opp1 = sd.initiator == ch.player1 ? SLOT_B1 : SLOT_A1;
-        uint8 opp2 = sd.initiator == ch.player1 ? SLOT_B2 : SLOT_A2;
-
-        bool oppHole1Available = (sd.lockedCommitMask & (uint16(1) << opp1)) != 0;
-        bool oppHole2Available = (sd.lockedCommitMask & (uint16(1) << opp2)) != 0;
-
-        if (!oppHole1Available || !oppHole2Available) {
-            // Forfeit to initiator if opponent holes aren't opened
-            ch.finalized = true;
-            uint256 pot = ch.deposit1 + ch.deposit2;
-            ch.deposit1 = 0;
-            ch.deposit2 = 0;
-
-            (bool ok, ) = payable(sd.initiator).call{value: pot}("");
-            require(ok, "PAY_FAIL");
-
-            emit ShowdownFinalized(channelId, sd.initiator, pot);
+        // require full commit set or forfeit to initiator
+        if (sd.lockedCommitMask != MASK_ALL) {
+            _forfeitToInitiator(channelId);
             return;
         }
 
-        // TODO: what if initiator holes aren't opened?
-        // TODO: verify initiator hole openings
+        uint8 opp1 = sd.initiator == ch.player1 ? SLOT_B1 : SLOT_A1;
+        uint8 opp2 = sd.initiator == ch.player1 ? SLOT_B2 : SLOT_A2;
 
-        // Verify opponent hole openings
         bytes32 domainSeparator = _domainSeparator(channelId);
 
         for (uint256 i = 0; i < 2; i++) {
@@ -584,7 +519,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                 abi.encodePacked(
                     domainSeparator,
                     channelId,
-                    sd.lockedHandId,
                     slot,
                     sd.lockedDealRefs[slot],
                     oppHoleCodes[i],
@@ -594,8 +528,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             require(h == expectedHash, "OPP_HOLE_OPEN");
         }
 
-        // TODO: Evaluate hands using the best commit set and determine winner
-        // For now, just award to initiator (this should be replaced with actual hand evaluation)
+        // TODO: Evaluate hands and determine actual winner
         address winner = sd.initiator;
 
         ch.finalized = true;
