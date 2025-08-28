@@ -429,7 +429,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { action: ACTION.FOLD, amount: 0n } // SB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
         });
@@ -443,7 +443,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks, move to turn
                 { action: ACTION.FOLD, amount: 0n } // BB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
         });
@@ -459,7 +459,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks, move to river
                 { action: ACTION.FOLD, amount: 0n } // BB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
         });
@@ -482,7 +482,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 9n }, // SB all-in, BB needs to call 8 total
                 { action: ACTION.CHECK_CALL, amount: 0n } // BB calls with amount 0
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 10n, 9n); // BB has only 9
+            const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 9n); // BB has only 9
             expect(end).to.equal(1n); // End.SHOWDOWN (both all-in)
         });
 
@@ -492,7 +492,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 10n },
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB auto all-in with remaining 4 chips
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 9n, 11n); // SB has only 9 total, 4 remaining
+            const [end, ,] = await replay.replayAndGetEndState(actions, 9n, 11n); // SB has only 9 total, 4 remaining
             expect(end).to.equal(1n); // End.SHOWDOWN (SB goes all-in)
         });
 
@@ -534,7 +534,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n },
                 { action: ACTION.CHECK_CALL, amount: 0n } // Final check -> showdown
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
@@ -544,7 +544,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 10n },
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB calls with exactly 5 remaining
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 10n, 10n); // SB has exactly 10, 5 remaining after blind
+            const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 10n); // SB has exactly 10, 5 remaining after blind
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
@@ -575,7 +575,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 8n }, // SB raises big, BB needs to call 7 more
                 { action: ACTION.CHECK_CALL, amount: 0n } // BB calls but only has 3 remaining
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 10n, 5n); // BB only has 5 total
+            const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 5n); // BB only has 5 total
             expect(end).to.equal(1n); // End.SHOWDOWN (BB goes all-in with remaining 3)
         });
     });
@@ -606,7 +606,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 3n }, // Minimum raise
                 { action: ACTION.FOLD, amount: 0n }
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
         });
@@ -628,7 +628,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 8n }, // All-in with remaining stack
                 { action: ACTION.FOLD, amount: 0n }
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
         });
@@ -680,7 +680,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 5n }, // BB re-raises to 7 total (2+5)
                 { action: ACTION.FOLD, amount: 0n } // SB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
         });
@@ -693,7 +693,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 3n }, // BB bets on flop
                 { action: ACTION.FOLD, amount: 0n } // SB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
         });
@@ -720,7 +720,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 2n }, // BB minimum bet again
                 { action: ACTION.FOLD, amount: 0n } // SB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 20n, 20n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
         });
@@ -732,7 +732,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 8n }, // SB bets almost all-in (9 total)
                 { action: ACTION.FOLD, amount: 0n } // BB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
         });
@@ -745,7 +745,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB goes all-in calling
             ]);
             // First verify this makes SB all-in
-            const [end] = await replay.replayAndGetEndState(badActions, 6n, 10n);
+            const [end, ,] = await replay.replayAndGetEndState(badActions, 6n, 10n);
             expect(end).to.equal(1n); // Should be showdown since SB is all-in
         });
     });
@@ -793,7 +793,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 47n }, // BB all-in with remaining
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB calls all-in
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 100n, 88n);
+            const [end, ,] = await replay.replayAndGetEndState(actions, 100n, 88n);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
@@ -812,7 +812,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n },  // Player 1 (BB) checks
                 { action: ACTION.CHECK_CALL, amount: 0n }   // Player 0 (SB) checks -> showdown
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
@@ -825,7 +825,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 8n }, // SB reraises to 12 total (raise of 8, >= 5)
                 { action: ACTION.FOLD, amount: 0n } // BB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 20n, 20n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
         });
@@ -845,7 +845,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB checks -> showdown
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 50n, 50n);
+            const [end, ,] = await replay.replayAndGetEndState(actions, 50n, 50n);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
@@ -859,7 +859,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 12n }, // BB reraises
                 { action: ACTION.FOLD, amount: 0n } // SB folds on flop
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 30n, 30n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 30n, 30n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
         });
@@ -873,7 +873,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 9n }, // SB goes all-in
                 { action: ACTION.FOLD, amount: 0n } // BB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
         });
@@ -897,7 +897,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 10n }
                 // Both players are now all-in, should go directly to showdown
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 5n, 10n);
+            const [end, ,] = await replay.replayAndGetEndState(actions, 5n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
@@ -909,7 +909,7 @@ describe("HeadsUpPokerReplay", function () {
                 // BB is now all-in, SB should still be able to act
                 { action: ACTION.FOLD, amount: 0n } // SB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 2n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 2n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
         });
@@ -922,7 +922,7 @@ describe("HeadsUpPokerReplay", function () {
                 // SB is all-in, has no more chips, so BB needs to check to complete
                 { action: ACTION.CHECK_CALL, amount: 0n } // BB checks (since SB is all-in)
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 3n, 10n);
+            const [end, ,] = await replay.replayAndGetEndState(actions, 3n, 10n);
             expect(end).to.equal(1n); // Should go to showdown
         });
 
@@ -932,7 +932,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 10n },
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB calls all-in
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 5n, 10n);
+            const [end, ,] = await replay.replayAndGetEndState(actions, 5n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
@@ -944,7 +944,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 8n }, // BB bets all remaining 8
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB calls
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
@@ -956,7 +956,7 @@ describe("HeadsUpPokerReplay", function () {
                 // Only BB is all-in, SB can still act
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB calls
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 10n, 2n); // BB has exactly 2
+            const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 2n); // BB has exactly 2
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
@@ -986,7 +986,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks on river
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB checks -> showdown
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            const [end, ,] = await replay.replayAndGetEndState(actions, 20n, 20n);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
@@ -1003,7 +1003,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 4n }, // BB acts first on river (correct)
                 { action: ACTION.FOLD, amount: 0n } // SB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 20n, 20n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
         });
@@ -1022,7 +1022,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { action: ACTION.CHECK_CALL, amount: 0n }  // Should reach showdown (street 4)
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN - should not revert, should end normally
         });
     });
@@ -1048,7 +1048,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 7n }, // SB raises by 7 (>= 5, valid)
                 { action: ACTION.FOLD, amount: 0n } // BB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 20n, 20n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
         });
