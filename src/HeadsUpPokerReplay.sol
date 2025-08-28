@@ -15,6 +15,8 @@ contract HeadsUpPokerReplay {
     uint8 private constant ACT_CHECK_CALL = 3;
     uint8 private constant ACT_BET_RAISE = 4;
 
+    uint8 private constant MAX_RAISES_PER_STREET = 4;
+
     bytes32 private constant ACTION_TYPEHASH =
         keccak256(
             "Action(uint256 channelId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
@@ -31,6 +33,7 @@ contract HeadsUpPokerReplay {
         uint256 lastRaise;
         bool checked;
         bool reopen;
+        uint8 raiseCount;  // Number of raises on current street
     }
 
     function handGenesis(uint256 chId) internal pure returns (bytes32) {
@@ -78,6 +81,7 @@ contract HeadsUpPokerReplay {
         g.lastRaise = bigBlind;
         g.checked = false;
         g.reopen = true;
+        g.raiseCount = 1; // Big blind counts as first raise
 
         // If both players are all-in after blinds, go directly to showdown
         if (g.allIn[0] && g.allIn[1]) {
@@ -145,6 +149,7 @@ contract HeadsUpPokerReplay {
                     g.contrib[0] = 0;
                     g.contrib[1] = 0;
                     g.actor = 1;
+                    g.raiseCount = 0; // Reset raise counter for new street
                     continue;
                 }
                 // to call is 0, so this is a check
@@ -160,6 +165,7 @@ contract HeadsUpPokerReplay {
                     g.checked = false;
                     g.reopen = true;
                     g.lastRaise = bigBlind;
+                    g.raiseCount = 0; // Reset raise counter for new street
                 } else {
                     g.checked = true;
                     g.actor = uint8(opp);
@@ -172,6 +178,9 @@ contract HeadsUpPokerReplay {
 
                 uint256 prevStack = g.stacks[p];
                 require(act.amount <= prevStack, "RAISE_STACK");
+
+                // Check reraise limit
+                require(g.raiseCount < MAX_RAISES_PER_STREET, "RAISE_LIMIT");
 
                 uint256 toCallBefore = g.toCall;
                 uint256 minRaise = g.lastRaise;
@@ -220,6 +229,7 @@ contract HeadsUpPokerReplay {
                 g.toCall = newDiff;
                 g.checked = false;
                 g.actor = uint8(opp);
+                g.raiseCount++; // Increment raise counter
                 continue;
             }
 
