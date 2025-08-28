@@ -2,3 +2,7 @@ node_modules/
 artifacts/
 cache/
 build/
+# Temporary files
+/tmp/
+*_tmp_*
+*.bin
