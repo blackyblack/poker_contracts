@@ -30,7 +30,7 @@ const wallet3 = new ethers.Wallet(
   "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
 );
 
-function domainSeparator(channelId, contract, chainId) {
+function domainSeparator(contract, chainId) {
   const abi = ethers.AbiCoder.defaultAbiCoder();
   return ethers.keccak256(
     abi.encode(
@@ -126,7 +126,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
 
   async function setup() {
     const chainId = (await ethers.provider.getNetwork()).chainId;
-    const dom = domainSeparator(channelId, escrow.target, chainId);
+    const dom = domainSeparator(escrow.target, chainId);
 
     const board = [1, 2, 3, 4, 5];
     const myHole = [10, 11];
@@ -231,7 +231,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     const partialBoardSalts = [...boardSalts];
     partialBoardSalts[4] = ZERO32;
 
-    const tx = await escrow
+    const _tx = await escrow
       .connect(player1)
       .startShowdown(channelId, partialCommits, partialSigs, partialBoard, partialBoardSalts, myHole, mySalts);
     
@@ -337,7 +337,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     
     const tx = await escrow
       .connect(thirdParty)
-      .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts, player1.address);
+      .startShowdownOnBehalfOf(channelId, commits, sigs, board, boardSalts, myHole, mySalts, player1.address);
     const rcpt = await tx.wait();
     const block = await ethers.provider.getBlock(rcpt.blockNumber);
 
@@ -350,13 +350,14 @@ describe("verifyCoSignedCommits & startShowdown", function () {
   });
 
   it("allows third party to start showdown on behalf of player2", async () => {
-    const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
+    const { commits, sigs, board, boardSalts, objs } = await setup();
     const [, , thirdParty] = await ethers.getSigners();
-    
-    const tx = await escrow
+
+    const myHole = [objs[2].card, objs[3].card];
+    const mySalts = [objs[2].salt, objs[3].salt];
+    const _tx = await escrow
       .connect(thirdParty)
-      .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts, player2.address);
-    const rcpt = await tx.wait();
+      .startShowdownOnBehalfOf(channelId, commits, sigs, board, boardSalts, myHole, mySalts, player2.address);
 
     const sd = await escrow.getShowdown(channelId);
     expect(sd.initiator).to.equal(player2.address);
@@ -371,7 +372,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     await expect(
       escrow
         .connect(thirdParty)
-        .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts, thirdParty.address)
+        .startShowdownOnBehalfOf(channelId, commits, sigs, board, boardSalts, myHole, mySalts, thirdParty.address)
     ).to.be.revertedWith("NOT_PLAYER");
   });
 
@@ -401,7 +402,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
 
     await escrow
       .connect(thirdParty)
-      .submitAdditionalCommits(
+      .submitAdditionalCommitsOnBehalfOf(
         channelId,
         [turnCommit, riverCommit],
         [...turnSigs, ...riverSigs],
@@ -429,7 +430,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     await expect(
       escrow
         .connect(thirdParty)
-        .submitAdditionalCommits(
+        .submitAdditionalCommitsOnBehalfOf(
           channelId,
           [],
           [],

@@ -425,11 +425,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint8[2] calldata holeCodes,
         bytes32[2] calldata holeSalts
     ) external nonReentrant {
-        startShowdown(channelId, commits, sigs, boardCodes, boardSalts, holeCodes, holeSalts, msg.sender);
+        startShowdownInternal(channelId, commits, sigs, boardCodes, boardSalts, holeCodes, holeSalts, msg.sender);
     }
 
     /// @notice Player or third party submits commitments and openings to start showdown on behalf of a player
-    function startShowdown(
+    function startShowdownOnBehalfOf(
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
@@ -438,7 +438,20 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint8[2] calldata holeCodes,
         bytes32[2] calldata holeSalts,
         address onBehalfOf
-    ) public nonReentrant {
+    ) external nonReentrant {
+        startShowdownInternal(channelId, commits, sigs, boardCodes, boardSalts, holeCodes, holeSalts, onBehalfOf);
+    }
+
+    function startShowdownInternal(
+        uint256 channelId,
+        HeadsUpPokerEIP712.CardCommit[] calldata commits,
+        bytes[] calldata sigs,
+        uint8[5] calldata boardCodes,
+        bytes32[5] calldata boardSalts,
+        uint8[2] calldata holeCodes,
+        bytes32[2] calldata holeSalts,
+        address onBehalfOf
+    ) internal {
         Channel storage ch = channels[channelId];
         require(ch.deposit1 > 0 && ch.deposit2 > 0, "NOT_READY");
         require(onBehalfOf == ch.player1 || onBehalfOf == ch.player2, "NOT_PLAYER");
@@ -477,11 +490,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint8[2] calldata holeCodes,
         bytes32[2] calldata holeSalts
     ) external nonReentrant {
-        submitAdditionalCommits(channelId, commits, sigs, boardCodes, boardSalts, holeCodes, holeSalts, msg.sender);
+        submitAdditionalCommitsInternal(channelId, commits, sigs, boardCodes, boardSalts, holeCodes, holeSalts, msg.sender);
     }
 
     /// @notice Submit additional commits during reveal window on behalf of a player
-    function submitAdditionalCommits(
+    function submitAdditionalCommitsOnBehalfOf(
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
@@ -490,7 +503,20 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint8[2] calldata holeCodes,
         bytes32[2] calldata holeSalts,
         address onBehalfOf
-    ) public nonReentrant {
+    ) external nonReentrant {
+        submitAdditionalCommitsInternal(channelId, commits, sigs, boardCodes, boardSalts, holeCodes, holeSalts, onBehalfOf);
+    }
+
+    function submitAdditionalCommitsInternal(
+        uint256 channelId,
+        HeadsUpPokerEIP712.CardCommit[] calldata commits,
+        bytes[] calldata sigs,
+        uint8[5] calldata boardCodes,
+        bytes32[5] calldata boardSalts,
+        uint8[2] calldata holeCodes,
+        bytes32[2] calldata holeSalts,
+        address onBehalfOf
+    ) internal {
         Channel storage ch = channels[channelId];
         require(onBehalfOf == ch.player1 || onBehalfOf == ch.player2, "NOT_PLAYER");
 
