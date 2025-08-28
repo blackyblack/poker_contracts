@@ -179,6 +179,19 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         revert("bad role/index");
     }
 
+    // Reduce stack pressure: move signer checks into a small helper.
+    function _checkSigners(
+        uint8 slot,
+        bytes32 digest,
+        bytes calldata sigA,
+        bytes calldata sigB,
+        address addrA,
+        address addrB
+    ) private pure {
+        if (digest.recover(sigA) != addrA) revert CommitWrongSignerA(slot);
+        if (digest.recover(sigB) != addrB) revert CommitWrongSignerB(slot);
+    }
+
     function verifyCoSignedCommits(
         uint256 channelId,
         uint256 handId,
@@ -201,26 +214,36 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint16 seenMask;
         for (uint256 i = 0; i < commits.length; i++) {
             HeadsUpPokerEIP712.CardCommit calldata cc = commits[i];
-            uint8 slot = toSlotKey(cc.role, cc.index);
-            uint16 bit = uint16(1) << slot;
-            if ((allowedMask & bit) == 0) revert CommitUnexpected(slot);
-            if (seenMask & bit != 0) revert CommitDuplicate(slot);
-            seenMask |= bit;
-            if (cc.channelId != channelId) revert CommitWrongChannel(slot);
-            if (cc.handId != handId) revert CommitWrongHand(slot);
+            // Limit lifetime of locals to this block
+            {
+                uint8 slot = toSlotKey(cc.role, cc.index);
+                uint16 bit = uint16(1) << slot;
 
-            if (cc.seq > maxSeq) maxSeq = cc.seq;
+                if ((allowedMask & bit) == 0) revert CommitUnexpected(slot);
+                if ((seenMask & bit) != 0) revert CommitDuplicate(slot);
+                seenMask |= bit;
 
-            bytes32 digest = digestCardCommit(cc);
+                if (cc.channelId != channelId) revert CommitWrongChannel(slot);
+                if (cc.handId != handId) revert CommitWrongHand(slot);
 
-            address recA = digest.recover(sigs[i * 2]);
-            if (recA != addrA) revert CommitWrongSignerA(slot);
-            address recB = digest.recover(sigs[i * 2 + 1]);
-            if (recB != addrB) revert CommitWrongSignerB(slot);
+                if (cc.seq > maxSeq) {
+                    maxSeq = cc.seq;
+                }
 
-            hashes[slot] = cc.commitHash;
-            dealRefs[slot] = cc.dealRef;
-            presentMask |= bit;
+                bytes32 digest = digestCardCommit(cc);
+                _checkSigners(
+                    slot,
+                    digest,
+                    sigs[i * 2],
+                    sigs[i * 2 + 1],
+                    addrA,
+                    addrB
+                );
+
+                hashes[slot] = cc.commitHash;
+                dealRefs[slot] = cc.dealRef;
+                presentMask |= bit;
+            }
         }
     }
 
