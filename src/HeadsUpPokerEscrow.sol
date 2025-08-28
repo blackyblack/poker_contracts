@@ -425,16 +425,29 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint8[2] calldata holeCodes,
         bytes32[2] calldata holeSalts
     ) external nonReentrant {
+        startShowdown(channelId, commits, sigs, boardCodes, boardSalts, holeCodes, holeSalts, msg.sender);
+    }
+
+    /// @notice Player or third party submits commitments and openings to start showdown on behalf of a player
+    function startShowdown(
+        uint256 channelId,
+        HeadsUpPokerEIP712.CardCommit[] calldata commits,
+        bytes[] calldata sigs,
+        uint8[5] calldata boardCodes,
+        bytes32[5] calldata boardSalts,
+        uint8[2] calldata holeCodes,
+        bytes32[2] calldata holeSalts,
+        address onBehalfOf
+    ) public nonReentrant {
         Channel storage ch = channels[channelId];
         require(ch.deposit1 > 0 && ch.deposit2 > 0, "NOT_READY");
-        // TODO: not required to be sent by a player, could be a third party
-        require(msg.sender == ch.player1 || msg.sender == ch.player2, "NOT_PLAYER");
+        require(onBehalfOf == ch.player1 || onBehalfOf == ch.player2, "NOT_PLAYER");
 
         ShowdownState storage sd = showdowns[channelId];
         require(!sd.inProgress, "IN_PROGRESS");
 
-        sd.initiator = msg.sender;
-        sd.opponent = msg.sender == ch.player1 ? ch.player2 : ch.player1;
+        sd.initiator = onBehalfOf;
+        sd.opponent = onBehalfOf == ch.player1 ? ch.player2 : ch.player1;
         sd.deadline = block.timestamp + revealWindow;
         sd.inProgress = true;
 
@@ -446,12 +459,12 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             boardSalts,
             holeCodes,
             holeSalts,
-            msg.sender,
+            onBehalfOf,
             false
         );
 
         emit ShowdownStarted(channelId);
-        emit CommitsUpdated(channelId, msg.sender, sd.lockedCommitMask, sd.maxSeq);
+        emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask, sd.maxSeq);
     }
 
     /// @notice Submit additional commits during reveal window
@@ -464,9 +477,22 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint8[2] calldata holeCodes,
         bytes32[2] calldata holeSalts
     ) external nonReentrant {
+        submitAdditionalCommits(channelId, commits, sigs, boardCodes, boardSalts, holeCodes, holeSalts, msg.sender);
+    }
+
+    /// @notice Submit additional commits during reveal window on behalf of a player
+    function submitAdditionalCommits(
+        uint256 channelId,
+        HeadsUpPokerEIP712.CardCommit[] calldata commits,
+        bytes[] calldata sigs,
+        uint8[5] calldata boardCodes,
+        bytes32[5] calldata boardSalts,
+        uint8[2] calldata holeCodes,
+        bytes32[2] calldata holeSalts,
+        address onBehalfOf
+    ) public nonReentrant {
         Channel storage ch = channels[channelId];
-        // TODO: allow third party to submit by specifying who they are opening for
-        require(msg.sender == ch.player1 || msg.sender == ch.player2, "NOT_PLAYER");
+        require(onBehalfOf == ch.player1 || onBehalfOf == ch.player2, "NOT_PLAYER");
 
         ShowdownState storage sd = showdowns[channelId];
         require(sd.inProgress, "NO_SHOWDOWN");
@@ -480,11 +506,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             boardSalts,
             holeCodes,
             holeSalts,
-            msg.sender,
+            onBehalfOf,
             // require non-empty overlap with the existing locked set
             true
         );
-        emit CommitsUpdated(channelId, msg.sender, sd.lockedCommitMask, sd.maxSeq);
+        emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask, sd.maxSeq);
     }
 
     /// @notice Finalize showdown using best commit set locked in dispute

@@ -330,4 +330,115 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     const finalBalance = await ethers.provider.getBalance(player1.address);
     expect(finalBalance).to.be.greaterThan(initialBalance);
   });
+
+  it("allows third party to start showdown on behalf of player1", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
+    const [, , thirdParty] = await ethers.getSigners();
+    
+    const tx = await escrow
+      .connect(thirdParty)
+      .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts, player1.address);
+    const rcpt = await tx.wait();
+    const block = await ethers.provider.getBlock(rcpt.blockNumber);
+
+    const sd = await escrow.getShowdown(channelId);
+    expect(sd.initiator).to.equal(player1.address);
+    expect(sd.opponent).to.equal(player2.address);
+    expect(sd.inProgress).to.equal(true);
+    const window = await escrow.revealWindow();
+    expect(sd.deadline).to.equal(BigInt(block.timestamp) + window);
+  });
+
+  it("allows third party to start showdown on behalf of player2", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
+    const [, , thirdParty] = await ethers.getSigners();
+    
+    const tx = await escrow
+      .connect(thirdParty)
+      .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts, player2.address);
+    const rcpt = await tx.wait();
+
+    const sd = await escrow.getShowdown(channelId);
+    expect(sd.initiator).to.equal(player2.address);
+    expect(sd.opponent).to.equal(player1.address);
+    expect(sd.inProgress).to.equal(true);
+  });
+
+  it("reverts when third party tries to start showdown for invalid player", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
+    const [, , thirdParty] = await ethers.getSigners();
+    
+    await expect(
+      escrow
+        .connect(thirdParty)
+        .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts, thirdParty.address)
+    ).to.be.revertedWith("NOT_PLAYER");
+  });
+
+  it("allows third party to submit additional commits on behalf of player", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
+    const [, , thirdParty] = await ethers.getSigners();
+    
+    // Start with partial commits (missing river card)
+    const partialCommits = commits.slice(0, -1);
+    const partialSigs = sigs.slice(0, -2);
+    const partialBoard = [...board];
+    partialBoard[4] = 0;
+    const partialBoardSalts = [...boardSalts];
+    partialBoardSalts[4] = ZERO32;
+
+    await escrow
+      .connect(player1)
+      .startShowdown(channelId, partialCommits, partialSigs, partialBoard, partialBoardSalts, myHole, mySalts);
+
+    // Third party submits additional commit for river card on behalf of player2
+    const riverCommit = commits[8]; // River card commit
+    const turnCommit = commits[7]; // Turn card commit
+    const riverSigs = [sigs[16], sigs[17]]; // River card signatures
+    const turnSigs = [sigs[14], sigs[15]]; // Turn card signatures
+    const fullBoard = board;
+    const fullBoardSalts = boardSalts;
+
+    await escrow
+      .connect(thirdParty)
+      .submitAdditionalCommits(
+        channelId,
+        [turnCommit, riverCommit],
+        [...turnSigs, ...riverSigs],
+        fullBoard,
+        fullBoardSalts,
+        myHole,
+        mySalts,
+        player2.address
+      );
+
+    const sd = await escrow.getShowdown(channelId);
+    expect(Number(sd.lockedCommitMask)).to.equal(0x1FF); // All slots now committed
+  });
+
+  it("reverts when third party tries to submit commits for invalid player", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
+    const [, , thirdParty] = await ethers.getSigners();
+    
+    // Start showdown first
+    await escrow
+      .connect(player1)
+      .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts);
+
+    // Third party tries to submit for invalid player
+    await expect(
+      escrow
+        .connect(thirdParty)
+        .submitAdditionalCommits(
+          channelId,
+          [],
+          [],
+          board,
+          boardSalts,
+          myHole,
+          mySalts,
+          thirdParty.address
+        )
+    ).to.be.revertedWith("NOT_PLAYER");
+  });
 });
