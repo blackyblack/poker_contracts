@@ -323,12 +323,13 @@ describe("verifyCoSignedCommits & startShowdown", function () {
         await ethers.provider.send("evm_increaseTime", [3601]); // 1 hour + 1 second
         await ethers.provider.send("evm_mine");
 
-        const initialBalance = await ethers.provider.getBalance(player1.address);
+        const [initialBalance,] = await escrow.stacks(channelId);
 
         // Finalize - should forfeit to initiator (player1)
         await escrow.finalizeShowdownWithCommits(channelId, [0, 0], [ZERO32, ZERO32]);
 
-        const finalBalance = await ethers.provider.getBalance(player1.address);
+        const [finalBalance,] = await escrow.stacks(channelId);
+
         expect(finalBalance).to.be.greaterThan(initialBalance);
     });
 

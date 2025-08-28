@@ -178,6 +178,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         require(ch.player1 != address(0), "NO_CHANNEL");
         require(ch.player2 == msg.sender, "NOT_OPP");
         require(ch.deposit2 == 0, "JOINED");
+        require(!ch.finalized, "FINALIZED");
         require(msg.value > 0, "NO_DEPOSIT");
 
         ch.deposit2 = msg.value;
