@@ -50,7 +50,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint8[2] initiatorHole;
         uint16 lockedCommitMask;
         bytes32[9] lockedCommitHashes;
-        bytes32[9] lockedDealRefs;
         uint32 maxSeq;
     }
 
@@ -202,7 +201,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         view
         returns (
             bytes32[9] memory hashes,
-            bytes32[9] memory dealRefs,
             uint16 presentMask,
             uint32 maxSeq
         )
@@ -237,7 +235,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                 );
 
                 hashes[slot] = cc.commitHash;
-                dealRefs[slot] = cc.dealRef;
                 presentMask |= bit;
             }
         }
@@ -263,7 +260,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         (
             bytes32[9] memory newHashes,
-            bytes32[9] memory newDealRefs,
             uint16 newMask,
             uint32 newMaxSeq
         ) = verifyCoSignedCommits(
@@ -284,7 +280,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                 uint16 bit = uint16(1) << slot;
                 if (((newMask & oldMask) & bit) != 0) {
                     require(newHashes[slot] == sd.lockedCommitHashes[slot], "HASH_MISMATCH");
-                    require(newDealRefs[slot] == sd.lockedDealRefs[slot], "REF_MISMATCH");
                 }
             }
         }
@@ -295,7 +290,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             uint16 bit2 = uint16(1) << slot2;
             if (((newMask & ~oldMask) & bit2) != 0) {
                 sd.lockedCommitHashes[slot2] = newHashes[slot2];
-                sd.lockedDealRefs[slot2] = newDealRefs[slot2];
             }
         }
         sd.lockedCommitMask = mergedMask;
@@ -341,7 +335,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                     domainSeparator,
                     channelId,
                     slot,
-                    newDealRefs[slot],
                     boardCodes[i],
                     boardSalts[i]
                 )
@@ -361,7 +354,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                     domainSeparator,
                     channelId,
                     slot,
-                    newDealRefs[slot],
                     holeCodes[i],
                     holeSalts[i]
                 )
@@ -564,7 +556,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                     domainSeparator,
                     channelId,
                     slot,
-                    sd.lockedDealRefs[slot],
                     oppHoleCodes[i],
                     oppHoleSalts[i]
                 )

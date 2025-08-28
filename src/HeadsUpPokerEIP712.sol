@@ -19,7 +19,7 @@ contract HeadsUpPokerEIP712 is EIP712 {
         );
     bytes32 internal constant CARD_COMMIT_TYPEHASH =
         keccak256(
-            "CardCommit(uint256 channelId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
+            "CardCommit(uint256 channelId,uint32 seq,uint8 role,uint8 index,bytes32 commitHash,bytes32 prevHash)"
         );
 
     // ---------------------------------------------------------------------
@@ -30,7 +30,6 @@ contract HeadsUpPokerEIP712 is EIP712 {
         uint32 seq;
         uint8 role;
         uint8 index;
-        bytes32 dealRef;
         bytes32 commitHash;
         bytes32 prevHash;
     }
@@ -71,7 +70,6 @@ contract HeadsUpPokerEIP712 is EIP712 {
                 cc.seq,
                 cc.role,
                 cc.index,
-                cc.dealRef,
                 cc.commitHash,
                 cc.prevHash
             )
