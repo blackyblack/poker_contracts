@@ -1,7 +1,13 @@
 require("@nomicfoundation/hardhat-toolbox");
 
 module.exports = {
-    solidity: "0.8.24",
+    solidity: {
+        version: "0.8.24",
+        settings: {
+            optimizer: { enabled: true, runs: 200 },
+            viaIR: true
+        }
+    },
     paths: {
         sources: "src"
     }
