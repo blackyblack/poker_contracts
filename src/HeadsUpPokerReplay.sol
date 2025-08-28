@@ -17,7 +17,7 @@ contract HeadsUpPokerReplay {
 
     bytes32 private constant ACTION_TYPEHASH =
         keccak256(
-            "Action(uint256 channelId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
+            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
         );
 
     struct Game {
@@ -33,8 +33,8 @@ contract HeadsUpPokerReplay {
         bool reopen;
     }
 
-    function handGenesis(uint256 chId) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked("HUP_GENESIS", chId));
+    function handGenesis(uint256 chId, uint256 handId) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked("HUP_GENESIS", chId, handId));
     }
 
     // TODO: return the final pot size
@@ -49,7 +49,7 @@ contract HeadsUpPokerReplay {
         require(actions.length >= 2, "NO_BLINDS");
 
         Action calldata sb = actions[0];
-        require(sb.prevHash == handGenesis(sb.channelId), "SB_PREV");
+        require(sb.prevHash == handGenesis(sb.channelId, sb.handId), "SB_PREV");
         require(sb.action == ACT_SMALL_BLIND, "SB_ACT");
         require(sb.seq == 0, "SB_SEQ");
         require(sb.amount > 0 && sb.amount <= stackA, "SB_AMT");
@@ -235,6 +235,7 @@ contract HeadsUpPokerReplay {
                 abi.encode(
                     ACTION_TYPEHASH,
                     act.channelId,
+                    act.handId,
                     act.seq,
                     act.action,
                     act.amount,

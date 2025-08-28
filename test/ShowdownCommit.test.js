@@ -4,7 +4,7 @@ const { ethers } = require("hardhat");
 const ZERO32 = "0x" + "00".repeat(32);
 
 const GENESIS = ethers.keccak256(
-    ethers.solidityPacked(["string", "uint256"], ["HUP_GENESIS", 1n]));
+    ethers.solidityPacked(["string", "uint256", "uint256"], ["HUP_GENESIS", 1n, 1n]));
 
 const DOMAIN_TYPEHASH = ethers.keccak256(
   ethers.toUtf8Bytes(
@@ -15,7 +15,7 @@ const NAME_HASH = ethers.keccak256(ethers.toUtf8Bytes("HeadsUpPoker"));
 const VERSION_HASH = ethers.keccak256(ethers.toUtf8Bytes("1"));
 const CARD_COMMIT_TYPEHASH = ethers.keccak256(
   ethers.toUtf8Bytes(
-    "CardCommit(uint256 channelId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
+    "CardCommit(uint256 channelId,uint256 handId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
   )
 );
 
@@ -63,6 +63,7 @@ function commitDigest(dom, cc) {
       [
         "bytes32",
         "uint256",
+        "uint256",
         "uint32",
         "uint8",
         "uint8",
@@ -73,6 +74,7 @@ function commitDigest(dom, cc) {
       [
         CARD_COMMIT_TYPEHASH,
         cc.channelId,
+        cc.handId,
         cc.seq,
         cc.role,
         cc.index,
@@ -99,6 +101,7 @@ async function buildCommit(a, b, dom, channelId, role, index, card, seq) {
   const cHash = commitHash(dom, channelId, slot, dealRef, card, salt);
   const cc = {
     channelId,
+    handId: 1n,
     seq,
     role,
     index,
