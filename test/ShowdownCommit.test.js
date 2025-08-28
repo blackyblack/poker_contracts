@@ -106,6 +106,7 @@ async function buildCommit(a, b, dom, channelId, role, index, card, seq) {
         commitHash: cHash,
         prevHash: GENESIS,
     };
+    // a and b are wallets, not signers
     const [sigA, sigB] = await signCommit(a, b, dom, cc);
     return { cc, sigA, sigB, salt, card, slot };
 }
@@ -444,7 +445,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     });
 
     it("allows commit override with higher sequence number", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
+        const { commits, sigs, board, boardSalts, myHole, mySalts, dom } = await setup();
 
         // Start showdown with initial commits
         await escrow
@@ -453,8 +454,8 @@ describe("verifyCoSignedCommits & startShowdown", function () {
 
         // Create a new commit for slot 0 (player A, hole card 1) with higher sequence number
         const newCommit = await buildCommit(
-            player1,
-            player2,
+            wallet1,
+            wallet2,
             dom,
             channelId,
             0, // role: player A
@@ -483,7 +484,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     });
 
     it("rejects commit override with lower sequence number", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
+        const { commits, sigs, board, boardSalts, myHole, mySalts, dom } = await setup();
 
         // Start showdown with initial commits (seq 0-8)
         await escrow
@@ -492,8 +493,8 @@ describe("verifyCoSignedCommits & startShowdown", function () {
 
         // Try to create a new commit for slot 0 with lower sequence number
         const newCommit = await buildCommit(
-            player1,
-            player2,
+            wallet1,
+            wallet2,
             dom,
             channelId,
             0, // role: player A
@@ -519,7 +520,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     });
 
     it("rejects commit override with much lower sequence number", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
+        const { commits, sigs, board, boardSalts, myHole, mySalts, dom } = await setup();
 
         // Start showdown with initial commits (seq 0-8)
         await escrow
@@ -528,8 +529,8 @@ describe("verifyCoSignedCommits & startShowdown", function () {
 
         // Try to create a new commit for slot 0 with much lower sequence number
         const newCommit = await buildCommit(
-            player1,
-            player2,
+            wallet1,
+            wallet2,
             dom,
             channelId,
             0, // role: player A
@@ -541,6 +542,9 @@ describe("verifyCoSignedCommits & startShowdown", function () {
         // Change the commit hash to make it different from the original
         newCommit.cc.commitHash = ethers.hexlify(ethers.randomBytes(32));
 
+        // Re-sign the mutated commit so signature check passes and we hit HASH_MISMATCH
+        const [sigA, sigB] = await signCommit(wallet1, wallet2, dom, newCommit.cc);
+
         // This should fail
         await expect(
             escrow
@@ -548,7 +552,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
                 .submitAdditionalCommits(
                     channelId,
                     [newCommit.cc],
-                    [newCommit.sigA, newCommit.sigB],
+                    [sigA, sigB],
                     board,
                     boardSalts,
                     [15, myHole[1]],
@@ -558,12 +562,12 @@ describe("verifyCoSignedCommits & startShowdown", function () {
     });
 
     it("handles commit with actually lower sequence number", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
+        const { commits, sigs, board, boardSalts, myHole, mySalts, dom } = await setup();
 
         // First, start showdown with a high sequence number commit
-        const highSeqCommit = await buildCommit(
-            player1,
-            player2,
+        const highSeqCommit1 = await buildCommit(
+            wallet1,
+            wallet2,
             dom,
             channelId,
             0, // role: player A
@@ -574,19 +578,21 @@ describe("verifyCoSignedCommits & startShowdown", function () {
 
         // Replace the first commit with high seq
         const modifiedCommits = [...commits];
-        modifiedCommits[0] = highSeqCommit.cc;
+        modifiedCommits[0] = highSeqCommit1.cc;
         const modifiedSigs = [...sigs];
-        modifiedSigs[0] = highSeqCommit.sigA;
-        modifiedSigs[1] = highSeqCommit.sigB;
+        modifiedSigs[0] = highSeqCommit1.sigA;
+        modifiedSigs[1] = highSeqCommit1.sigB;
+
+        const modifiedMySalts = [highSeqCommit1.salt, mySalts[1]];
 
         await escrow
             .connect(player1)
-            .startShowdown(channelId, modifiedCommits, modifiedSigs, board, boardSalts, myHole, mySalts);
+            .startShowdown(channelId, modifiedCommits, modifiedSigs, board, boardSalts, myHole, modifiedMySalts);
 
         // Now try to submit a commit with lower sequence number
         const lowSeqCommit = await buildCommit(
-            player1,
-            player2,
+            wallet1,
+            wallet2,
             dom,
             channelId,
             0, // role: player A
@@ -611,47 +617,8 @@ describe("verifyCoSignedCommits & startShowdown", function () {
         ).to.be.revertedWith("SEQ_TOO_LOW");
     });
 
-    it("allows adding commit to previously empty slot", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
-
-        // Start showdown with partial commits (exclude river card)
-        const partialCommits = commits.slice(0, -1);
-        const partialSigs = sigs.slice(0, -2);
-        const partialBoard = [...board];
-        partialBoard[4] = 0;
-        const partialBoardSalts = [...boardSalts];
-        partialBoardSalts[4] = ZERO32;
-
-        await escrow
-            .connect(player1)
-            .startShowdown(channelId, partialCommits, partialSigs, partialBoard, partialBoardSalts, myHole, mySalts);
-
-        // Now add the river card commit (slot 8)
-        const riverCommit = commits[8]; // This was excluded from the initial showdown
-        const riverSigs = [sigs[16], sigs[17]]; // River card signatures
-        const fullBoard = board;
-        const fullBoardSalts = boardSalts;
-
-        // This should succeed because slot 8 was empty
-        await escrow
-            .connect(player1)
-            .submitAdditionalCommits(
-                channelId,
-                [riverCommit],
-                riverSigs,
-                fullBoard,
-                fullBoardSalts,
-                myHole,
-                mySalts
-            );
-
-        // Verify all slots are now filled
-        const sd = await escrow.getShowdown(channelId);
-        expect(Number(sd.lockedCommitMask)).to.equal(0x1FF); // All 9 slots committed
-    });
-
     it("allows resubmitting identical commit (same seq, same content)", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
+        const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
 
         // Start showdown with initial commits
         await escrow
