@@ -610,4 +610,73 @@ describe("verifyCoSignedCommits & startShowdown", function () {
         )
     ).to.be.revertedWith("SEQ_TOO_LOW");
   });
+
+  it("allows adding commit to previously empty slot", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
+    
+    // Start showdown with partial commits (exclude river card)
+    const partialCommits = commits.slice(0, -1);
+    const partialSigs = sigs.slice(0, -2);
+    const partialBoard = [...board];
+    partialBoard[4] = 0;
+    const partialBoardSalts = [...boardSalts];
+    partialBoardSalts[4] = ZERO32;
+
+    await escrow
+      .connect(player1)
+      .startShowdown(channelId, partialCommits, partialSigs, partialBoard, partialBoardSalts, myHole, mySalts);
+
+    // Now add the river card commit (slot 8)
+    const riverCommit = commits[8]; // This was excluded from the initial showdown
+    const riverSigs = [sigs[16], sigs[17]]; // River card signatures
+    const fullBoard = board;
+    const fullBoardSalts = boardSalts;
+
+    // This should succeed because slot 8 was empty
+    await escrow
+      .connect(player1)
+      .submitAdditionalCommits(
+        channelId,
+        [riverCommit],
+        riverSigs,
+        fullBoard,
+        fullBoardSalts,
+        myHole,
+        mySalts
+      );
+
+    // Verify all slots are now filled
+    const sd = await escrow.getShowdown(channelId);
+    expect(Number(sd.lockedCommitMask)).to.equal(0x1FF); // All 9 slots committed
+  });
+
+  it("allows resubmitting identical commit (same seq, same content)", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
+    
+    // Start showdown with initial commits
+    await escrow
+      .connect(player1)
+      .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts);
+
+    // Resubmit the exact same commit for slot 0 (same seq, same content)
+    const originalCommit = commits[0];
+    const originalSigs = [sigs[0], sigs[1]];
+
+    // This should succeed because it's identical to the existing commit
+    await escrow
+      .connect(player1)
+      .submitAdditionalCommits(
+        channelId,
+        [originalCommit],
+        originalSigs,
+        board,
+        boardSalts,
+        myHole,
+        mySalts
+      );
+
+    // Verify the state is unchanged
+    const sd = await escrow.getShowdown(channelId);
+    expect(Number(sd.lockedCommitMask)).to.equal(0x1FF); // All slots still committed
+  });
 });
