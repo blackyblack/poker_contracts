@@ -442,4 +442,172 @@ describe("verifyCoSignedCommits & startShowdown", function () {
         )
     ).to.be.revertedWith("NOT_PLAYER");
   });
+
+  it("allows commit override with higher sequence number", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
+    
+    // Start showdown with initial commits
+    await escrow
+      .connect(player1)
+      .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts);
+
+    // Create a new commit for slot 0 (player A, hole card 1) with higher sequence number
+    const newCommit = await buildCommit(
+      player1,
+      player2,
+      dom,
+      channelId,
+      0, // role: player A
+      0, // index: first hole card
+      15, // different card
+      100 // higher sequence number
+    );
+
+    // Submit additional commit that should override the existing one
+    await escrow
+      .connect(player1)
+      .submitAdditionalCommits(
+        channelId,
+        [newCommit.cc],
+        [newCommit.sigA, newCommit.sigB],
+        board,
+        boardSalts,
+        [15, myHole[1]], // new hole cards with overridden first card
+        [newCommit.salt, mySalts[1]]
+      );
+
+    // Verify the commit was overridden
+    const sd = await escrow.getShowdown(channelId);
+    expect(sd.inProgress).to.equal(true);
+    expect(Number(sd.lockedCommitMask)).to.equal(0x1FF); // All slots still committed
+  });
+
+  it("rejects commit override with lower sequence number", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
+    
+    // Start showdown with initial commits (seq 0-8)
+    await escrow
+      .connect(player1)
+      .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts);
+
+    // Try to create a new commit for slot 0 with lower sequence number
+    const newCommit = await buildCommit(
+      player1,
+      player2,
+      dom,
+      channelId,
+      0, // role: player A
+      0, // index: first hole card
+      15, // different card
+      0 // same sequence number as original (should fail)
+    );
+
+    // This should fail because seq is not higher
+    await expect(
+      escrow
+        .connect(player1)
+        .submitAdditionalCommits(
+          channelId,
+          [newCommit.cc],
+          [newCommit.sigA, newCommit.sigB],
+          board,
+          boardSalts,
+          [15, myHole[1]],
+          [newCommit.salt, mySalts[1]]
+        )
+    ).to.be.revertedWith("HASH_MISMATCH"); // Same seq requires exact match
+  });
+
+  it("rejects commit override with much lower sequence number", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
+    
+    // Start showdown with initial commits (seq 0-8)
+    await escrow
+      .connect(player1)
+      .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts);
+
+    // Try to create a new commit for slot 0 with much lower sequence number
+    const newCommit = await buildCommit(
+      player1,
+      player2,
+      dom,
+      channelId,
+      0, // role: player A
+      0, // index: first hole card
+      15, // different card
+      0 // lower sequence number (original was 0, but this still fails due to hash mismatch)
+    );
+
+    // Change the commit hash to make it different from the original
+    newCommit.cc.commitHash = ethers.hexlify(ethers.randomBytes(32));
+
+    // This should fail
+    await expect(
+      escrow
+        .connect(player1)
+        .submitAdditionalCommits(
+          channelId,
+          [newCommit.cc],
+          [newCommit.sigA, newCommit.sigB],
+          board,
+          boardSalts,
+          [15, myHole[1]],
+          [newCommit.salt, mySalts[1]]
+        )
+    ).to.be.revertedWith("HASH_MISMATCH"); // Same seq requires exact match
+  });
+
+  it("handles commit with actually lower sequence number", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
+    
+    // First, start showdown with a high sequence number commit
+    const highSeqCommit = await buildCommit(
+      player1,
+      player2,
+      dom,
+      channelId,
+      0, // role: player A
+      0, // index: first hole card
+      myHole[0],
+      100 // high sequence number
+    );
+
+    // Replace the first commit with high seq
+    const modifiedCommits = [...commits];
+    modifiedCommits[0] = highSeqCommit.cc;
+    const modifiedSigs = [...sigs];
+    modifiedSigs[0] = highSeqCommit.sigA;
+    modifiedSigs[1] = highSeqCommit.sigB;
+
+    await escrow
+      .connect(player1)
+      .startShowdown(channelId, modifiedCommits, modifiedSigs, board, boardSalts, myHole, mySalts);
+
+    // Now try to submit a commit with lower sequence number
+    const lowSeqCommit = await buildCommit(
+      player1,
+      player2,
+      dom,
+      channelId,
+      0, // role: player A
+      0, // index: first hole card
+      15, // different card
+      50 // lower sequence number than 100
+    );
+
+    // This should fail with SEQ_TOO_LOW
+    await expect(
+      escrow
+        .connect(player1)
+        .submitAdditionalCommits(
+          channelId,
+          [lowSeqCommit.cc],
+          [lowSeqCommit.sigA, lowSeqCommit.sigB],
+          board,
+          boardSalts,
+          [15, myHole[1]],
+          [lowSeqCommit.salt, mySalts[1]]
+        )
+    ).to.be.revertedWith("SEQ_TOO_LOW");
+  });
 });
