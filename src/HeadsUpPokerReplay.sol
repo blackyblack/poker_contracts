@@ -37,15 +37,13 @@ contract HeadsUpPokerReplay {
         return keccak256(abi.encodePacked("HUP_GENESIS", chId));
     }
 
-    // TODO: return the final pot size
-
     /// @notice Replays a sequence of actions and returns the terminal state
     /// @dev Reverts when an invalid transition is encountered
     function replayAndGetEndState(
         Action[] calldata actions,
         uint256 stackA,
         uint256 stackB
-    ) external pure returns (End end, uint8 folder) {
+    ) external pure returns (End end, uint8 folder, uint256 potSize) {
         require(actions.length >= 2, "NO_BLINDS");
 
         Action calldata sb = actions[0];
@@ -81,7 +79,7 @@ contract HeadsUpPokerReplay {
 
         // If both players are all-in after blinds, go directly to showdown
         if (g.allIn[0] && g.allIn[1]) {
-            return (End.SHOWDOWN, 0);
+            return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
         }
 
         uint256[2] memory maxDeposit = [stackA, stackB];
@@ -100,10 +98,10 @@ contract HeadsUpPokerReplay {
             // allow to move to showdown if someone is all-in
             if (g.allIn[p]) {
                 if (g.allIn[opp]) {
-                    return (End.SHOWDOWN, 0);
+                    return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
                 }
                 require(act.action == ACT_CHECK_CALL && act.amount == 0, "PLAYER_ALLIN");
-                return (End.SHOWDOWN, 0);
+                return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
             }
 
             require(!g.allIn[p], "PLAYER_ALLIN");
@@ -112,7 +110,7 @@ contract HeadsUpPokerReplay {
                 require(act.amount == 0, "FOLD_AMT");
                 folder = uint8(p);
                 end = End.FOLD;
-                return (end, folder);
+                return (end, folder, g.total[0] + g.total[1]);
             }
 
             if (act.action == ACT_CHECK_CALL) {
@@ -138,7 +136,7 @@ contract HeadsUpPokerReplay {
                     g.reopen = true;
                     // if someone has all-in and no bet to call, we go to showdown
                     if (g.allIn[0] || g.allIn[1]) {
-                        return (End.SHOWDOWN, 0);
+                        return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
                     }
                     g.street++;
                     require(g.street <= 3, "STREET_OVER");
@@ -152,7 +150,7 @@ contract HeadsUpPokerReplay {
                 if (g.checked) {
                     g.street++;
                     if (g.street == 4) {
-                        return (End.SHOWDOWN, 0);
+                        return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
                     }
                     g.contrib[0] = 0;
                     g.contrib[1] = 0;
