@@ -62,9 +62,10 @@ describe("HeadsUpPokerReplay", function () {
             ]);
             const stackA = 10n;
             const stackB = 10n;
-            const [end, folder] = await replay.replayAndGetEndState(actions, stackA, stackB);
+            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, stackA, stackB);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n);
+            expect(potSize).to.equal(3n); // SB: 1 + BB: 2
         });
 
         it("returns fold when big blind folds preflop", async function () {
@@ -74,9 +75,10 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 3n }, // SB makes min raise (1->4)
                 { action: ACTION.FOLD, amount: 0n } // BB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
+            expect(potSize).to.equal(5n); // SB: 1 + BB: 2 + SB raise: 2 = 5
         });
 
         it("reaches showdown after checks on all streets", async function () {
@@ -92,10 +94,11 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
             // showdown always has 0 as folder, do not test it further
             expect(folder).to.equal(0n);
+            expect(potSize).to.equal(4n); // SB: 1 + BB: 2 + SB call: 1 = 4
         });
 
         it("reaches showdown when both players are all-in", async function () {
@@ -105,8 +108,9 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 9n }, // SB goes all-in
                 { action: ACTION.CHECK_CALL, amount: 0n } // BB calls
             ]);
-            const [end] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, , potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
+            expect(potSize).to.equal(20n); // Both players all-in: 10 + 10 = 20
         });
     });
 
@@ -1057,9 +1061,75 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 6n }, // BB re-raises min: toCall 3 + raise inc 3
                 { action: ACTION.FOLD, amount: 0n } // SB folds
             ]);
-            const [end, folder] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 20n, 20n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
+            expect(potSize).to.equal(11n); // SB: 1 + BB: 2 + SB raise: 4 + BB raise: 4 = 11
+        });
+    });
+
+    describe("Pot Size Calculation Tests", function () {
+        it("calculates correct pot size for simple fold scenario", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.FOLD, amount: 0n }
+            ]);
+            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(0n); // SB folded
+            expect(potSize).to.equal(3n); // SB: 1 + BB: 2
+        });
+
+        it("calculates correct pot size for showdown after call", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
+                { action: ACTION.CHECK_CALL, amount: 0n }  // BB checks -> showdown
+            ]);
+            const [end, , potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            expect(potSize).to.equal(4n); // SB: 1+1 + BB: 2
+        });
+
+        it("calculates correct pot size for bet and call scenario", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
+                { action: ACTION.BET_RAISE, amount: 3n }, // BB bets 3
+                { action: ACTION.CHECK_CALL, amount: 0n }  // SB calls -> showdown  
+            ]);
+            const [end, , potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            expect(potSize).to.equal(10n); // SB: 1+1+3 + BB: 2+3 = 10
+        });
+
+        it("calculates correct pot size for all-in scenario", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 5n },
+                { action: ACTION.BIG_BLIND, amount: 10n },
+                { action: ACTION.BET_RAISE, amount: 15n }, // SB all-in (5+15=20)
+                { action: ACTION.CHECK_CALL, amount: 0n }   // BB calls
+            ]);
+            const [end, , potSize] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            expect(potSize).to.equal(40n); // SB: 20 + BB: 20
+        });
+
+        it("calculates correct pot size for complex betting action", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 4n }, // SB raises to 5 total
+                { action: ACTION.BET_RAISE, amount: 7n }, // BB raises to 9 total
+                { action: ACTION.FOLD, amount: 0n }       // SB folds
+            ]);
+            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(0n); // SB folded
+            expect(potSize).to.equal(11n); // SB: 1+4 + BB: 2+4 = 11
         });
     });
 });
