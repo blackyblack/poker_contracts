@@ -117,7 +117,7 @@ describe("HeadsUpPokerReplay", function () {
     describe("Validation Tests - Blind Setup", function () {
         it("reverts when no actions provided", async function () {
             const actions = [];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("NO_BLINDS");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "NoBlinds");
         });
 
         it("reverts when small blind sequence is wrong", async function () {
@@ -146,7 +146,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n }
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("NO_BLINDS");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "NoBlinds");
         });
 
         it("reverts when small blind prevHash is incorrect", async function () {

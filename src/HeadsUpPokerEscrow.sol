@@ -35,6 +35,33 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error CommitWrongSignerA(uint8 slot);
     error CommitWrongSignerB(uint8 slot);
     error CommitUnexpected(uint8 slot);
+    
+    error NotFinalized();
+    error PaymentFailed();
+    error NoBalance();
+    error ChannelExists();
+    error BadOpponent();
+    error NoDeposit();
+    error NoChannel();
+    error NotOpponent();
+    error AlreadyJoined();
+    error AlreadyFinalized();
+    error ShowdownInProgress();
+    error NotPlayer();
+    error SignatureLengthMismatch();
+    error NoOverlap();
+    error HashMismatch();
+    error RefMismatch();
+    error BoardOpenFailed();
+    error HoleOpenFailed();
+    error ChannelNotReady();
+    error BadRoleIndex();
+    error SequenceTooLow();
+    error Expired();
+    error NoShowdownInProgress();
+    error StillRevealing();
+    error OpponentHoleOpenFailed();
+    error InitiatorHolesRequired();
 
     // ------------------------------------------------------------------
     // Showdown state
@@ -119,7 +146,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     /// @notice Player withdraws their deposit from a finalized channel
     function withdraw(uint256 channelId) external nonReentrant {
         Channel storage ch = channels[channelId];
-        require(ch.finalized, "NOT_FINALIZED");
+        if (!ch.finalized) revert NotFinalized();
         
         uint256 amount;
         if (msg.sender == ch.player1 && ch.deposit1 > 0) {
@@ -129,11 +156,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             amount = ch.deposit2;
             ch.deposit2 = 0;
         } else {
-            revert("NO_BALANCE");
+            revert NoBalance();
         }
 
         (bool ok, ) = payable(msg.sender).call{value: amount}("");
-        require(ok, "PAY_FAIL");
+        if (!ok) revert PaymentFailed();
 
         emit Withdrawn(channelId, msg.sender, amount);
     }
@@ -148,9 +175,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address opponent
     ) external payable nonReentrant {
         Channel storage ch = channels[channelId];
-        require(ch.player1 == address(0) || (ch.finalized && ch.deposit1 == 0 && ch.deposit2 == 0), "EXISTS");
-        require(opponent != address(0) && opponent != msg.sender, "BAD_OPP");
-        require(msg.value > 0, "NO_DEPOSIT");
+        if (!(ch.player1 == address(0) || (ch.finalized && ch.deposit1 == 0 && ch.deposit2 == 0))) revert ChannelExists();
+        if (opponent == address(0) || opponent == msg.sender) revert BadOpponent();
+        if (msg.value == 0) revert NoDeposit();
 
         ch.player1 = msg.sender;
         ch.player2 = opponent;
@@ -175,11 +202,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     /// @notice Opponent joins an open channel by matching deposit
     function join(uint256 channelId) external payable nonReentrant {
         Channel storage ch = channels[channelId];
-        require(ch.player1 != address(0), "NO_CHANNEL");
-        require(ch.player2 == msg.sender, "NOT_OPP");
-        require(ch.deposit2 == 0, "JOINED");
-        require(!ch.finalized, "FINALIZED");
-        require(msg.value > 0, "NO_DEPOSIT");
+        if (ch.player1 == address(0)) revert NoChannel();
+        if (ch.player2 != msg.sender) revert NotOpponent();
+        if (ch.deposit2 != 0) revert AlreadyJoined();
+        if (ch.finalized) revert AlreadyFinalized();
+        if (msg.value == 0) revert NoDeposit();
 
         ch.deposit2 = msg.value;
 
@@ -193,8 +220,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         ShowdownState storage sd = showdowns[channelId];
-        require(!sd.inProgress, "SHOWDOWN");
-        require(winner == ch.player1 || winner == ch.player2, "NOT_PLAYER");
+        if (sd.inProgress) revert ShowdownInProgress();
+        if (winner != ch.player1 && winner != ch.player2) revert NotPlayer();
 
         // TODO: add verification that opponent actually folded
 
@@ -221,7 +248,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (role == 0 && index < 2) return index; // player A
         if (role == 1 && index < 2) return uint8(2 + index); // player B
         if (role == 2 && index < 5) return uint8(4 + index); // board cards
-        revert("bad role/index");
+        revert BadRoleIndex();
     }
 
     // Reduce stack pressure: move signer checks into a small helper.
@@ -255,7 +282,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             uint32 maxSeq
         )
     {
-        require(commits.length * 2 == sigs.length, "SIG_LEN");
+        if (commits.length * 2 != sigs.length) revert SignatureLengthMismatch();
         uint16 seenMask;
         for (uint256 i = 0; i < commits.length; i++) {
             HeadsUpPokerEIP712.CardCommit calldata cc = commits[i];
@@ -329,7 +356,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         // check for overlap with existing locked set if required
         if (requireOverlap && oldMask != 0) {
-            require((newMask & oldMask) != 0, "NO_OVERLAP");
+            if ((newMask & oldMask) == 0) revert NoOverlap();
             for (uint8 slot = 0; slot < 9; slot++) {
                 uint16 bit = uint16(1) << slot;
                 if (((newMask & oldMask) & bit) != 0) {
@@ -340,12 +367,12 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                     }
                     if (newSeqs[slot] == sd.lockedCommitSeqs[slot]) {
                         // Same sequence number - require exact match
-                        require(newHashes[slot] == sd.lockedCommitHashes[slot], "HASH_MISMATCH");
-                        require(newDealRefs[slot] == sd.lockedDealRefs[slot], "REF_MISMATCH");
+                        if (newHashes[slot] != sd.lockedCommitHashes[slot]) revert HashMismatch();
+                        if (newDealRefs[slot] != sd.lockedDealRefs[slot]) revert RefMismatch();
                         continue;
                     }
                     // Lower sequence number - not allowed
-                    revert("SEQ_TOO_LOW");
+                    revert SequenceTooLow();
                 }
             }
         }
@@ -411,7 +438,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                     boardSalts[i]
                 )
             );
-            require(h == newHashes[slot], "BOARD_OPEN");
+            if (h != newHashes[slot]) revert BoardOpenFailed();
             sd.board[i] = boardCodes[i];
         }
 
@@ -431,7 +458,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                     holeSalts[i]
                 )
             );
-            require(h == newHashes[slot], "HOLE_OPEN");
+            if (h != newHashes[slot]) revert HoleOpenFailed();
             if (submitter == sd.initiator) {
                 sd.initiatorHole[i] = holeCodes[i];
             }
@@ -505,11 +532,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address onBehalfOf
     ) internal {
         Channel storage ch = channels[channelId];
-        require(ch.deposit1 > 0 && ch.deposit2 > 0, "NOT_READY");
-        require(onBehalfOf == ch.player1 || onBehalfOf == ch.player2, "NOT_PLAYER");
+        if (ch.deposit1 == 0 || ch.deposit2 == 0) revert ChannelNotReady();
+        if (onBehalfOf != ch.player1 && onBehalfOf != ch.player2) revert NotPlayer();
 
         ShowdownState storage sd = showdowns[channelId];
-        require(!sd.inProgress, "IN_PROGRESS");
+        if (sd.inProgress) revert ShowdownInProgress();
 
         sd.initiator = onBehalfOf;
         sd.opponent = onBehalfOf == ch.player1 ? ch.player2 : ch.player1;
@@ -531,11 +558,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         // Require initiator to open both hole cards
         uint8 initiatorSlot1 = onBehalfOf == ch.player1 ? SLOT_A1 : SLOT_B1;
         uint8 initiatorSlot2 = onBehalfOf == ch.player1 ? SLOT_A2 : SLOT_B2;
-        require(
-            (sd.lockedCommitMask & (uint16(1) << initiatorSlot1)) != 0 &&
-            (sd.lockedCommitMask & (uint16(1) << initiatorSlot2)) != 0,
-            "INITIATOR_HOLES_REQUIRED"
-        );
+        if ((sd.lockedCommitMask & (uint16(1) << initiatorSlot1)) == 0 ||
+            (sd.lockedCommitMask & (uint16(1) << initiatorSlot2)) == 0) {
+            revert InitiatorHolesRequired();
+        }
 
         emit ShowdownStarted(channelId);
         emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask, sd.maxSeq);
@@ -579,11 +605,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address onBehalfOf
     ) internal {
         Channel storage ch = channels[channelId];
-        require(onBehalfOf == ch.player1 || onBehalfOf == ch.player2, "NOT_PLAYER");
+        if (onBehalfOf != ch.player1 && onBehalfOf != ch.player2) revert NotPlayer();
 
         ShowdownState storage sd = showdowns[channelId];
-        require(sd.inProgress, "NO_SHOWDOWN");
-        require(block.timestamp <= sd.deadline, "EXPIRED");
+        if (!sd.inProgress) revert NoShowdownInProgress();
+        if (block.timestamp > sd.deadline) revert Expired();
 
         _applyCommitUpdate(
             channelId,
@@ -607,11 +633,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bytes32[2] calldata oppHoleSalts
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        require(!ch.finalized, "FINALIZED");
+        if (ch.finalized) revert AlreadyFinalized();
 
         ShowdownState storage sd = showdowns[channelId];
-        require(sd.inProgress, "NO_SHOWDOWN");
-        require(block.timestamp > sd.deadline, "STILL_REVEALING");
+        if (!sd.inProgress) revert NoShowdownInProgress();
+        if (block.timestamp <= sd.deadline) revert StillRevealing();
 
         // require full commit set or forfeit to initiator
         if (sd.lockedCommitMask != MASK_ALL) {
@@ -638,7 +664,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                     oppHoleSalts[i]
                 )
             );
-            require(h == expectedHash, "OPP_HOLE_OPEN");
+            if (h != expectedHash) revert OpponentHoleOpenFailed();
         }
 
         // TODO: Evaluate hands and determine actual winner
