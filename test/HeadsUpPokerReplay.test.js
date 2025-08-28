@@ -117,7 +117,7 @@ describe("HeadsUpPokerReplay", function () {
     describe("Validation Tests - Blind Setup", function () {
         it("reverts when no actions provided", async function () {
             const actions = [];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("NO_BLINDS");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "NoBlinds");
         });
 
         it("reverts when small blind sequence is wrong", async function () {
@@ -139,14 +139,14 @@ describe("HeadsUpPokerReplay", function () {
                     prevHash: GENESIS
                 }
             ];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("SB_SEQ");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "SmallBlindSequence");
         });
 
         it("reverts when only one action provided", async function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n }
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("NO_BLINDS");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "NoBlinds");
         });
 
         it("reverts when small blind prevHash is incorrect", async function () {
@@ -166,7 +166,7 @@ describe("HeadsUpPokerReplay", function () {
                     prevHash: GENESIS
                 }
             ];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("SB_PREV");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "SmallBlindPrevious");
         });
 
         it("reverts when small blind action is wrong", async function () {
@@ -186,7 +186,7 @@ describe("HeadsUpPokerReplay", function () {
                     prevHash: GENESIS
                 }
             ];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("SB_ACT");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "SmallBlindAction");
         });
 
         it("reverts when small blind amount is zero", async function () {
@@ -206,7 +206,7 @@ describe("HeadsUpPokerReplay", function () {
                     prevHash: GENESIS
                 }
             ];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("SB_AMT");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "SmallBlindAmount");
         });
 
         it("reverts when small blind amount exceeds stack", async function () {
@@ -226,7 +226,7 @@ describe("HeadsUpPokerReplay", function () {
                     prevHash: GENESIS
                 }
             ];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("SB_AMT");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "SmallBlindAmount");
         });
 
         it("reverts when big blind sequence is wrong", async function () {
@@ -256,7 +256,7 @@ describe("HeadsUpPokerReplay", function () {
                     )
                 )
             };
-            await expect(replay.replayAndGetEndState([sbAction, bbAction], 10n, 10n)).to.be.revertedWith("BB_SEQ");
+            await expect(replay.replayAndGetEndState([sbAction, bbAction], 10n, 10n)).to.be.revertedWithCustomError(replay, "BigBlindSequence");
         });
 
         it("reverts when big blind prevHash is incorrect", async function () {
@@ -270,7 +270,7 @@ describe("HeadsUpPokerReplay", function () {
                 amount: 2n,
                 prevHash: ethers.keccak256("0x1234") // Wrong hash
             };
-            await expect(replay.replayAndGetEndState([actions[0], badBB], 10n, 10n)).to.be.revertedWith("BB_PREV");
+            await expect(replay.replayAndGetEndState([actions[0], badBB], 10n, 10n)).to.be.revertedWithCustomError(replay, "BigBlindPrevious");
         });
 
         it("reverts when big blind action is wrong", async function () {
@@ -300,7 +300,7 @@ describe("HeadsUpPokerReplay", function () {
                     )
                 )
             };
-            await expect(replay.replayAndGetEndState([sbAction, bbAction], 10n, 10n)).to.be.revertedWith("BB_ACT");
+            await expect(replay.replayAndGetEndState([sbAction, bbAction], 10n, 10n)).to.be.revertedWithCustomError(replay, "BigBlindAction");
         });
 
         it("reverts when big blind amount is incorrect", async function () {
@@ -309,7 +309,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 3n } // wrong amount
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("BB_AMT");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "BigBlindAmount");
         });
 
         it("reverts when big blind amount exceeds stack", async function () {
@@ -317,7 +317,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n }
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 1n)).to.be.revertedWith("BB_STACK");
+            await expect(replay.replayAndGetEndState(actions, 10n, 1n)).to.be.revertedWithCustomError(replay, "BigBlindStack");
         });
     });
 
@@ -347,7 +347,7 @@ describe("HeadsUpPokerReplay", function () {
                     )
                 )
             };
-            await expect(replay.replayAndGetEndState([...actions, badAction], 10n, 10n)).to.be.revertedWith("SEQ");
+            await expect(replay.replayAndGetEndState([...actions, badAction], 10n, 10n)).to.be.revertedWithCustomError(replay, "SequenceError");
         });
 
         it("reverts when action prevHash is incorrect", async function () {
@@ -362,7 +362,7 @@ describe("HeadsUpPokerReplay", function () {
                 amount: 0n,
                 prevHash: ethers.keccak256("0x1234") // Wrong hash
             };
-            await expect(replay.replayAndGetEndState([...actions, badAction], 10n, 10n)).to.be.revertedWith("PREV_HASH");
+            await expect(replay.replayAndGetEndState([...actions, badAction], 10n, 10n)).to.be.revertedWithCustomError(replay, "PreviousHashError");
         });
 
         it("reverts when blind actions are used after start", async function () {
@@ -371,7 +371,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.SMALL_BLIND, amount: 1n } // Wrong, can't use blind again
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("BLIND_ONLY_START");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "BlindOnlyStart");
         });
 
         it("reverts when all-in player tries to act", async function () {
@@ -380,7 +380,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 10n },
                 { action: ACTION.FOLD, amount: 0n }, // trying to act after all-in
             ]);
-            await expect(replay.replayAndGetEndState(badActions, 5n, 11n)).to.be.revertedWith("PLAYER_ALLIN");
+            await expect(replay.replayAndGetEndState(badActions, 5n, 11n)).to.be.revertedWithCustomError(replay, "PlayerAllIn");
         });
 
         it("reverts when unknown action type is used", async function () {
@@ -407,7 +407,7 @@ describe("HeadsUpPokerReplay", function () {
                     )
                 )
             };
-            await expect(replay.replayAndGetEndState([...actions, badAction], 10n, 10n)).to.be.revertedWith("UNK_ACTION");
+            await expect(replay.replayAndGetEndState([...actions, badAction], 10n, 10n)).to.be.revertedWithCustomError(replay, "UnknownAction");
         });
     });
 
@@ -418,7 +418,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.FOLD, amount: 1n } // Should be 0
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("FOLD_AMT");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "FoldAmount");
         });
 
         it("handles fold on flop", async function () {
@@ -472,7 +472,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.CHECK_CALL, amount: 2n } // Should be 0 for calls
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("CALL_AMT");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "CallAmount");
         });
 
         it("handles all-in call with correct amount", async function () {
@@ -517,9 +517,9 @@ describe("HeadsUpPokerReplay", function () {
             ]);
 
             // Should not reach end yet
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("HAND_NOT_DONE");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "HandNotDone");
             // Hand is OK so far, but still not done
-            await expect(replay.replayAndGetEndState(nextAction, 10n, 10n)).to.be.revertedWith("HAND_NOT_DONE");
+            await expect(replay.replayAndGetEndState(nextAction, 10n, 10n)).to.be.revertedWithCustomError(replay, "HandNotDone");
         });
 
         it("reaches showdown after river checks", async function () {
@@ -554,7 +554,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB has plenty of chips to call 1
             ]);
-            await expect(replay.replayAndGetEndState(actions, 100n, 100n)).to.be.revertedWith("HAND_NOT_DONE");
+            await expect(replay.replayAndGetEndState(actions, 100n, 100n)).to.be.revertedWithCustomError(replay, "HandNotDone");
         });
 
         it("reverts when trying to check with amount when no bet to call", async function () {
@@ -564,7 +564,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
                 { action: ACTION.CHECK_CALL, amount: 1n } // BB tries to check with amount - should be 0
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("CHECK_AMT");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "CheckAmount");
         });
 
         it("handles partial all-in call correctly", async function () {
@@ -587,7 +587,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.BET_RAISE, amount: 0n } // Should be > 0
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("RAISE_ZERO");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "RaiseZero");
         });
 
         it("reverts when raise is below minimum", async function () {
@@ -596,7 +596,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.BET_RAISE, amount: 2n } // Below minimum raise (should be >= 3)
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("MIN_RAISE");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "MinimumRaise");
         });
 
         it("handles minimum raise correctly", async function () {
@@ -617,7 +617,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.BET_RAISE, amount: 11n } // Exceeds 9 available + 1 toCall
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("RAISE_STACK");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "RaiseStack");
         });
 
         it("handles all-in raise with exact amount", async function () {
@@ -639,7 +639,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 10n },
                 { action: ACTION.BET_RAISE, amount: 4n } // Should be 5 to go all-in (5+4=9 total
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("RAISE_INC");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "RaiseIncrement");
         });
 
         it("reverts when raise doesn't increase the bet", async function () {
@@ -649,7 +649,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 2n }, // Raises to 3 total (1+2)
                 { action: ACTION.BET_RAISE, amount: 1n } // Trying to raise to 3 total (2+1), no increase
             ]);
-            await expect(replay.replayAndGetEndState(actions, 3n, 10n)).to.be.revertedWith("RAISE_INC");
+            await expect(replay.replayAndGetEndState(actions, 3n, 10n)).to.be.revertedWithCustomError(replay, "RaiseIncrement");
         });
 
         it("reverts when bet exceeds deposit limit", async function () {
@@ -658,7 +658,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.BET_RAISE, amount: 8n } // Total 9 > stack 8
             ]);
-            await expect(replay.replayAndGetEndState(actions, 8n, 10n)).to.be.revertedWith("RAISE_STACK");
+            await expect(replay.replayAndGetEndState(actions, 8n, 10n)).to.be.revertedWithCustomError(replay, "RaiseStack");
         });
 
         it("handles re-raise scenario with underraised bet", async function () {
@@ -669,7 +669,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 3n }, // BB re-raises to 5 total (2+3)
             ]);
             // This should revert since the re-raise must be at least the size of the previous raise (2)
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("MIN_RAISE");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "MinimumRaise");
         });
 
         it("handles re-raise scenario", async function () {
@@ -705,7 +705,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 2n }, // SB short all-in to 3
                 { action: ACTION.BET_RAISE, amount: 3n } // BB attempts re-raise
             ]);
-            await expect(replay.replayAndGetEndState(actions, 3n, 10n)).to.be.revertedWith("NO_REOPEN");
+            await expect(replay.replayAndGetEndState(actions, 3n, 10n)).to.be.revertedWithCustomError(replay, "NoReopen");
         });
 
         it("handles minimum bet on each street", async function () {
@@ -765,7 +765,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB checks, move to river
             ]);
             // Should be waiting for BB to act on river
-            await expect(replay.replayAndGetEndState(actions, 20n, 20n)).to.be.revertedWith("HAND_NOT_DONE");
+            await expect(replay.replayAndGetEndState(actions, 20n, 20n)).to.be.revertedWithCustomError(replay, "HandNotDone");
         });
 
         it("reverts on incomplete hand", async function () {
@@ -774,7 +774,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.CHECK_CALL, amount: 0n } // Game not finished
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWith("HAND_NOT_DONE");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "HandNotDone");
         });
 
         it("handles alternating actor correctly through streets", async function () {
@@ -866,7 +866,7 @@ describe("HeadsUpPokerReplay", function () {
                 // SB should be all-in after posting blind, so game should end immediately
             ]);
             // SB has only 1 chip total, so goes all-in posting blind
-            await expect(replay.replayAndGetEndState(actions, 1n, 10n)).to.be.revertedWith("HAND_NOT_DONE");
+            await expect(replay.replayAndGetEndState(actions, 1n, 10n)).to.be.revertedWithCustomError(replay, "HandNotDone");
         });
 
         it("handles both players all-in from blinds by going to showdown", async function () {
@@ -949,7 +949,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n } // BB checks, advance to flop
             ]);
             await expect(replay.replayAndGetEndState(actions, 100n, 100n))
-                .to.be.revertedWith("HAND_NOT_DONE");
+                .to.be.revertedWithCustomError(replay, "HandNotDone");
         });
     });
 
@@ -1016,7 +1016,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 3n }, // BB short all-in (closes reopening)
                 { action: ACTION.BET_RAISE, amount: 5n } // SB tries to raise again (should fail)
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 5n)).to.be.revertedWith("NO_REOPEN");
+            await expect(replay.replayAndGetEndState(actions, 10n, 5n)).to.be.revertedWithCustomError(replay, "NoReopen");
         });
 
         it("tests reopen true after full raise allows further raising", async function () {
@@ -1072,7 +1072,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 8n }, // raise 4
                 { action: ACTION.BET_RAISE, amount: 12n } // raise 5 - should fail
             ]);
-            await expect(replay.replayAndGetEndState(actions, 50n, 50n)).to.be.revertedWith("RAISE_LIMIT");
+            await expect(replay.replayAndGetEndState(actions, 50n, 50n)).to.be.revertedWithCustomError(replay, "RaiseLimit");
         });
 
         it("resets raise counter between streets", async function () {
@@ -1104,7 +1104,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 8n }, // SB reraises (raise 4)
                 { action: ACTION.BET_RAISE, amount: 12n } // BB reraises (raise 5) - should fail
             ]);
-            await expect(replay.replayAndGetEndState(actions, 50n, 50n)).to.be.revertedWith("RAISE_LIMIT");
+            await expect(replay.replayAndGetEndState(actions, 50n, 50n)).to.be.revertedWithCustomError(replay, "RaiseLimit");
         });
     });
 });

@@ -28,22 +28,22 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should reject opening channel with zero deposit", async function () {
             await expect(escrow.connect(player1).open(channelId, player2.address, { value: 0 }))
-                .to.be.revertedWith("NO_DEPOSIT");
+                .to.be.revertedWithCustomError(escrow, "NoDeposit");
         });
 
         it("should reject opening channel with invalid opponent", async function () {
             await expect(escrow.connect(player1).open(channelId, ethers.ZeroAddress, { value: deposit }))
-                .to.be.revertedWith("BAD_OPP");
+                .to.be.revertedWithCustomError(escrow, "BadOpponent");
 
             await expect(escrow.connect(player1).open(channelId, player1.address, { value: deposit }))
-                .to.be.revertedWith("BAD_OPP");
+                .to.be.revertedWithCustomError(escrow, "BadOpponent");
         });
 
         it("should reject opening duplicate channel", async function () {
             await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
 
             await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
-                .to.be.revertedWith("EXISTS");
+                .to.be.revertedWithCustomError(escrow, "ChannelExists");
         });
     });
 
@@ -69,24 +69,24 @@ describe("HeadsUpPokerEscrow", function () {
             const nonExistentId = 999n;
 
             await expect(escrow.connect(player2).join(nonExistentId, { value: deposit }))
-                .to.be.revertedWith("NO_CHANNEL");
+                .to.be.revertedWithCustomError(escrow, "NoChannel");
         });
 
         it("should reject joining by wrong player", async function () {
             await expect(escrow.connect(other).join(channelId, { value: deposit }))
-                .to.be.revertedWith("NOT_OPP");
+                .to.be.revertedWithCustomError(escrow, "NotOpponent");
         });
 
         it("should reject joining with zero deposit", async function () {
             await expect(escrow.connect(player2).join(channelId, { value: 0 }))
-                .to.be.revertedWith("NO_DEPOSIT");
+                .to.be.revertedWithCustomError(escrow, "NoDeposit");
         });
 
         it("should reject joining already joined channel", async function () {
             await escrow.connect(player2).join(channelId, { value: deposit });
 
             await expect(escrow.connect(player2).join(channelId, { value: deposit }))
-                .to.be.revertedWith("JOINED");
+                .to.be.revertedWithCustomError(escrow, "AlreadyJoined");
         });
     });
 
@@ -129,7 +129,7 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should reject fold settlement with invalid winner", async function () {
             await expect(escrow.settleFold(channelId, other.address))
-                .to.be.revertedWith("NOT_PLAYER");
+                .to.be.revertedWithCustomError(escrow, "NotPlayer");
         });
     });
 
