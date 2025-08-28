@@ -8,7 +8,7 @@ const GENESIS = ethers.keccak256(
 
 const DOMAIN_TYPEHASH = ethers.keccak256(
   ethers.toUtf8Bytes(
-    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract,uint256 channelId)"
+    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
   )
 );
 const NAME_HASH = ethers.keccak256(ethers.toUtf8Bytes("HeadsUpPoker"));
