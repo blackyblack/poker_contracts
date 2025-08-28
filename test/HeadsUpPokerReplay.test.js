@@ -1062,4 +1062,64 @@ describe("HeadsUpPokerReplay", function () {
             expect(folder).to.equal(0n); // SB folded
         });
     });
+
+    describe("Reraise Limit Tests", function () {
+        it("allows up to 4 raises per street", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n }, // raise 1
+                { action: ACTION.BET_RAISE, amount: 3n }, // raise 2
+                { action: ACTION.BET_RAISE, amount: 5n }, // raise 3
+                { action: ACTION.BET_RAISE, amount: 8n }, // raise 4
+                { action: ACTION.FOLD, amount: 0n } // BB folds
+            ]);
+            const [end, folder] = await replay.replayAndGetEndState(actions, 50n, 50n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // BB folded
+        });
+
+        it("reverts when exceeding 4 raises per street", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n }, // raise 1
+                { action: ACTION.BET_RAISE, amount: 3n }, // raise 2
+                { action: ACTION.BET_RAISE, amount: 5n }, // raise 3
+                { action: ACTION.BET_RAISE, amount: 8n }, // raise 4
+                { action: ACTION.BET_RAISE, amount: 12n } // raise 5 - should fail
+            ]);
+            await expect(replay.replayAndGetEndState(actions, 50n, 50n)).to.be.revertedWith("RAISE_LIMIT");
+        });
+
+        it("resets raise counter between streets", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n }, // raise 1 preflop
+                { action: ACTION.BET_RAISE, amount: 3n }, // raise 2 preflop
+                { action: ACTION.BET_RAISE, amount: 5n }, // raise 3 preflop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, go to flop
+                { action: ACTION.BET_RAISE, amount: 2n }, // BB bets flop (raise 1 on flop)
+                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises (raise 2 on flop)
+                { action: ACTION.BET_RAISE, amount: 5n }, // BB reraises (raise 3 on flop)
+                { action: ACTION.BET_RAISE, amount: 8n }, // SB reraises (raise 4 on flop) - should work
+                { action: ACTION.FOLD, amount: 0n } // BB folds
+            ]);
+            const [end, folder] = await replay.replayAndGetEndState(actions, 50n, 50n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // BB folded
+        });
+
+        it("reverts when exceeding limit on later streets", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, go to flop
+                { action: ACTION.BET_RAISE, amount: 2n }, // BB bets flop (raise 1)
+                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises (raise 2)
+                { action: ACTION.BET_RAISE, amount: 5n }, // BB reraises (raise 3)
+                { action: ACTION.BET_RAISE, amount: 8n }, // SB reraises (raise 4)
+                { action: ACTION.BET_RAISE, amount: 12n } // BB reraises (raise 5) - should fail
+            ]);
+            await expect(replay.replayAndGetEndState(actions, 50n, 50n)).to.be.revertedWith("RAISE_LIMIT");
+        });
+    });
 });
