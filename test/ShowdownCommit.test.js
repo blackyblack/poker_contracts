@@ -442,4 +442,50 @@ describe("verifyCoSignedCommits & startShowdown", function () {
         )
     ).to.be.revertedWith("NOT_PLAYER");
   });
+
+  it("reverts when initiator does not provide both hole cards", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
+    
+    // Create commits without initiator's hole cards (player1's holes are slots 0,1)
+    const partialCommits = commits.slice(2); // Skip player1's holes (commits[0], commits[1])
+    const partialSigs = sigs.slice(4); // Skip corresponding signatures
+    
+    await expect(
+      escrow
+        .connect(player1)
+        .startShowdown(channelId, partialCommits, partialSigs, board, boardSalts, myHole, mySalts)
+    ).to.be.revertedWith("INITIATOR_HOLES_REQUIRED");
+  });
+
+  it("reverts when initiator provides only one hole card", async () => {
+    const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
+    
+    // Create commits with only one of initiator's hole cards
+    const partialCommits = [commits[0]].concat(commits.slice(2)); // Include only first hole card
+    const partialSigs = [sigs[0], sigs[1]].concat(sigs.slice(4)); // Include corresponding sigs
+    
+    await expect(
+      escrow
+        .connect(player1)
+        .startShowdown(channelId, partialCommits, partialSigs, board, boardSalts, myHole, mySalts)
+    ).to.be.revertedWith("INITIATOR_HOLES_REQUIRED");
+  });
+
+  it("reverts when player2 initiator does not provide both hole cards", async () => {
+    const { commits, sigs, board, boardSalts, objs } = await setup();
+    
+    // When player2 initiates, they need to provide their hole cards (commits[2], commits[3])
+    const player2Hole = [objs[2].card, objs[3].card];
+    const player2Salts = [objs[2].salt, objs[3].salt];
+    
+    // Create commits without player2's hole cards (slots 2,3)
+    const partialCommits = commits.slice(0, 2).concat(commits.slice(4)); // Skip player2's holes
+    const partialSigs = sigs.slice(0, 4).concat(sigs.slice(8)); // Skip corresponding signatures
+    
+    await expect(
+      escrow
+        .connect(player2)
+        .startShowdown(channelId, partialCommits, partialSigs, board, boardSalts, player2Hole, player2Salts)
+    ).to.be.revertedWith("INITIATOR_HOLES_REQUIRED");
+  });
 });
