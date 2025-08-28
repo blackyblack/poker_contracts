@@ -15,12 +15,12 @@ describe("HeadsUpPokerEIP712", function () {
     );
     const ACTION_TYPEHASH = ethers.keccak256(
         ethers.toUtf8Bytes(
-            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
+            "Action(uint256 channelId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
         )
     );
     const CARD_COMMIT_TYPEHASH = ethers.keccak256(
         ethers.toUtf8Bytes(
-            "CardCommit(uint256 channelId,uint256 handId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
+            "CardCommit(uint256 channelId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
         )
     );
 
@@ -44,7 +44,6 @@ describe("HeadsUpPokerEIP712", function () {
     it("recovers signer for Action", async function () {
         const action = {
             channelId,
-            handId: 1n,
             seq: 1,
             action: ACTION.CHECK_CALL,
             amount: 100n,
@@ -61,11 +60,10 @@ describe("HeadsUpPokerEIP712", function () {
         const domSep = domainSeparator(chainId, verifyingContract);
         const structHash = ethers.keccak256(
             ethers.AbiCoder.defaultAbiCoder().encode(
-                ["bytes32", "uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
+                ["bytes32", "uint256", "uint32", "uint8", "uint128", "bytes32"],
                 [
                     ACTION_TYPEHASH,
                     action.channelId,
-                    action.handId,
                     action.seq,
                     action.action,
                     action.amount,
@@ -93,7 +91,6 @@ describe("HeadsUpPokerEIP712", function () {
     it("recovers signer for CardCommit", async function () {
         const commit = {
             channelId,
-            handId: 5n,
             seq: 2,
             role: 1,
             index: 0,
@@ -110,7 +107,6 @@ describe("HeadsUpPokerEIP712", function () {
                 [
                     "bytes32",
                     "uint256",
-                    "uint256",
                     "uint32",
                     "uint8",
                     "uint8",
@@ -121,7 +117,6 @@ describe("HeadsUpPokerEIP712", function () {
                 [
                     CARD_COMMIT_TYPEHASH,
                     commit.channelId,
-                    commit.handId,
                     commit.seq,
                     commit.role,
                     commit.index,
