@@ -476,6 +476,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             false
         );
 
+        // Require initiator to open both hole cards
+        uint8 initiatorSlot1 = onBehalfOf == ch.player1 ? SLOT_A1 : SLOT_B1;
+        uint8 initiatorSlot2 = onBehalfOf == ch.player1 ? SLOT_A2 : SLOT_B2;
+        require(
+            (sd.lockedCommitMask & (uint16(1) << initiatorSlot1)) != 0 &&
+            (sd.lockedCommitMask & (uint16(1) << initiatorSlot2)) != 0,
+            "INITIATOR_HOLES_REQUIRED"
+        );
+
         emit ShowdownStarted(channelId);
         emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask, sd.maxSeq);
     }
