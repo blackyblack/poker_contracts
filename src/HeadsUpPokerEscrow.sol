@@ -291,14 +291,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                     if (newSeqs[slot] > sd.lockedCommitSeqs[slot]) {
                         // Override is allowed, continue to merging
                         continue;
-                    } else if (newSeqs[slot] == sd.lockedCommitSeqs[slot]) {
+                    }
+                    if (newSeqs[slot] == sd.lockedCommitSeqs[slot]) {
                         // Same sequence number - require exact match
                         require(newHashes[slot] == sd.lockedCommitHashes[slot], "HASH_MISMATCH");
                         require(newDealRefs[slot] == sd.lockedDealRefs[slot], "REF_MISMATCH");
-                    } else {
-                        // Lower sequence number - not allowed
-                        revert("SEQ_TOO_LOW");
+                        continue;
                     }
+                    // Lower sequence number - not allowed
+                    revert("SEQ_TOO_LOW");
                 }
             }
         }
