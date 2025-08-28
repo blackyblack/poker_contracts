@@ -99,6 +99,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint16 newMask,
         uint32 maxSeq
     );
+    event Withdrawn(
+        uint256 indexed channelId,
+        address indexed player,
+        uint256 amount
+    );
 
     // ---------------------------------------------------------------------
     // View helpers
@@ -108,6 +113,28 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     ) external view returns (uint256 p1, uint256 p2) {
         Channel storage ch = channels[channelId];
         return (ch.deposit1, ch.deposit2);
+    }
+
+    /// @notice Player withdraws their deposit from a finalized channel
+    function withdraw(uint256 channelId) external nonReentrant {
+        Channel storage ch = channels[channelId];
+        require(ch.finalized, "NOT_FINALIZED");
+        
+        uint256 amount;
+        if (msg.sender == ch.player1 && ch.deposit1 > 0) {
+            amount = ch.deposit1;
+            ch.deposit1 = 0;
+        } else if (msg.sender == ch.player2 && ch.deposit2 > 0) {
+            amount = ch.deposit2;
+            ch.deposit2 = 0;
+        } else {
+            revert("NO_BALANCE");
+        }
+
+        (bool ok, ) = payable(msg.sender).call{value: amount}("");
+        require(ok, "PAY_FAIL");
+
+        emit Withdrawn(channelId, msg.sender, amount);
     }
 
     // ---------------------------------------------------------------------
@@ -120,13 +147,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address opponent
     ) external payable nonReentrant {
         Channel storage ch = channels[channelId];
-        require(ch.player1 == address(0), "EXISTS");
+        require(ch.player1 == address(0) || (ch.finalized && ch.deposit1 == 0 && ch.deposit2 == 0), "EXISTS");
         require(opponent != address(0) && opponent != msg.sender, "BAD_OPP");
         require(msg.value > 0, "NO_DEPOSIT");
 
         ch.player1 = msg.sender;
         ch.player2 = opponent;
         ch.deposit1 = msg.value;
+        ch.finalized = false;
 
         emit ChannelOpened(channelId, msg.sender, opponent, msg.value);
     }
@@ -158,11 +186,16 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         uint256 pot = ch.deposit1 + ch.deposit2;
 
-        ch.deposit1 = 0;
-        ch.deposit2 = 0;
+        // Add pot to winner's deposit instead of sending to address
+        if (winner == ch.player1) {
+            ch.deposit1 = pot;
+            ch.deposit2 = 0;
+        } else {
+            ch.deposit1 = 0;
+            ch.deposit2 = pot;
+        }
 
-        (bool ok, ) = payable(winner).call{value: pot}("");
-        require(ok, "PAY_FAIL");
+        ch.finalized = true;
 
         emit FoldSettled(channelId, winner, pot);
     }
@@ -383,11 +416,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ch.finalized = true;
 
         uint256 pot = ch.deposit1 + ch.deposit2;
-        ch.deposit1 = 0;
-        ch.deposit2 = 0;
-
-        (bool ok, ) = payable(sd.initiator).call{value: pot}("");
-        require(ok, "PAY_FAIL");
+        
+        // Add pot to initiator's deposit instead of sending to address
+        if (sd.initiator == ch.player1) {
+            ch.deposit1 = pot;
+            ch.deposit2 = 0;
+        } else {
+            ch.deposit1 = 0;
+            ch.deposit2 = pot;
+        }
 
         emit ShowdownFinalized(channelId, sd.initiator, pot);
     }
@@ -585,11 +622,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         ch.finalized = true;
         uint256 finalPot = ch.deposit1 + ch.deposit2;
-        ch.deposit1 = 0;
-        ch.deposit2 = 0;
-
-        (bool ok2, ) = payable(winner).call{value: finalPot}("");
-        require(ok2, "PAY_FAIL");
+        
+        // Add pot to winner's deposit instead of sending to address
+        if (winner == ch.player1) {
+            ch.deposit1 = finalPot;
+            ch.deposit2 = 0;
+        } else {
+            ch.deposit1 = 0;
+            ch.deposit2 = finalPot;
+        }
 
         emit ShowdownFinalized(channelId, winner, finalPot);
     }
