@@ -43,6 +43,13 @@ describe("HeadsUpPokerEscrow", function () {
                 .to.be.revertedWithCustomError(escrow, "BadOpponent");
         });
 
+        it("should reject opening duplicate channel", async function () {
+            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+
+            await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
+                .to.be.revertedWithCustomError(escrow, "ChannelExists");
+        });
+
         it("should generate local handIds per channel", async function () {
             const channelId1 = 100n;
             const channelId2 = 101n;
