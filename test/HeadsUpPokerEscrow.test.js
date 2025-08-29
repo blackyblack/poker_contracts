@@ -43,6 +43,13 @@ describe("HeadsUpPokerEscrow", function () {
                 .to.be.revertedWithCustomError(escrow, "BadOpponent");
         });
 
+        it("should reject opening duplicate channel", async function () {
+            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+
+            await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
+                .to.be.revertedWithCustomError(escrow, "ChannelExists");
+        });
+
         it("should generate local handIds per channel", async function () {
             const channelId1 = 100n;
             const channelId2 = 101n;
@@ -309,15 +316,89 @@ describe("HeadsUpPokerEscrow", function () {
             expect(p2Stack).to.equal(0);
         });
 
-        it("should reject joining a finalized channel", async function () {
+        it("should allow opening with zero ETH using existing deposits", async function () {
+            // First game
             await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
-            // Finalize via fold settlement
             await escrow.settleFold(channelId, player1.address);
 
-            // Attempt to join again should fail (channel is finalized)
-            await expect(escrow.connect(player2).join(channelId, { value: deposit }))
-                .to.be.revertedWithCustomError(escrow, "AlreadyFinalized");
+            // Check winnings from first game
+            let [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit * 2n);
+            expect(p2Stack).to.equal(0);
+
+            // Second game using existing winnings (0 ETH)
+            await expect(escrow.connect(player1).open(channelId, player2.address, { value: 0 }))
+                .to.emit(escrow, "ChannelOpened")
+                .withArgs(channelId, player1.address, player2.address, 0, 2n);
+
+            // Check that deposit1 is preserved from previous game
+            [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit * 2n); // Same as before
+            expect(p2Stack).to.equal(0);
+
+            // Player2 joins normally
+            await escrow.connect(player2).join(channelId, { value: deposit });
+            
+            // Check combined deposits
+            [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit * 2n); // Player1's existing winnings
+            expect(p2Stack).to.equal(deposit); // Player2's new deposit
+        });
+
+        it("should allow both players to use existing deposits with zero ETH", async function () {
+            // First game - player2 wins
+            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player2).join(channelId, { value: deposit });
+            await escrow.settleFold(channelId, player2.address);
+
+            // Check winnings
+            let [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(0);
+            expect(p2Stack).to.equal(deposit * 2n);
+
+            // Second game - both use existing winnings (player1 has none, player2 has winnings)
+            await escrow.connect(player1).open(channelId, player2.address, { value: deposit }); // Player1 adds new money
+            
+            // Player2 joins with zero ETH using existing winnings
+            await expect(escrow.connect(player2).join(channelId, { value: 0 }))
+                .to.emit(escrow, "ChannelJoined")
+                .withArgs(channelId, player2.address, 0);
+
+            // Check combined deposits
+            [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit); // Player1's new deposit
+            expect(p2Stack).to.equal(deposit * 2n); // Player2's existing winnings (unchanged)
+        });
+
+        it("should accumulate deposits correctly (critical bug fix test)", async function () {
+            // First game - player1 wins
+            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player2).join(channelId, { value: deposit });
+            await escrow.settleFold(channelId, player1.address);
+
+            let [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit * 2n); // Won the pot
+            expect(p2Stack).to.equal(0);
+
+            // Second game - player1 adds more money (testing critical bug fix)
+            const additionalDeposit = ethers.parseEther("0.5");
+            await escrow.connect(player1).open(channelId, player2.address, { value: additionalDeposit });
+
+            // CRITICAL: Check that previous winnings are NOT lost (bug was: deposit1 = msg.value instead of +=)
+            [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit * 2n + additionalDeposit); // Previous winnings + new deposit
+            expect(p2Stack).to.equal(0);
+
+            // Player2 joins and they both play again
+            await escrow.connect(player2).join(channelId, { value: deposit });
+            await escrow.settleFold(channelId, player1.address);
+
+            // Verify final accumulation
+            [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            const expectedTotal = deposit * 2n + additionalDeposit + deposit; // All money goes to winner
+            expect(p1Stack).to.equal(expectedTotal);
+            expect(p2Stack).to.equal(0);
         });
 
         it("should reject joining after withdrawal (channel must be reopened)", async function () {
@@ -328,7 +409,7 @@ describe("HeadsUpPokerEscrow", function () {
 
             // After withdrawal the channel should require a fresh open; join must fail
             await expect(escrow.connect(player2).join(channelId, { value: deposit }))
-                .to.be.revertedWithCustomError(escrow, "AlreadyFinalized");
+                .to.be.revertedWithCustomError(escrow, "AlreadyJoined");
         });
     });
 
