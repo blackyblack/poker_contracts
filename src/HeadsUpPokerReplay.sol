@@ -162,7 +162,7 @@ contract HeadsUpPokerReplay {
                     // keep for invariant checking
                     if (g.total[p] > maxDeposit[p]) {
                         if (p == 0) revert DepositExceededA();
-                        else revert DepositExceededB();
+                        revert DepositExceededB();
                     }
                     g.stacks[p] -= callAmt;
                     if (g.stacks[p] == 0) g.allIn[p] = true;
@@ -249,7 +249,7 @@ contract HeadsUpPokerReplay {
                 // keep for invariant checking
                 if (g.total[p] > maxDeposit[p]) {
                     if (p == 0) revert DepositExceededA();
-                    else revert DepositExceededB();
+                    revert DepositExceededB();
                 }
 
                 g.stacks[p] = prevStack - act.amount;
