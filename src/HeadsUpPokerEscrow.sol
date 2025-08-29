@@ -172,7 +172,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address opponent
     ) external payable nonReentrant returns (uint256 handId) {
         Channel storage ch = channels[channelId];
-        if (!(ch.player1 == address(0) || (ch.finalized && ch.deposit1 == 0 && ch.deposit2 == 0))) revert ChannelExists();
+        if (!(ch.player1 == address(0) || ch.finalized)) revert ChannelExists();
         if (opponent == address(0) || opponent == msg.sender) revert BadOpponent();
         if (msg.value == 0) revert NoDeposit();
 
