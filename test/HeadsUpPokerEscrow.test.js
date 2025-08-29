@@ -72,15 +72,30 @@ describe("HeadsUpPokerEscrow", function () {
             await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
             
-            // Simulate finishing the hand by withdrawing (after finalization)
-            // For this test, we'll manually finalize and withdraw to clean up the channel
-            // Note: In real scenario, this would happen through game mechanics
-            
             const handId1 = await escrow.getHandId(channelId);
             expect(handId1).to.equal(1n);
             
-            // TODO: Add test for channel reuse once game completion mechanics are implemented
-            // This test demonstrates the expected behavior conceptually
+            // Simulate ending the first hand by settling on fold
+            // This will finalize the channel and allow reuse
+            await escrow.connect(player1).settleFold(channelId, player2.address);
+            
+            // Check channel is finalized
+            const [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(0);
+            expect(p2Stack).to.equal(deposit * 2n); // Winner gets all
+            
+            // Both players withdraw their winnings
+            await escrow.connect(player2).withdraw(channelId);
+            
+            // Verify channel is ready for reuse (deposits are 0)
+            const [p1StackAfter, p2StackAfter] = await escrow.stacks(channelId);
+            expect(p1StackAfter).to.equal(0);
+            expect(p2StackAfter).to.equal(0);
+            
+            // Second hand in the same channel - should get handId = 2
+            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            const handId2 = await escrow.getHandId(channelId);
+            expect(handId2).to.equal(2n);
         });
     });
 

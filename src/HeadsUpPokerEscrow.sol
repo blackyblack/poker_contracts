@@ -176,11 +176,12 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (opponent == address(0) || opponent == msg.sender) revert BadOpponent();
         if (msg.value == 0) revert NoDeposit();
 
-        // Initialize nextHandId for new channels, or increment for reused channels
+        // Initialize nextHandId for new channels
         bool isNewChannel = (ch.player1 == address(0));
         if (isNewChannel) {
             ch.nextHandId = 1; // Start at 1 for new channels
         }
+        // For reused channels, nextHandId keeps incrementing from previous value
         
         // Generate channel-local handId
         handId = ch.nextHandId++;
