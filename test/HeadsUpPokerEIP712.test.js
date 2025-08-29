@@ -20,7 +20,7 @@ describe("HeadsUpPokerEIP712", function () {
     );
     const CARD_COMMIT_TYPEHASH = ethers.keccak256(
         ethers.toUtf8Bytes(
-            "CardCommit(uint256 channelId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
+            "CardCommit(uint256 channelId,uint32 seq,uint8 role,uint8 index,bytes32 commitHash,bytes32 prevHash)"
         )
     );
 
@@ -94,7 +94,6 @@ describe("HeadsUpPokerEIP712", function () {
             seq: 2,
             role: 1,
             index: 0,
-            dealRef: ethers.keccak256(ethers.toUtf8Bytes("deal")),
             commitHash: ethers.keccak256(ethers.toUtf8Bytes("commit")),
             prevHash: ethers.ZeroHash
         };
@@ -111,7 +110,6 @@ describe("HeadsUpPokerEIP712", function () {
                     "uint8",
                     "uint8",
                     "bytes32",
-                    "bytes32",
                     "bytes32"
                 ],
                 [
@@ -120,7 +118,6 @@ describe("HeadsUpPokerEIP712", function () {
                     commit.seq,
                     commit.role,
                     commit.index,
-                    commit.dealRef,
                     commit.commitHash,
                     commit.prevHash
                 ]

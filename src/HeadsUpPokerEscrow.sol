@@ -51,7 +51,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error SignatureLengthMismatch();
     error NoOverlap();
     error HashMismatch();
-    error RefMismatch();
     error BoardOpenFailed();
     error HoleOpenFailed();
     error ChannelNotReady();
@@ -77,7 +76,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint8[2] initiatorHole;
         uint16 lockedCommitMask;
         bytes32[9] lockedCommitHashes;
-        bytes32[9] lockedDealRefs;
         uint32[9] lockedCommitSeqs;
         uint32 maxSeq;
     }
@@ -276,7 +274,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         view
         returns (
             bytes32[9] memory hashes,
-            bytes32[9] memory dealRefs,
             uint32[9] memory seqs,
             uint16 presentMask,
             uint32 maxSeq
@@ -312,7 +309,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                 );
 
                 hashes[slot] = cc.commitHash;
-                dealRefs[slot] = cc.dealRef;
                 seqs[slot] = cc.seq;
                 presentMask |= bit;
             }
@@ -339,7 +335,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         (
             bytes32[9] memory newHashes,
-            bytes32[9] memory newDealRefs,
             uint32[9] memory newSeqs,
             uint16 newMask,
             uint32 newMaxSeq
@@ -368,7 +363,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                     if (newSeqs[slot] == sd.lockedCommitSeqs[slot]) {
                         // Same sequence number - require exact match
                         if (newHashes[slot] != sd.lockedCommitHashes[slot]) revert HashMismatch();
-                        if (newDealRefs[slot] != sd.lockedDealRefs[slot]) revert RefMismatch();
                         continue;
                     }
                     // Lower sequence number - not allowed
@@ -385,7 +379,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                 // Update slot if it's new OR if it's an override with higher seq
                 if ((oldMask & bit2) == 0 || newSeqs[slot2] > sd.lockedCommitSeqs[slot2]) {
                     sd.lockedCommitHashes[slot2] = newHashes[slot2];
-                    sd.lockedDealRefs[slot2] = newDealRefs[slot2];
                     sd.lockedCommitSeqs[slot2] = newSeqs[slot2];
                 }
             }
@@ -433,7 +426,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                     domainSeparator,
                     channelId,
                     slot,
-                    newDealRefs[slot],
                     boardCodes[i],
                     boardSalts[i]
                 )
@@ -453,7 +445,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                     domainSeparator,
                     channelId,
                     slot,
-                    newDealRefs[slot],
                     holeCodes[i],
                     holeSalts[i]
                 )
@@ -659,7 +650,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                     domainSeparator,
                     channelId,
                     slot,
-                    sd.lockedDealRefs[slot],
                     oppHoleCodes[i],
                     oppHoleSalts[i]
                 )

@@ -15,7 +15,7 @@ const NAME_HASH = ethers.keccak256(ethers.toUtf8Bytes("HeadsUpPoker"));
 const VERSION_HASH = ethers.keccak256(ethers.toUtf8Bytes("1"));
 const CARD_COMMIT_TYPEHASH = ethers.keccak256(
     ethers.toUtf8Bytes(
-        "CardCommit(uint256 channelId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
+        "CardCommit(uint256 channelId,uint32 seq,uint8 role,uint8 index,bytes32 commitHash,bytes32 prevHash)"
     )
 );
 
@@ -47,11 +47,11 @@ function toSlotKey(role, index) {
     throw new Error("bad role/index");
 }
 
-function commitHash(dom, channelId, slot, dealRef, card, salt) {
+function commitHash(dom, channelId, slot, card, salt) {
     return ethers.keccak256(
         ethers.solidityPacked(
-            ["bytes32", "uint256", "uint8", "bytes32", "uint8", "bytes32"],
-            [dom, channelId, slot, dealRef, card, salt]
+            ["bytes32", "uint256", "uint8", "uint8", "bytes32"],
+            [dom, channelId, slot, card, salt]
         )
     );
 }
@@ -68,7 +68,6 @@ function commitDigest(dom, cc) {
                 "uint8",
                 "bytes32",
                 "bytes32",
-                "bytes32",
             ],
             [
                 CARD_COMMIT_TYPEHASH,
@@ -76,7 +75,6 @@ function commitDigest(dom, cc) {
                 cc.seq,
                 cc.role,
                 cc.index,
-                cc.dealRef,
                 cc.commitHash,
                 cc.prevHash,
             ]
@@ -94,15 +92,13 @@ async function signCommit(a, b, dom, cc) {
 
 async function buildCommit(a, b, dom, channelId, role, index, card, seq) {
     const slot = toSlotKey(role, index);
-    const dealRef = ethers.hexlify(ethers.randomBytes(32));
     const salt = ethers.hexlify(ethers.randomBytes(32));
-    const cHash = commitHash(dom, channelId, slot, dealRef, card, salt);
+    const cHash = commitHash(dom, channelId, slot, card, salt);
     const cc = {
         channelId,
         seq,
         role,
         index,
-        dealRef,
         commitHash: cHash,
         prevHash: GENESIS,
     };
