@@ -70,7 +70,7 @@ function cardCommitDigest(dom, cc) {
 
 function actionHash(action) {
     const abi = ethers.AbiCoder.defaultAbiCoder();
-    return structHash = ethers.keccak256(
+    return ethers.keccak256(
         abi.encode(
             ["bytes32", "uint256", "uint32", "uint8", "uint128", "bytes32"],
             [
