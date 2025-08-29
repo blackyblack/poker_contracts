@@ -275,6 +275,7 @@ contract HeadsUpPokerReplay {
                 abi.encode(
                     ACTION_TYPEHASH,
                     act.channelId,
+                    act.handId,
                     act.seq,
                     act.action,
                     act.amount,

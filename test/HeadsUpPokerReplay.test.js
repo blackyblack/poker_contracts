@@ -7,12 +7,14 @@ const { GENESIS, ACTION_TYPEHASH, actionHash } = require("./hashes");
 function buildActions(specs) {
     const abi = ethers.AbiCoder.defaultAbiCoder();
     const channelId = 1n;
+    const handId = 1n; // Default handId for tests
     let seq = 0;
     let prevHash = GENESIS;
     const actions = [];
     for (const spec of specs) {
         const act = {
             channelId,
+            handId,
             seq: seq++,
             action: spec.action,
             amount: spec.amount,
@@ -133,6 +135,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = [
                 {
                     channelId: 1n,
+                    handId: 1n,
                     seq: 1,
                     action: ACTION.SMALL_BLIND,
                     amount: 1n,
@@ -140,6 +143,7 @@ describe("HeadsUpPokerReplay", function () {
                 },
                 {
                     channelId: 1n,
+                    handId: 1n,
                     seq: 1,
                     action: ACTION.BIG_BLIND,
                     amount: 1n,
@@ -153,6 +157,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = [
                 {
                     channelId: 1n,
+                    handId: 1n,
                     seq: 0,
                     action: ACTION.BIG_BLIND, // Should be SMALL_BLIND
                     amount: 1n,
@@ -160,6 +165,7 @@ describe("HeadsUpPokerReplay", function () {
                 },
                 {
                     channelId: 1n,
+                    handId: 1n,
                     seq: 1,
                     action: ACTION.BIG_BLIND,
                     amount: 1n,
@@ -173,6 +179,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = [
                 {
                     channelId: 1n,
+                    handId: 1n,
                     seq: 0,
                     action: ACTION.SMALL_BLIND,
                     amount: 0n, // Should be > 0
@@ -180,6 +187,7 @@ describe("HeadsUpPokerReplay", function () {
                 },
                 {
                     channelId: 1n,
+                    handId: 1n,
                     seq: 1,
                     action: ACTION.BIG_BLIND,
                     amount: 1n,
@@ -193,6 +201,7 @@ describe("HeadsUpPokerReplay", function () {
             const actions = [
                 {
                     channelId: 1n,
+                    handId: 1n,
                     seq: 0,
                     action: ACTION.SMALL_BLIND,
                     amount: 11n, // Exceeds stack of 10
@@ -200,6 +209,7 @@ describe("HeadsUpPokerReplay", function () {
                 },
                 {
                     channelId: 1n,
+                    handId: 1n,
                     seq: 1,
                     action: ACTION.BIG_BLIND,
                     amount: 1n,
@@ -212,6 +222,7 @@ describe("HeadsUpPokerReplay", function () {
         it("reverts when big blind sequence is wrong", async function () {
             const sbAction = {
                 channelId: 1n,
+                handId: 1n,
                 seq: 0,
                 action: ACTION.SMALL_BLIND,
                 amount: 1n,
@@ -219,6 +230,7 @@ describe("HeadsUpPokerReplay", function () {
             };
             const bbAction = {
                 channelId: 1n,
+                handId: 1n,
                 seq: 0, // Same seq, should be greater
                 action: ACTION.BIG_BLIND,
                 amount: 2n,
@@ -233,6 +245,7 @@ describe("HeadsUpPokerReplay", function () {
             ]);
             const badBB = {
                 channelId: 1n,
+                handId: 1n,
                 seq: 1,
                 action: ACTION.BIG_BLIND,
                 amount: 2n,
@@ -244,6 +257,7 @@ describe("HeadsUpPokerReplay", function () {
         it("reverts when big blind action is wrong", async function () {
             const sbAction = {
                 channelId: 1n,
+                handId: 1n,
                 seq: 0,
                 action: ACTION.SMALL_BLIND,
                 amount: 1n,
@@ -251,6 +265,7 @@ describe("HeadsUpPokerReplay", function () {
             };
             const bbAction = {
                 channelId: 1n,
+                handId: 1n,
                 seq: 1,
                 action: ACTION.FOLD, // Should be BIG_BLIND
                 amount: 2n,
@@ -286,6 +301,7 @@ describe("HeadsUpPokerReplay", function () {
             // Manually create third action with wrong seq
             const badAction = {
                 channelId: 1n,
+                handId: 1n,
                 seq: 1, // Same as previous, should be 2
                 action: ACTION.FOLD,
                 amount: 0n,
@@ -301,6 +317,7 @@ describe("HeadsUpPokerReplay", function () {
             ]);
             const badAction = {
                 channelId: 1n,
+                handId: 1n,
                 seq: 3,
                 action: ACTION.FOLD,
                 amount: 0n,
@@ -334,6 +351,7 @@ describe("HeadsUpPokerReplay", function () {
             ]);
             const badAction = {
                 channelId: 1n,
+                handId: 1n,
                 seq: 3,
                 action: 99, // Unknown action
                 amount: 0n,

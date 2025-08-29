@@ -81,9 +81,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 deposit1;
         uint256 deposit2;
         bool finalized;
+        uint256 handId;
     }
 
     mapping(uint256 => Channel) private channels;
+    
+    // Global monotonically increasing handId counter
+    uint256 private nextHandId = 1;
 
     // ---------------------------------------------------------------------
     // Events
@@ -92,7 +96,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 indexed channelId,
         address indexed player1,
         address indexed player2,
-        uint256 amount
+        uint256 amount,
+        uint256 handId
     );
     event ChannelJoined(
         uint256 indexed channelId,
@@ -162,17 +167,21 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     function open(
         uint256 channelId,
         address opponent
-    ) external payable nonReentrant {
+    ) external payable nonReentrant returns (uint256 handId) {
         Channel storage ch = channels[channelId];
         if (!(ch.player1 == address(0) || (ch.finalized && ch.deposit1 == 0 && ch.deposit2 == 0))) revert ChannelExists();
         if (opponent == address(0) || opponent == msg.sender) revert BadOpponent();
         if (msg.value == 0) revert NoDeposit();
+
+        // Generate monotonically increasing handId
+        handId = nextHandId++;
 
         ch.player1 = msg.sender;
         ch.player2 = opponent;
         ch.deposit1 = msg.value;
         ch.deposit2 = 0; // Reset deposit2 for channel reuse
         ch.finalized = false;
+        ch.handId = handId;
 
         // Reset showdown state when reusing channel
         ShowdownState storage sd = showdowns[channelId];
@@ -185,7 +194,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             sd.maxSeq = 0;
         }
 
-        emit ChannelOpened(channelId, msg.sender, opponent, msg.value);
+        emit ChannelOpened(channelId, msg.sender, opponent, msg.value, handId);
     }
 
     /// @notice Opponent joins an open channel by matching deposit
