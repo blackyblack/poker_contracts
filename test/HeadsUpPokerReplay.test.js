@@ -1,15 +1,14 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("./actions");
-const { GENESIS, ACTION_TYPEHASH, actionHash } = require("./hashes");
+const { actionHash, handGenesis } = require("./hashes");
 
 // Helper to build actions with proper hashes and sequence numbers
 function buildActions(specs) {
-    const abi = ethers.AbiCoder.defaultAbiCoder();
     const channelId = 1n;
     const handId = 1n; // Default handId for tests
     let seq = 0;
-    let prevHash = GENESIS;
+    let prevHash = handGenesis(channelId, handId);
     const actions = [];
     for (const spec of specs) {
         const act = {
@@ -110,7 +109,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 2,
                     action: ACTION.SMALL_BLIND,
                     amount: 1n,
-                    prevHash: GENESIS
+                    prevHash: handGenesis(1n, 1n)
                 },
                 {
                     channelId: 1n,
@@ -118,7 +117,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 3,
                     action: ACTION.BIG_BLIND,
                     amount: 2n,
-                    prevHash: GENESIS
+                    prevHash: handGenesis(1n, 1n)
                 }
             ];
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "SmallBlindSequenceInvalid");
@@ -147,7 +146,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 1,
                     action: ACTION.BIG_BLIND,
                     amount: 1n,
-                    prevHash: GENESIS
+                    prevHash: handGenesis(1n, 1n)
                 }
             ];
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "SmallBlindPrevHashInvalid");
@@ -161,7 +160,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 0,
                     action: ACTION.BIG_BLIND, // Should be SMALL_BLIND
                     amount: 1n,
-                    prevHash: GENESIS
+                    prevHash: handGenesis(1n, 1n)
                 },
                 {
                     channelId: 1n,
@@ -169,7 +168,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 1,
                     action: ACTION.BIG_BLIND,
                     amount: 1n,
-                    prevHash: GENESIS
+                    prevHash: handGenesis(1n, 1n)
                 }
             ];
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "SmallBlindActionInvalid");
@@ -183,7 +182,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 0,
                     action: ACTION.SMALL_BLIND,
                     amount: 0n, // Should be > 0
-                    prevHash: GENESIS
+                    prevHash: handGenesis(1n, 1n)
                 },
                 {
                     channelId: 1n,
@@ -191,7 +190,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 1,
                     action: ACTION.BIG_BLIND,
                     amount: 1n,
-                    prevHash: GENESIS
+                    prevHash: handGenesis(1n, 1n)
                 }
             ];
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "SmallBlindAmountInvalid");
@@ -205,7 +204,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 0,
                     action: ACTION.SMALL_BLIND,
                     amount: 11n, // Exceeds stack of 10
-                    prevHash: GENESIS
+                    prevHash: handGenesis(1n, 1n)
                 },
                 {
                     channelId: 1n,
@@ -213,7 +212,7 @@ describe("HeadsUpPokerReplay", function () {
                     seq: 1,
                     action: ACTION.BIG_BLIND,
                     amount: 1n,
-                    prevHash: GENESIS
+                    prevHash: handGenesis(1n, 1n)
                 }
             ];
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "SmallBlindAmountInvalid");
@@ -226,7 +225,7 @@ describe("HeadsUpPokerReplay", function () {
                 seq: 0,
                 action: ACTION.SMALL_BLIND,
                 amount: 1n,
-                prevHash: GENESIS
+                prevHash: handGenesis(1n, 1n)
             };
             const bbAction = {
                 channelId: 1n,
@@ -261,7 +260,7 @@ describe("HeadsUpPokerReplay", function () {
                 seq: 0,
                 action: ACTION.SMALL_BLIND,
                 amount: 1n,
-                prevHash: GENESIS
+                prevHash: handGenesis(1n, 1n)
             };
             const bbAction = {
                 channelId: 1n,

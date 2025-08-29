@@ -82,12 +82,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 deposit2;
         bool finalized;
         uint256 handId;
+        uint256 nextHandId; // Local counter for this channel
     }
 
     mapping(uint256 => Channel) private channels;
-    
-    // Global monotonically increasing handId counter
-    uint256 private nextHandId = 1;
 
     // ---------------------------------------------------------------------
     // Events
@@ -178,8 +176,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (opponent == address(0) || opponent == msg.sender) revert BadOpponent();
         if (msg.value == 0) revert NoDeposit();
 
-        // Generate monotonically increasing handId
-        handId = nextHandId++;
+        // Initialize nextHandId for new channels
+        bool isNewChannel = (ch.player1 == address(0));
+        if (isNewChannel) {
+            ch.nextHandId = 1; // Start at 1 for new channels
+        }
+        // For reused channels, nextHandId keeps incrementing from previous value
+        
+        // Generate channel-local handId
+        handId = ch.nextHandId++;
 
         ch.player1 = msg.sender;
         ch.player2 = opponent;
