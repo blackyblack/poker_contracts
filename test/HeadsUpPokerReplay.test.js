@@ -1,15 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("./actions");
-
-const GENESIS = ethers.keccak256(
-    ethers.solidityPacked(["string", "uint256"], ["HUP_GENESIS", 1n]));
-
-const ACTION_TYPEHASH = ethers.keccak256(
-    ethers.toUtf8Bytes(
-        "Action(uint256 channelId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
-    )
-);
+const { GENESIS, ACTION_TYPEHASH, actionHash } = require("./hashes");
 
 // Helper to build actions with proper hashes and sequence numbers
 function buildActions(specs) {
@@ -27,19 +19,7 @@ function buildActions(specs) {
             prevHash
         };
         actions.push(act);
-        prevHash = ethers.keccak256(
-            abi.encode(
-                ["bytes32", "uint256", "uint32", "uint8", "uint128", "bytes32"],
-                [
-                    ACTION_TYPEHASH,
-                    act.channelId,
-                    act.seq,
-                    act.action,
-                    act.amount,
-                    act.prevHash
-                ]
-            )
-        );
+        prevHash = actionHash(act);
     }
     return actions;
 }
@@ -242,19 +222,7 @@ describe("HeadsUpPokerReplay", function () {
                 seq: 0, // Same seq, should be greater
                 action: ACTION.BIG_BLIND,
                 amount: 2n,
-                prevHash: ethers.keccak256(
-                    ethers.AbiCoder.defaultAbiCoder().encode(
-                        ["bytes32", "uint256", "uint32", "uint8", "uint128", "bytes32"],
-                        [
-                            ACTION_TYPEHASH,
-                            sbAction.channelId,
-                            sbAction.seq,
-                            sbAction.action,
-                            sbAction.amount,
-                            sbAction.prevHash
-                        ]
-                    )
-                )
+                prevHash: actionHash(sbAction)
             };
             await expect(replay.replayAndGetEndState([sbAction, bbAction], 10n, 10n)).to.be.revertedWithCustomError(replay, "BigBlindSequenceInvalid");
         });
@@ -286,19 +254,7 @@ describe("HeadsUpPokerReplay", function () {
                 seq: 1,
                 action: ACTION.FOLD, // Should be BIG_BLIND
                 amount: 2n,
-                prevHash: ethers.keccak256(
-                    ethers.AbiCoder.defaultAbiCoder().encode(
-                        ["bytes32", "uint256", "uint32", "uint8", "uint128", "bytes32"],
-                        [
-                            ACTION_TYPEHASH,
-                            sbAction.channelId,
-                            sbAction.seq,
-                            sbAction.action,
-                            sbAction.amount,
-                            sbAction.prevHash
-                        ]
-                    )
-                )
+                prevHash: actionHash(sbAction)
             };
             await expect(replay.replayAndGetEndState([sbAction, bbAction], 10n, 10n)).to.be.revertedWithCustomError(replay, "BigBlindActionInvalid");
         });
@@ -333,19 +289,7 @@ describe("HeadsUpPokerReplay", function () {
                 seq: 1, // Same as previous, should be 2
                 action: ACTION.FOLD,
                 amount: 0n,
-                prevHash: ethers.keccak256(
-                    ethers.AbiCoder.defaultAbiCoder().encode(
-                        ["bytes32", "uint256", "uint32", "uint8", "uint128", "bytes32"],
-                        [
-                            ACTION_TYPEHASH,
-                            actions[1].channelId,
-                            actions[1].seq,
-                            actions[1].action,
-                            actions[1].amount,
-                            actions[1].prevHash
-                        ]
-                    )
-                )
+                prevHash: actionHash(actions[1])
             };
             await expect(replay.replayAndGetEndState([...actions, badAction], 10n, 10n)).to.be.revertedWithCustomError(replay, "SequenceInvalid");
         });
@@ -393,19 +337,7 @@ describe("HeadsUpPokerReplay", function () {
                 seq: 3,
                 action: 99, // Unknown action
                 amount: 0n,
-                prevHash: ethers.keccak256(
-                    ethers.AbiCoder.defaultAbiCoder().encode(
-                        ["bytes32", "uint256", "uint32", "uint8", "uint128", "bytes32"],
-                        [
-                            ACTION_TYPEHASH,
-                            actions[1].channelId,
-                            actions[1].seq,
-                            actions[1].action,
-                            actions[1].amount,
-                            actions[1].prevHash
-                        ]
-                    )
-                )
+                prevHash: actionHash(actions[1])
             };
             await expect(replay.replayAndGetEndState([...actions, badAction], 10n, 10n)).to.be.revertedWithCustomError(replay, "UnknownAction");
         });

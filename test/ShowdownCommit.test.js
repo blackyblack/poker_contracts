@@ -1,23 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-
-const ZERO32 = "0x" + "00".repeat(32);
-
-const GENESIS = ethers.keccak256(
-    ethers.solidityPacked(["string", "uint256"], ["HUP_GENESIS", 1n]));
-
-const DOMAIN_TYPEHASH = ethers.keccak256(
-    ethers.toUtf8Bytes(
-        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-    )
-);
-const NAME_HASH = ethers.keccak256(ethers.toUtf8Bytes("HeadsUpPoker"));
-const VERSION_HASH = ethers.keccak256(ethers.toUtf8Bytes("1"));
-const CARD_COMMIT_TYPEHASH = ethers.keccak256(
-    ethers.toUtf8Bytes(
-        "CardCommit(uint256 channelId,uint32 seq,uint8 role,uint8 index,bytes32 dealRef,bytes32 commitHash,bytes32 prevHash)"
-    )
-);
+const { GENESIS, ZERO32, domainSeparator, commitHash, cardCommitDigest } = require("./hashes");
+const { SLOT } = require("./slots");
 
 // Hardhat default account private keys
 const wallet1 = new ethers.Wallet(
@@ -30,79 +14,20 @@ const wallet3 = new ethers.Wallet(
     "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
 );
 
-function domainSeparator(contract, chainId) {
-    const abi = ethers.AbiCoder.defaultAbiCoder();
-    return ethers.keccak256(
-        abi.encode(
-            ["bytes32", "bytes32", "bytes32", "uint256", "address"],
-            [DOMAIN_TYPEHASH, NAME_HASH, VERSION_HASH, chainId, contract]
-        )
-    );
-}
-
-function toSlotKey(role, index) {
-    if (role === 0 && index < 2) return index;
-    if (role === 1 && index < 2) return 2 + index;
-    if (role === 2 && index < 5) return 4 + index;
-    throw new Error("bad role/index");
-}
-
-function commitHash(dom, channelId, slot, dealRef, card, salt) {
-    return ethers.keccak256(
-        ethers.solidityPacked(
-            ["bytes32", "uint256", "uint8", "bytes32", "uint8", "bytes32"],
-            [dom, channelId, slot, dealRef, card, salt]
-        )
-    );
-}
-
-function commitDigest(dom, cc) {
-    const abi = ethers.AbiCoder.defaultAbiCoder();
-    const structHash = ethers.keccak256(
-        abi.encode(
-            [
-                "bytes32",
-                "uint256",
-                "uint32",
-                "uint8",
-                "uint8",
-                "bytes32",
-                "bytes32",
-                "bytes32",
-            ],
-            [
-                CARD_COMMIT_TYPEHASH,
-                cc.channelId,
-                cc.seq,
-                cc.role,
-                cc.index,
-                cc.dealRef,
-                cc.commitHash,
-                cc.prevHash,
-            ]
-        )
-    );
-    return ethers.keccak256(ethers.concat(["0x1901", dom, structHash]));
-}
-
 async function signCommit(a, b, dom, cc) {
-    const digest = commitDigest(dom, cc);
+    const digest = cardCommitDigest(dom, cc);
     const sigA = a.signingKey.sign(digest).serialized;
     const sigB = b.signingKey.sign(digest).serialized;
     return [sigA, sigB];
 }
 
-async function buildCommit(a, b, dom, channelId, role, index, card, seq) {
-    const slot = toSlotKey(role, index);
-    const dealRef = ethers.hexlify(ethers.randomBytes(32));
+async function buildCommit(a, b, dom, channelId, slot, card, seq) {
     const salt = ethers.hexlify(ethers.randomBytes(32));
-    const cHash = commitHash(dom, channelId, slot, dealRef, card, salt);
+    const cHash = commitHash(dom, channelId, slot, card, salt);
     const cc = {
         channelId,
         seq,
-        role,
-        index,
-        dealRef,
+        slot,
         commitHash: cHash,
         prevHash: GENESIS,
     };
@@ -138,26 +63,25 @@ describe("verifyCoSignedCommits & startShowdown", function () {
         const objs = [];
 
         const parts = [
-            [0, 0, myHole[0]],
-            [0, 1, myHole[1]],
-            [1, 0, oppHole[0]],
-            [1, 1, oppHole[1]],
-            [2, 0, board[0]],
-            [2, 1, board[1]],
-            [2, 2, board[2]],
-            [2, 3, board[3]],
-            [2, 4, board[4]],
+            [SLOT.A1, myHole[0]],
+            [SLOT.A2, myHole[1]],
+            [SLOT.B1, oppHole[0]],
+            [SLOT.B2, oppHole[1]],
+            [SLOT.FLOP1, board[0]],
+            [SLOT.FLOP2, board[1]],
+            [SLOT.FLOP3, board[2]],
+            [SLOT.TURN, board[3]],
+            [SLOT.RIVER, board[4]],
         ];
 
         for (let i = 0; i < parts.length; i++) {
-            const [role, index, card] = parts[i];
+            const [slot, card] = parts[i];
             const obj = await buildCommit(
                 wallet1,
                 wallet2,
                 dom,
                 channelId,
-                role,
-                index,
+                slot,
                 card,
                 i
             );
@@ -208,7 +132,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
 
     it("reverts on bad B signature", async () => {
         const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
-        const digest = commitDigest(dom, objs[2].cc);
+        const digest = cardCommitDigest(dom, objs[2].cc);
         const badSig = wallet3.signingKey.sign(digest).serialized;
         sigs[5] = badSig; // B signature for commit index2
 
@@ -216,9 +140,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             escrow
                 .connect(player1)
                 .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts)
-        )
-            .to.be.revertedWithCustomError(escrow, "CommitWrongSignerB")
-            .withArgs(2);
+        ).to.be.revertedWithCustomError(escrow, "CommitWrongSignerB").withArgs(2);
     });
 
     it("allows partial commit sets", async () => {
@@ -459,8 +381,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             wallet2,
             dom,
             channelId,
-            0, // role: player A
-            0, // index: first hole card
+            SLOT.A1,
             15, // different card
             100 // higher sequence number
         );
@@ -498,8 +419,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             wallet2,
             dom,
             channelId,
-            0, // role: player A
-            0, // index: first hole card
+            SLOT.A1,
             15, // different card
             0 // same sequence number as original (should fail)
         );
@@ -534,8 +454,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             wallet2,
             dom,
             channelId,
-            0, // role: player A
-            0, // index: first hole card
+            SLOT.A1,
             15, // different card
             0 // lower sequence number (original was 0, but this still fails due to hash mismatch)
         );
@@ -571,8 +490,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             wallet2,
             dom,
             channelId,
-            0, // role: player A
-            0, // index: first hole card
+            SLOT.A1,
             myHole[0],
             100 // high sequence number
         );
@@ -596,8 +514,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             wallet2,
             dom,
             channelId,
-            0, // role: player A
-            0, // index: first hole card
+            SLOT.A1,
             15, // different card
             50 // lower sequence number than 100
         );
