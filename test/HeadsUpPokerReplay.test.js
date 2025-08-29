@@ -175,46 +175,44 @@ describe("HeadsUpPokerReplay", function () {
         });
 
         it("reverts when small blind amount is zero", async function () {
-            const actions = [
-                {
-                    channelId: 1n,
-                    handId: 1n,
-                    seq: 0,
-                    action: ACTION.SMALL_BLIND,
-                    amount: 0n, // Should be > 0
-                    prevHash: handGenesis(1n, 1n)
-                },
-                {
-                    channelId: 1n,
-                    handId: 1n,
-                    seq: 1,
-                    action: ACTION.BIG_BLIND,
-                    amount: 1n,
-                    prevHash: handGenesis(1n, 1n)
-                }
-            ];
+            const sbAction = {
+                channelId: 1n,
+                handId: 1n,
+                seq: 0,
+                action: ACTION.SMALL_BLIND,
+                amount: 0n, // Should be > 0
+                prevHash: handGenesis(1n, 1n)
+            };
+            const bbAction = {
+                channelId: 1n,
+                handId: 1n,
+                seq: 1,
+                action: ACTION.BIG_BLIND,
+                amount: 0n,
+                prevHash: actionHash(sbAction)
+            };
+            const actions = [sbAction, bbAction];
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "SmallBlindAmountInvalid");
         });
 
         it("reverts when small blind amount exceeds stack", async function () {
-            const actions = [
-                {
-                    channelId: 1n,
-                    handId: 1n,
-                    seq: 0,
-                    action: ACTION.SMALL_BLIND,
-                    amount: 11n, // Exceeds stack of 10
-                    prevHash: handGenesis(1n, 1n)
-                },
-                {
-                    channelId: 1n,
-                    handId: 1n,
-                    seq: 1,
-                    action: ACTION.BIG_BLIND,
-                    amount: 1n,
-                    prevHash: handGenesis(1n, 1n)
-                }
-            ];
+            const sbAction = {
+                channelId: 1n,
+                handId: 1n,
+                seq: 0,
+                action: ACTION.SMALL_BLIND,
+                amount: 11n, // Exceeds stack of 10
+                prevHash: handGenesis(1n, 1n)
+            };
+            const bbAction = {
+                channelId: 1n,
+                handId: 1n,
+                seq: 1,
+                action: ACTION.BIG_BLIND,
+                amount: 22n,
+                prevHash: actionHash(sbAction)
+            };
+            const actions = [sbAction, bbAction];
             await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "SmallBlindAmountInvalid");
         });
 
@@ -1160,8 +1158,8 @@ describe("HeadsUpPokerReplay", function () {
         it("should validate big blind amount against correct player's stack", async function () {
             // For handId=2 (even), Player 1 is SB, Player 0 is BB - should validate BB against stackA
             const actions = buildActionsWithHandId([
-                { action: ACTION.SMALL_BLIND, amount: 5n },
-                { action: ACTION.BIG_BLIND, amount: 15n } // More than stackA (10)
+                { action: ACTION.SMALL_BLIND, amount: 6n },
+                { action: ACTION.BIG_BLIND, amount: 12n } // More than stackA (10)
             ], 2n);
 
             await expect(replay.replayAndGetEndState(actions, 10n, 50n))
