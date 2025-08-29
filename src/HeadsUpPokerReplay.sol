@@ -72,6 +72,14 @@ contract HeadsUpPokerReplay {
         return keccak256(abi.encodePacked("HUP_GENESIS", chId, handId));
     }
 
+    /// @notice Determines which player should post the small blind based on handId
+    /// @param handId The hand identifier
+    /// @return smallBlindPlayer The player index (0 or 1) who should post small blind
+    function getSmallBlindPlayer(uint256 handId) internal pure returns (uint8) {
+        // Alternate starting player: odd handId -> Player 0, even handId -> Player 1
+        return handId % 2 == 1 ? 0 : 1;
+    }
+
     /// @notice Replays a sequence of actions and returns the terminal state
     /// @dev Reverts when an invalid transition is encountered
     function replayAndGetEndState(
@@ -85,29 +93,51 @@ contract HeadsUpPokerReplay {
         if (sb.prevHash != handGenesis(sb.channelId, sb.handId)) revert SmallBlindPrevHashInvalid();
         if (sb.action != ACT_SMALL_BLIND) revert SmallBlindActionInvalid();
         if (sb.seq != 0) revert SmallBlindSequenceInvalid();
-        if (sb.amount == 0 || sb.amount > stackA) revert SmallBlindAmountInvalid();
 
         Action calldata bb = actions[1];
         if (bb.seq != 1) revert BigBlindSequenceInvalid();
         if (bb.prevHash != _hashAction(sb)) revert BigBlindPrevHashInvalid();
         if (bb.action != ACT_BIG_BLIND) revert BigBlindActionInvalid();
         if (bb.amount != sb.amount * 2) revert BigBlindAmountInvalid();
-        if (bb.amount > stackB) revert BigBlindStackInvalid();
+
+        // Determine which player should post small blind based on handId
+        uint8 smallBlindPlayer = getSmallBlindPlayer(sb.handId);
+        uint8 bigBlindPlayer = 1 - smallBlindPlayer;
+
+        // Validate amounts against correct stacks
+        if (smallBlindPlayer == 0) {
+            if (sb.amount == 0 || sb.amount > stackA) revert SmallBlindAmountInvalid();
+            if (bb.amount > stackB) revert BigBlindStackInvalid();
+        } else {
+            if (sb.amount == 0 || sb.amount > stackB) revert SmallBlindAmountInvalid();
+            if (bb.amount > stackA) revert BigBlindStackInvalid();
+        }
 
         uint256 bigBlind = bb.amount;
 
         Game memory g;
-        g.stacks[0] = stackA - sb.amount;
-        g.stacks[1] = stackB - bb.amount;
-        g.contrib[0] = sb.amount;
-        g.contrib[1] = bb.amount;
-        g.total[0] = sb.amount;
-        g.total[1] = bb.amount;
+        // Set initial stacks based on who posted which blind
+        if (smallBlindPlayer == 0) {
+            g.stacks[0] = stackA - sb.amount;
+            g.stacks[1] = stackB - bb.amount;
+            g.contrib[0] = sb.amount;
+            g.contrib[1] = bb.amount;
+            g.total[0] = sb.amount;
+            g.total[1] = bb.amount;
+        } else {
+            g.stacks[0] = stackA - bb.amount;
+            g.stacks[1] = stackB - sb.amount;
+            g.contrib[0] = bb.amount;
+            g.contrib[1] = sb.amount;
+            g.total[0] = bb.amount;
+            g.total[1] = sb.amount;
+        }
+        
         if (g.stacks[0] == 0) g.allIn[0] = true;
         if (g.stacks[1] == 0) g.allIn[1] = true;
-        g.actor = 0; // small blind acts first preflop
+        g.actor = smallBlindPlayer; // small blind acts first preflop
         g.street = 0;
-        g.toCall = g.contrib[1] - g.contrib[0];
+        g.toCall = g.contrib[bigBlindPlayer] - g.contrib[smallBlindPlayer];
         g.lastRaise = bigBlind;
         g.checked = false;
         g.reopen = true;
