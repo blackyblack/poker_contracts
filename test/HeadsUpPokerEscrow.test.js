@@ -309,6 +309,36 @@ describe("HeadsUpPokerEscrow", function () {
             expect(p2Stack).to.equal(0);
         });
 
+        it("should allow opening with zero ETH using existing deposits", async function () {
+            // First game
+            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player2).join(channelId, { value: deposit });
+            await escrow.settleFold(channelId, player1.address);
+
+            // Check winnings from first game
+            let [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit * 2n);
+            expect(p2Stack).to.equal(0);
+
+            // Second game using existing winnings (0 ETH)
+            await expect(escrow.connect(player1).open(channelId, player2.address, { value: 0 }))
+                .to.emit(escrow, "ChannelOpened")
+                .withArgs(channelId, player1.address, player2.address, 0, 2n);
+
+            // Check that deposit1 is preserved from previous game
+            [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit * 2n); // Same as before
+            expect(p2Stack).to.equal(0);
+
+            // Player2 joins normally
+            await escrow.connect(player2).join(channelId, { value: deposit });
+            
+            // Check combined deposits
+            [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit * 2n); // Player1's existing winnings
+            expect(p2Stack).to.equal(deposit); // Player2's new deposit
+        });
+
         it("should reject joining a finalized channel", async function () {
             await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
