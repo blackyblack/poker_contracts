@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("./actions");
-const { domainSeparator, GENESIS, cardCommitDigest, actionDigest } = require("./hashes");
+const { domainSeparator, GENESIS, cardCommitDigest, actionDigest, handGenesis } = require("./hashes");
 const { SLOT } = require("./slots");
 
 describe("HeadsUpPokerEIP712", function () {
@@ -23,7 +23,7 @@ describe("HeadsUpPokerEIP712", function () {
             seq: 1,
             action: ACTION.CHECK_CALL,
             amount: 100n,
-            prevHash: GENESIS,
+            prevHash: handGenesis(channelId, 1n),
         };
 
         const chainId = (await ethers.provider.getNetwork()).chainId;

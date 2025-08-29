@@ -21,6 +21,11 @@ const CARD_COMMIT_TYPEHASH = ethers.keccak256(
 const GENESIS = ethers.keccak256(
     ethers.solidityPacked(["string", "uint256"], ["HUP_GENESIS", 1n]));
 
+function handGenesis(channelId, handId) {
+    return ethers.keccak256(
+        ethers.solidityPacked(["string", "uint256", "uint256"], ["HUP_GENESIS", channelId, handId]));
+}
+
 const NAME_HASH = ethers.keccak256(ethers.toUtf8Bytes("HeadsUpPoker"));
 const VERSION_HASH = ethers.keccak256(ethers.toUtf8Bytes("1"));
 
@@ -111,5 +116,6 @@ module.exports = {
     commitHash,
     cardCommitDigest,
     actionHash,
-    actionDigest
+    actionDigest,
+    handGenesis
 };
