@@ -22,6 +22,38 @@ contract HeadsUpPokerReplay {
             "Action(uint256 channelId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
         );
 
+    // ------------------------------------------------------------------
+    // Errors
+    // ------------------------------------------------------------------
+    error NoBlinds();
+    error SmallBlindPrevHashInvalid();
+    error SmallBlindActionInvalid();
+    error SmallBlindSequenceInvalid();
+    error SmallBlindAmountInvalid();
+    error BigBlindSequenceInvalid();
+    error BigBlindPrevHashInvalid();
+    error BigBlindActionInvalid();
+    error BigBlindAmountInvalid();
+    error BigBlindStackInvalid();
+    error SequenceInvalid();
+    error PrevHashInvalid();
+    error BlindOnlyStart();
+    error PlayerAllIn();
+    error FoldAmountInvalid();
+    error CallAmountInvalid();
+    error DepositExceededA();
+    error DepositExceededB();
+    error StreetOverflow();
+    error CheckAmountInvalid();
+    error RaiseAmountZero();
+    error RaiseStackInvalid();
+    error RaiseLimitExceeded();
+    error RaiseInsufficientIncrease();
+    error MinimumRaiseNotMet();
+    error NoReopenAllowed();
+    error UnknownAction();
+    error HandNotDone();
+
     struct Game {
         uint256[2] stacks;
         uint256[2] contrib;
@@ -47,20 +79,20 @@ contract HeadsUpPokerReplay {
         uint256 stackA,
         uint256 stackB
     ) external pure returns (End end, uint8 folder, uint256 potSize) {
-        require(actions.length >= 2, "NO_BLINDS");
+        if (actions.length < 2) revert NoBlinds();
 
         Action calldata sb = actions[0];
-        require(sb.prevHash == handGenesis(sb.channelId), "SB_PREV");
-        require(sb.action == ACT_SMALL_BLIND, "SB_ACT");
-        require(sb.seq == 0, "SB_SEQ");
-        require(sb.amount > 0 && sb.amount <= stackA, "SB_AMT");
+        if (sb.prevHash != handGenesis(sb.channelId)) revert SmallBlindPrevHashInvalid();
+        if (sb.action != ACT_SMALL_BLIND) revert SmallBlindActionInvalid();
+        if (sb.seq != 0) revert SmallBlindSequenceInvalid();
+        if (sb.amount == 0 || sb.amount > stackA) revert SmallBlindAmountInvalid();
 
         Action calldata bb = actions[1];
-        require(bb.seq == 1, "BB_SEQ");
-        require(bb.prevHash == _hashAction(sb), "BB_PREV");
-        require(bb.action == ACT_BIG_BLIND, "BB_ACT");
-        require(bb.amount == sb.amount * 2, "BB_AMT");
-        require(bb.amount <= stackB, "BB_STACK");
+        if (bb.seq != 1) revert BigBlindSequenceInvalid();
+        if (bb.prevHash != _hashAction(sb)) revert BigBlindPrevHashInvalid();
+        if (bb.action != ACT_BIG_BLIND) revert BigBlindActionInvalid();
+        if (bb.amount != sb.amount * 2) revert BigBlindAmountInvalid();
+        if (bb.amount > stackB) revert BigBlindStackInvalid();
 
         uint256 bigBlind = bb.amount;
 
@@ -92,9 +124,9 @@ contract HeadsUpPokerReplay {
             Action calldata act = actions[i];
             Action calldata prev = actions[i - 1];
 
-            require(act.seq > prev.seq, "SEQ");
-            require(act.prevHash == _hashAction(prev), "PREV_HASH");
-            require(act.action > ACT_BIG_BLIND, "BLIND_ONLY_START");
+            if (act.seq <= prev.seq) revert SequenceInvalid();
+            if (act.prevHash != _hashAction(prev)) revert PrevHashInvalid();
+            if (act.action <= ACT_BIG_BLIND) revert BlindOnlyStart();
 
             uint256 p = g.actor;
             uint256 opp = 1 - p;
@@ -104,14 +136,14 @@ contract HeadsUpPokerReplay {
                 if (g.allIn[opp]) {
                     return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
                 }
-                require(act.action == ACT_CHECK_CALL && act.amount == 0, "PLAYER_ALLIN");
+                if (act.action != ACT_CHECK_CALL || act.amount != 0) revert PlayerAllIn();
                 return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
             }
 
-            require(!g.allIn[p], "PLAYER_ALLIN");
+            if (g.allIn[p]) revert PlayerAllIn();
 
             if (act.action == ACT_FOLD) {
-                require(act.amount == 0, "FOLD_AMT");
+                if (act.amount != 0) revert FoldAmountInvalid();
                 folder = uint8(p);
                 end = End.FOLD;
                 return (end, folder, g.total[0] + g.total[1]);
@@ -119,7 +151,7 @@ contract HeadsUpPokerReplay {
 
             if (act.action == ACT_CHECK_CALL) {
                 if (g.toCall > 0) {
-                    require(act.amount == 0, "CALL_AMT");
+                    if (act.amount != 0) revert CallAmountInvalid();
                     uint256 callAmt = g.toCall;
                     if (g.stacks[p] < callAmt) {
                         callAmt = g.stacks[p];
@@ -128,10 +160,10 @@ contract HeadsUpPokerReplay {
                     g.total[p] += callAmt;
                     // DEP_A, DEP_B checks are never reached
                     // keep for invariant checking
-                    require(
-                        g.total[p] <= maxDeposit[p],
-                        p == 0 ? "DEP_A" : "DEP_B"
-                    );
+                    if (g.total[p] > maxDeposit[p]) {
+                        if (p == 0) revert DepositExceededA();
+                        revert DepositExceededB();
+                    }
                     g.stacks[p] -= callAmt;
                     if (g.stacks[p] == 0) g.allIn[p] = true;
                     g.toCall = 0;
@@ -143,7 +175,7 @@ contract HeadsUpPokerReplay {
                         return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
                     }
                     g.street++;
-                    require(g.street <= 3, "STREET_OVER");
+                    if (g.street > 3) revert StreetOverflow();
                     g.contrib[0] = 0;
                     g.contrib[1] = 0;
                     g.actor = 1;
@@ -151,7 +183,7 @@ contract HeadsUpPokerReplay {
                     continue;
                 }
                 // to call is 0, so this is a check
-                require(act.amount == 0, "CHECK_AMT");
+                if (act.amount != 0) revert CheckAmountInvalid();
                 if (g.checked) {
                     g.street++;
                     if (g.street == 4) {
@@ -172,30 +204,30 @@ contract HeadsUpPokerReplay {
             }
 
             if (act.action == ACT_BET_RAISE) {
-                require(act.amount > 0, "RAISE_ZERO");
+                if (act.amount == 0) revert RaiseAmountZero();
 
                 uint256 prevStack = g.stacks[p];
-                require(act.amount <= prevStack, "RAISE_STACK");
+                if (act.amount > prevStack) revert RaiseStackInvalid();
 
                 // Check reraise limit
-                require(g.raiseCount < MAX_RAISES_PER_STREET, "RAISE_LIMIT");
+                if (g.raiseCount >= MAX_RAISES_PER_STREET) revert RaiseLimitExceeded();
 
                 uint256 toCallBefore = g.toCall;
                 uint256 minRaise = g.lastRaise;
 
                 if (toCallBefore > 0) {
                     // check the bet was raised
-                    require(act.amount > toCallBefore, "RAISE_INC");
+                    if (act.amount <= toCallBefore) revert RaiseInsufficientIncrease();
 
                     uint256 raiseInc = act.amount - toCallBefore;
 
                     if (raiseInc < minRaise) {
                         // allow short all-in that does not re-open
-                        require(act.amount == prevStack, "MIN_RAISE");
+                        if (act.amount != prevStack) revert MinimumRaiseNotMet();
                         g.reopen = false;
                     } else {
                         // full raise
-                        require(g.reopen, "NO_REOPEN");
+                        if (!g.reopen) revert NoReopenAllowed();
                         g.reopen = true;
                         g.lastRaise = raiseInc;
                     }
@@ -203,7 +235,7 @@ contract HeadsUpPokerReplay {
                     // starting a bet
                     if (act.amount < minRaise) {
                         // allow short all-in that does not re-open
-                        require(act.amount == prevStack, "MIN_RAISE");
+                        if (act.amount != prevStack) revert MinimumRaiseNotMet();
                         g.reopen = false;
                     } else {
                         g.reopen = true;
@@ -215,10 +247,10 @@ contract HeadsUpPokerReplay {
                 g.total[p] += act.amount;
                 // DEP_A, DEP_B checks are never reached
                 // keep for invariant checking
-                require(
-                    g.total[p] <= maxDeposit[p],
-                    p == 0 ? "DEP_A" : "DEP_B"
-                );
+                if (g.total[p] > maxDeposit[p]) {
+                    if (p == 0) revert DepositExceededA();
+                    revert DepositExceededB();
+                }
 
                 g.stacks[p] = prevStack - act.amount;
                 if (g.stacks[p] == 0) g.allIn[p] = true;
@@ -231,10 +263,10 @@ contract HeadsUpPokerReplay {
                 continue;
             }
 
-            revert("UNK_ACTION");
+            revert UnknownAction();
         }
 
-        revert("HAND_NOT_DONE");
+        revert HandNotDone();
     }
 
     function _hashAction(Action calldata act) private pure returns (bytes32) {

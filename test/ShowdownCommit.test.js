@@ -375,7 +375,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             escrow
                 .connect(thirdParty)
                 .startShowdownOnBehalfOf(channelId, commits, sigs, board, boardSalts, myHole, mySalts, thirdParty.address)
-        ).to.be.revertedWith("NOT_PLAYER");
+        ).to.be.revertedWithCustomError(escrow, "NotPlayer");
     });
 
     it("allows third party to submit additional commits on behalf of player", async () => {
@@ -442,7 +442,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
                     mySalts,
                     thirdParty.address
                 )
-        ).to.be.revertedWith("NOT_PLAYER");
+        ).to.be.revertedWithCustomError(escrow, "NotPlayer");
     });
 
     it("allows commit override with higher sequence number", async () => {
@@ -517,7 +517,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
                     [15, myHole[1]],
                     [newCommit.salt, mySalts[1]]
                 )
-        ).to.be.revertedWith("HASH_MISMATCH"); // Same seq requires exact match
+        ).to.be.revertedWithCustomError(escrow, "HashMismatch"); // Same seq requires exact match
     });
 
     it("rejects commit override with much lower sequence number", async () => {
@@ -559,7 +559,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
                     [15, myHole[1]],
                     [newCommit.salt, mySalts[1]]
                 )
-        ).to.be.revertedWith("HASH_MISMATCH"); // Same seq requires exact match
+        ).to.be.revertedWithCustomError(escrow, "HashMismatch"); // Same seq requires exact match
     });
 
     it("handles commit with actually lower sequence number", async () => {
@@ -615,7 +615,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
                     [15, myHole[1]],
                     [lowSeqCommit.salt, mySalts[1]]
                 )
-        ).to.be.revertedWith("SEQ_TOO_LOW");
+        ).to.be.revertedWithCustomError(escrow, "SequenceTooLow");
     });
 
     it("allows resubmitting identical commit (same seq, same content)", async () => {
@@ -659,7 +659,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             escrow
                 .connect(player1)
                 .startShowdown(channelId, partialCommits, partialSigs, board, boardSalts, myHole, mySalts)
-        ).to.be.revertedWith("INITIATOR_HOLES_REQUIRED");
+        ).to.be.revertedWithCustomError(escrow, "InitiatorHolesRequired");
     });
 
     it("reverts when initiator provides only one hole card", async () => {
@@ -673,7 +673,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             escrow
                 .connect(player1)
                 .startShowdown(channelId, partialCommits, partialSigs, board, boardSalts, myHole, mySalts)
-        ).to.be.revertedWith("INITIATOR_HOLES_REQUIRED");
+        ).to.be.revertedWithCustomError(escrow, "InitiatorHolesRequired");
     });
 
     it("reverts when player2 initiator does not provide both hole cards", async () => {
@@ -691,6 +691,6 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             escrow
                 .connect(player2)
                 .startShowdown(channelId, partialCommits, partialSigs, board, boardSalts, player2Hole, player2Salts)
-        ).to.be.revertedWith("INITIATOR_HOLES_REQUIRED");
+        ).to.be.revertedWithCustomError(escrow, "InitiatorHolesRequired");
     });
 });
