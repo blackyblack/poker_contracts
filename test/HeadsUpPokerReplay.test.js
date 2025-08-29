@@ -1056,4 +1056,116 @@ describe("HeadsUpPokerReplay", function () {
             await expect(replay.replayAndGetEndState(actions, 50n, 50n)).to.be.revertedWithCustomError(replay, "RaiseLimitExceeded");
         });
     });
+
+    describe("Alternating Small Blind", function () {
+        // Helper to build actions with a specific handId
+        function buildActionsWithHandId(specs, handId) {
+            const channelId = 1n;
+            let seq = 0;
+            let prevHash = handGenesis(channelId, handId);
+            const actions = [];
+            for (const spec of specs) {
+                const act = {
+                    channelId,
+                    handId,
+                    seq: seq++,
+                    action: spec.action,
+                    amount: spec.amount,
+                    prevHash
+                };
+                actions.push(act);
+                prevHash = actionHash(act);
+            }
+            return actions;
+        }
+
+        it("should have Player 0 as small blind for odd handId", async function () {
+            // For handId=1 (odd), Player 0 should be small blind
+            const actions = buildActionsWithHandId([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.FOLD, amount: 0n } // Small blind folds
+            ], 1n);
+
+            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(0n); // Player 0 (small blind) folded
+            expect(potSize).to.equal(3n); // SB: 1 + BB: 2
+        });
+
+        it("should have Player 1 as small blind for even handId", async function () {
+            // For handId=2 (even), Player 1 should be small blind
+            const actions = buildActionsWithHandId([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.FOLD, amount: 0n } // Small blind folds
+            ], 2n);
+
+            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // Player 1 (small blind) folded
+            expect(potSize).to.equal(3n); // SB: 1 + BB: 2
+        });
+
+        it("should alternate properly across multiple handIds", async function () {
+            // Test several consecutive handIds
+            const testCases = [
+                { handId: 3n, expectedSbFolder: 0n },
+                { handId: 4n, expectedSbFolder: 1n },
+                { handId: 5n, expectedSbFolder: 0n },
+                { handId: 6n, expectedSbFolder: 1n }
+            ];
+
+            for (const testCase of testCases) {
+                const actions = buildActionsWithHandId([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.FOLD, amount: 0n } // Small blind folds
+                ], testCase.handId);
+
+                const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
+                expect(end).to.equal(0n); // End.FOLD
+                expect(folder).to.equal(testCase.expectedSbFolder); // Check correct player folded
+                expect(potSize).to.equal(3n); // SB: 1 + BB: 2
+            }
+        });
+
+        it("should correctly handle stack deductions for alternating small blind", async function () {
+            // Test that stacks are correctly deducted based on who posts which blind
+            // For handId=2 (even), Player 1 posts SB, Player 0 posts BB
+            const actions = buildActionsWithHandId([
+                { action: ACTION.SMALL_BLIND, amount: 5n },
+                { action: ACTION.BIG_BLIND, amount: 10n }
+                // Both all-in scenario to test stack deductions
+            ], 2n);
+
+            // Player 0 has 10 chips, Player 1 has 5 chips
+            // Player 1 posts SB (5), Player 0 posts BB (10) - should go all-in
+            const [end, , potSize] = await replay.replayAndGetEndState(actions, 10n, 5n);
+            expect(end).to.equal(1n); // End.SHOWDOWN (both all-in)
+            expect(potSize).to.equal(15n); // Total pot: 5 + 10 = 15
+        });
+
+        it("should validate small blind amount against correct player's stack", async function () {
+            // For handId=2 (even), Player 1 is small blind - should validate against stackB
+            const actions = buildActionsWithHandId([
+                { action: ACTION.SMALL_BLIND, amount: 15n }, // More than stackB (10)
+                { action: ACTION.BIG_BLIND, amount: 30n }
+            ], 2n);
+
+            await expect(replay.replayAndGetEndState(actions, 50n, 10n))
+                .to.be.revertedWithCustomError(replay, "SmallBlindAmountInvalid");
+        });
+
+        it("should validate big blind amount against correct player's stack", async function () {
+            // For handId=2 (even), Player 1 is SB, Player 0 is BB - should validate BB against stackA
+            const actions = buildActionsWithHandId([
+                { action: ACTION.SMALL_BLIND, amount: 5n },
+                { action: ACTION.BIG_BLIND, amount: 15n } // More than stackA (10)
+            ], 2n);
+
+            await expect(replay.replayAndGetEndState(actions, 10n, 50n))
+                .to.be.revertedWithCustomError(replay, "BigBlindStackInvalid");
+        });
+    });
 });
