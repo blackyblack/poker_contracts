@@ -1,11 +1,10 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("./actions");
-const { GENESIS, ACTION_TYPEHASH, actionHash, handGenesis } = require("./hashes");
+const { actionHash, handGenesis } = require("./hashes");
 
 // Helper to build actions with proper hashes and sequence numbers
 function buildActions(specs) {
-    const abi = ethers.AbiCoder.defaultAbiCoder();
     const channelId = 1n;
     const handId = 1n; // Default handId for tests
     let seq = 0;

@@ -19,7 +19,7 @@ contract HeadsUpPokerReplay {
 
     bytes32 private constant ACTION_TYPEHASH =
         keccak256(
-            "Action(uint256 channelId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
+            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
         );
 
     // ------------------------------------------------------------------

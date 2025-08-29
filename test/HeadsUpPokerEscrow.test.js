@@ -236,7 +236,7 @@ describe("HeadsUpPokerEscrow", function () {
             // Second game - should be able to reuse the same channel
             await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
                 .to.emit(escrow, "ChannelOpened")
-                .withArgs(channelId, player1.address, player2.address, deposit);
+                .withArgs(channelId, player1.address, player2.address, deposit, 2n);
 
             await expect(escrow.connect(player2).join(channelId, { value: deposit }))
                 .to.emit(escrow, "ChannelJoined")

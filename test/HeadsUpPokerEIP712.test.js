@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("./actions");
-const { domainSeparator, GENESIS, cardCommitDigest, actionDigest, handGenesis } = require("./hashes");
+const { domainSeparator, cardCommitDigest, actionDigest, handGenesis } = require("./hashes");
 const { SLOT } = require("./slots");
 
 describe("HeadsUpPokerEIP712", function () {

@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { GENESIS, ZERO32, domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("./hashes");
+const { ZERO32, domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("./hashes");
 const { SLOT } = require("./slots");
 
 // Hardhat default account private keys
