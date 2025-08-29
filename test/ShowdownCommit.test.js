@@ -21,11 +21,12 @@ async function signCommit(a, b, dom, cc) {
     return [sigA, sigB];
 }
 
-async function buildCommit(a, b, dom, channelId, slot, card, seq) {
+async function buildCommit(a, b, dom, channelId, slot, card, seq, handId = 1n) {
     const salt = ethers.hexlify(ethers.randomBytes(32));
     const cHash = commitHash(dom, channelId, slot, card, salt);
     const cc = {
         channelId,
+        handId,
         seq,
         slot,
         commitHash: cHash,

@@ -19,6 +19,7 @@ describe("HeadsUpPokerEIP712", function () {
     it("recovers signer for Action", async function () {
         const action = {
             channelId,
+            handId: 1n,
             seq: 1,
             action: ACTION.CHECK_CALL,
             amount: 100n,
@@ -42,6 +43,7 @@ describe("HeadsUpPokerEIP712", function () {
     it("recovers signer for CardCommit", async function () {
         const commit = {
             channelId,
+            handId: 1n,
             seq: 2,
             slot: SLOT.A2,
             commitHash: ethers.keccak256(ethers.toUtf8Bytes("commit")),
