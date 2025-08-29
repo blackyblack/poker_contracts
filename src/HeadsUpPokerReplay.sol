@@ -19,7 +19,7 @@ contract HeadsUpPokerReplay {
 
     bytes32 private constant ACTION_TYPEHASH =
         keccak256(
-            "Action(uint256 channelId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
+            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
         );
 
     // ------------------------------------------------------------------
@@ -68,8 +68,8 @@ contract HeadsUpPokerReplay {
         uint8 raiseCount;  // Number of raises on current street
     }
 
-    function handGenesis(uint256 chId) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked("HUP_GENESIS", chId));
+    function handGenesis(uint256 chId, uint256 handId) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked("HUP_GENESIS", chId, handId));
     }
 
     /// @notice Replays a sequence of actions and returns the terminal state
@@ -82,7 +82,7 @@ contract HeadsUpPokerReplay {
         if (actions.length < 2) revert NoBlinds();
 
         Action calldata sb = actions[0];
-        if (sb.prevHash != handGenesis(sb.channelId)) revert SmallBlindPrevHashInvalid();
+        if (sb.prevHash != handGenesis(sb.channelId, sb.handId)) revert SmallBlindPrevHashInvalid();
         if (sb.action != ACT_SMALL_BLIND) revert SmallBlindActionInvalid();
         if (sb.seq != 0) revert SmallBlindSequenceInvalid();
         if (sb.amount == 0 || sb.amount > stackA) revert SmallBlindAmountInvalid();
@@ -275,6 +275,7 @@ contract HeadsUpPokerReplay {
                 abi.encode(
                     ACTION_TYPEHASH,
                     act.channelId,
+                    act.handId,
                     act.seq,
                     act.action,
                     act.amount,

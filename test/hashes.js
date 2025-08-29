@@ -9,17 +9,22 @@ const DOMAIN_TYPEHASH = ethers.keccak256(
 );
 const ACTION_TYPEHASH = ethers.keccak256(
     ethers.toUtf8Bytes(
-        "Action(uint256 channelId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
+        "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
     )
 );
 const CARD_COMMIT_TYPEHASH = ethers.keccak256(
     ethers.toUtf8Bytes(
-        "CardCommit(uint256 channelId,uint32 seq,uint8 slot,bytes32 commitHash,bytes32 prevHash)"
+        "CardCommit(uint256 channelId,uint256 handId,uint32 seq,uint8 slot,bytes32 commitHash,bytes32 prevHash)"
     )
 );
 
 const GENESIS = ethers.keccak256(
     ethers.solidityPacked(["string", "uint256"], ["HUP_GENESIS", 1n]));
+
+function handGenesis(channelId, handId) {
+    return ethers.keccak256(
+        ethers.solidityPacked(["string", "uint256", "uint256"], ["HUP_GENESIS", channelId, handId]));
+}
 
 const NAME_HASH = ethers.keccak256(ethers.toUtf8Bytes("HeadsUpPoker"));
 const VERSION_HASH = ethers.keccak256(ethers.toUtf8Bytes("1"));
@@ -50,6 +55,7 @@ function cardCommitDigest(dom, cc) {
             [
                 "bytes32",
                 "uint256",
+                "uint256",
                 "uint32",
                 "uint8",
                 "bytes32",
@@ -58,6 +64,7 @@ function cardCommitDigest(dom, cc) {
             [
                 CARD_COMMIT_TYPEHASH,
                 cc.channelId,
+                cc.handId,
                 cc.seq,
                 cc.slot,
                 cc.commitHash,
@@ -72,10 +79,11 @@ function actionHash(action) {
     const abi = ethers.AbiCoder.defaultAbiCoder();
     return ethers.keccak256(
         abi.encode(
-            ["bytes32", "uint256", "uint32", "uint8", "uint128", "bytes32"],
+            ["bytes32", "uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
             [
                 ACTION_TYPEHASH,
                 action.channelId,
+                action.handId,
                 action.seq,
                 action.action,
                 action.amount,
@@ -108,5 +116,6 @@ module.exports = {
     commitHash,
     cardCommitDigest,
     actionHash,
-    actionDigest
+    actionDigest,
+    handGenesis
 };

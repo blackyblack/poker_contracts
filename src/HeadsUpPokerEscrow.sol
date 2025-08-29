@@ -81,6 +81,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 deposit1;
         uint256 deposit2;
         bool finalized;
+        uint256 handId;
+        uint256 nextHandId; // Local counter for this channel
     }
 
     mapping(uint256 => Channel) private channels;
@@ -92,7 +94,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 indexed channelId,
         address indexed player1,
         address indexed player2,
-        uint256 amount
+        uint256 amount,
+        uint256 handId
     );
     event ChannelJoined(
         uint256 indexed channelId,
@@ -132,6 +135,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return (ch.deposit1, ch.deposit2);
     }
 
+    /// @notice Get the handId for a channel
+    function getHandId(uint256 channelId) external view returns (uint256) {
+        return channels[channelId].handId;
+    }
+
     /// @notice Player withdraws their deposit from a finalized channel
     function withdraw(uint256 channelId) external nonReentrant {
         Channel storage ch = channels[channelId];
@@ -162,17 +170,28 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     function open(
         uint256 channelId,
         address opponent
-    ) external payable nonReentrant {
+    ) external payable nonReentrant returns (uint256 handId) {
         Channel storage ch = channels[channelId];
         if (!(ch.player1 == address(0) || (ch.finalized && ch.deposit1 == 0 && ch.deposit2 == 0))) revert ChannelExists();
         if (opponent == address(0) || opponent == msg.sender) revert BadOpponent();
         if (msg.value == 0) revert NoDeposit();
+
+        // Initialize nextHandId for new channels
+        bool isNewChannel = (ch.player1 == address(0));
+        if (isNewChannel) {
+            ch.nextHandId = 1; // Start at 1 for new channels
+        }
+        // For reused channels, nextHandId keeps incrementing from previous value
+        
+        // Generate channel-local handId
+        handId = ch.nextHandId++;
 
         ch.player1 = msg.sender;
         ch.player2 = opponent;
         ch.deposit1 = msg.value;
         ch.deposit2 = 0; // Reset deposit2 for channel reuse
         ch.finalized = false;
+        ch.handId = handId;
 
         // Reset showdown state when reusing channel
         ShowdownState storage sd = showdowns[channelId];
@@ -185,7 +204,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             sd.maxSeq = 0;
         }
 
-        emit ChannelOpened(channelId, msg.sender, opponent, msg.value);
+        emit ChannelOpened(channelId, msg.sender, opponent, msg.value, handId);
     }
 
     /// @notice Opponent joins an open channel by matching deposit

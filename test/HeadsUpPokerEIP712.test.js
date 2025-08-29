@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("./actions");
-const { domainSeparator, GENESIS, cardCommitDigest, actionDigest } = require("./hashes");
+const { domainSeparator, cardCommitDigest, actionDigest, handGenesis } = require("./hashes");
 const { SLOT } = require("./slots");
 
 describe("HeadsUpPokerEIP712", function () {
@@ -19,10 +19,11 @@ describe("HeadsUpPokerEIP712", function () {
     it("recovers signer for Action", async function () {
         const action = {
             channelId,
+            handId: 1n,
             seq: 1,
             action: ACTION.CHECK_CALL,
             amount: 100n,
-            prevHash: GENESIS,
+            prevHash: handGenesis(channelId, 1n),
         };
 
         const chainId = (await ethers.provider.getNetwork()).chainId;
@@ -42,6 +43,7 @@ describe("HeadsUpPokerEIP712", function () {
     it("recovers signer for CardCommit", async function () {
         const commit = {
             channelId,
+            handId: 1n,
             seq: 2,
             slot: SLOT.A2,
             commitHash: ethers.keccak256(ethers.toUtf8Bytes("commit")),

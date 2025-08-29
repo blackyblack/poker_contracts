@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { GENESIS, ZERO32, domainSeparator, commitHash, cardCommitDigest } = require("./hashes");
+const { ZERO32, domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("./hashes");
 const { SLOT } = require("./slots");
 
 // Hardhat default account private keys
@@ -21,15 +21,16 @@ async function signCommit(a, b, dom, cc) {
     return [sigA, sigB];
 }
 
-async function buildCommit(a, b, dom, channelId, slot, card, seq) {
+async function buildCommit(a, b, dom, channelId, slot, card, seq, handId = 1n) {
     const salt = ethers.hexlify(ethers.randomBytes(32));
     const cHash = commitHash(dom, channelId, slot, card, salt);
     const cc = {
         channelId,
+        handId,
         seq,
         slot,
         commitHash: cHash,
-        prevHash: GENESIS,
+        prevHash: handGenesis(channelId, handId),
     };
     // a and b are wallets, not signers
     const [sigA, sigB] = await signCommit(a, b, dom, cc);

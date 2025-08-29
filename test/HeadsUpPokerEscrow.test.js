@@ -19,11 +19,15 @@ describe("HeadsUpPokerEscrow", function () {
         it("should allow player1 to open a channel", async function () {
             await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
                 .to.emit(escrow, "ChannelOpened")
-                .withArgs(channelId, player1.address, player2.address, deposit);
+                .withArgs(channelId, player1.address, player2.address, deposit, 1n); // Added handId as 5th argument
 
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
             expect(p1Stack).to.equal(deposit);
             expect(p2Stack).to.equal(0);
+            
+            // Verify handId is set correctly
+            const handId = await escrow.getHandId(channelId);
+            expect(handId).to.equal(1n);
         });
 
         it("should reject opening channel with zero deposit", async function () {
@@ -44,6 +48,54 @@ describe("HeadsUpPokerEscrow", function () {
 
             await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
                 .to.be.revertedWithCustomError(escrow, "ChannelExists");
+        });
+
+        it("should generate local handIds per channel", async function () {
+            const channelId1 = 100n;
+            const channelId2 = 101n;
+            
+            await escrow.connect(player1).open(channelId1, player2.address, { value: deposit });
+            const handId1 = await escrow.getHandId(channelId1);
+            
+            await escrow.connect(player1).open(channelId2, player2.address, { value: deposit });
+            const handId2 = await escrow.getHandId(channelId2);
+            
+            // Both channels should start with handId = 1 (local to each channel)
+            expect(handId1).to.equal(1n);
+            expect(handId2).to.equal(1n);
+        });
+
+        it("should increment handId when same channel is reused", async function () {
+            const channelId = 200n;
+            
+            // First hand in the channel
+            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player2).join(channelId, { value: deposit });
+            
+            const handId1 = await escrow.getHandId(channelId);
+            expect(handId1).to.equal(1n);
+            
+            // Simulate ending the first hand by settling on fold
+            // This will finalize the channel and allow reuse
+            await escrow.connect(player1).settleFold(channelId, player2.address);
+            
+            // Check channel is finalized
+            const [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(0);
+            expect(p2Stack).to.equal(deposit * 2n); // Winner gets all
+            
+            // Both players withdraw their winnings
+            await escrow.connect(player2).withdraw(channelId);
+            
+            // Verify channel is ready for reuse (deposits are 0)
+            const [p1StackAfter, p2StackAfter] = await escrow.stacks(channelId);
+            expect(p1StackAfter).to.equal(0);
+            expect(p2StackAfter).to.equal(0);
+            
+            // Second hand in the same channel - should get handId = 2
+            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            const handId2 = await escrow.getHandId(channelId);
+            expect(handId2).to.equal(2n);
         });
     });
 
@@ -184,7 +236,7 @@ describe("HeadsUpPokerEscrow", function () {
             // Second game - should be able to reuse the same channel
             await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
                 .to.emit(escrow, "ChannelOpened")
-                .withArgs(channelId, player1.address, player2.address, deposit);
+                .withArgs(channelId, player1.address, player2.address, deposit, 2n);
 
             await expect(escrow.connect(player2).join(channelId, { value: deposit }))
                 .to.emit(escrow, "ChannelJoined")
