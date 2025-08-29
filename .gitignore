@@ -6,3 +6,5 @@ build/
 /tmp/
 *_tmp_*
 *.bin
+# Implementation documentation and temp files
+ALTERNATING_BLIND_IMPLEMENTATION.md
