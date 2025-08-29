@@ -83,6 +83,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bool finalized;
         uint256 handId;
         uint256 nextHandId; // Local counter for this channel
+        uint256 lastJoinedHandId; // Track when player2 last joined
     }
 
     mapping(uint256 => Channel) private channels;
@@ -191,7 +192,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ch.player1 = msg.sender;
         ch.player2 = opponent;
         ch.deposit1 += msg.value; // Add to existing deposit instead of overwriting
-        ch.deposit2 = 0; // Reset deposit2 for channel reuse
+        // Note: Do not reset deposit2 to allow player2 to accumulate winnings
         ch.finalized = false;
         ch.handId = handId;
 
@@ -214,11 +215,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.player2 != msg.sender) revert NotOpponent();
-        if (ch.deposit2 != 0) revert AlreadyJoined();
+        if (ch.lastJoinedHandId == ch.handId) revert AlreadyJoined(); // Check if already joined this hand
         if (ch.finalized) revert AlreadyFinalized();
-        if (msg.value == 0) revert NoDeposit();
+        
+        // Allow zero deposit only if there's existing deposit from previous games
+        if (msg.value == 0 && ch.deposit2 == 0) revert NoDeposit();
 
-        ch.deposit2 = msg.value;
+        ch.deposit2 += msg.value; // Add to existing deposit instead of overwriting
+        ch.lastJoinedHandId = ch.handId; // Mark as joined for this hand
 
         emit ChannelJoined(channelId, msg.sender, msg.value);
     }
