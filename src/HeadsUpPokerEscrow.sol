@@ -15,15 +15,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     // Slot layout constants
     // ------------------------------------------------------------------
     uint16 constant MASK_ALL = 0x01FF; // bits 0..8
-    uint8 constant SLOT_A1 = 0;
-    uint8 constant SLOT_A2 = 1;
-    uint8 constant SLOT_B1 = 2;
-    uint8 constant SLOT_B2 = 3;
-    uint8 constant SLOT_FLOP1 = 4;
-    uint8 constant SLOT_FLOP2 = 5;
-    uint8 constant SLOT_FLOP3 = 6;
-    uint8 constant SLOT_TURN = 7;
-    uint8 constant SLOT_RIVER = 8;
 
     uint256 public constant revealWindow = 1 hours;
 
@@ -242,12 +233,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     // ------------------------------------------------------------------
     // Internal helpers
     // ------------------------------------------------------------------
-    function toSlotKey(uint8 role, uint8 index) internal pure returns (uint8) {
-        if (role == 0 && index < 2) return index; // player A
-        if (role == 1 && index < 2) return uint8(2 + index); // player B
-        if (role == 2 && index < 5) return uint8(4 + index); // board cards
-        revert BadRoleIndex();
-    }
 
     // Reduce stack pressure: move signer checks into a small helper.
     function _checkSigners(
@@ -285,7 +270,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             HeadsUpPokerEIP712.CardCommit calldata cc = commits[i];
             // Limit lifetime of locals to this block
             {
-                uint8 slot = toSlotKey(cc.role, cc.index);
+                uint8 slot = cc.slot;
                 uint16 bit = uint16(1) << slot;
 
                 if ((allowedMask & bit) == 0) revert CommitUnexpected(slot);
