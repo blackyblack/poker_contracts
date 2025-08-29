@@ -394,17 +394,6 @@ describe("HeadsUpPokerEscrow", function () {
             expect(p2Stack).to.equal(0);
         });
 
-        it("should reject joining a finalized channel", async function () {
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-            // Finalize via fold settlement
-            await escrow.settleFold(channelId, player1.address);
-
-            // Attempt to join again should fail (channel is finalized)
-            await expect(escrow.connect(player2).join(channelId, { value: deposit }))
-                .to.be.revertedWithCustomError(escrow, "AlreadyFinalized");
-        });
-
         it("should reject joining after withdrawal (channel must be reopened)", async function () {
             await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
@@ -413,7 +402,7 @@ describe("HeadsUpPokerEscrow", function () {
 
             // After withdrawal the channel should require a fresh open; join must fail
             await expect(escrow.connect(player2).join(channelId, { value: deposit }))
-                .to.be.revertedWithCustomError(escrow, "AlreadyFinalized");
+                .to.be.revertedWithCustomError(escrow, "AlreadyJoined");
         });
     });
 
