@@ -5,11 +5,15 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
+import {HeadsUpPokerReplay} from "./HeadsUpPokerReplay.sol";
+import {Action} from "./HeadsUpPokerActions.sol";
 
 /// @title HeadsUpPokerEscrow - Simple escrow contract for heads up poker matches using ETH only
 /// @notice Supports opening channels, joining, settling on fold and basic showdown flow
 contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     using ECDSA for bytes32;
+
+    HeadsUpPokerReplay private immutable replay;
 
     // ------------------------------------------------------------------
     // Slot layout constants
@@ -52,6 +56,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error StillRevealing();
     error OpponentHoleOpenFailed();
     error InitiatorHolesRequired();
+    error ActionSignatureLengthMismatch();
+    error ActionWrongChannel();
+    error ActionWrongHand();
+    error ActionWrongSignerA();
+    error ActionWrongSignerB();
+    error ReplayDidNotEndInFold();
+    error NoActionsProvided();
 
     // ------------------------------------------------------------------
     // Showdown state
@@ -87,6 +98,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     mapping(uint256 => Channel) private channels;
+
+    constructor() {
+        replay = new HeadsUpPokerReplay();
+    }
 
     // ---------------------------------------------------------------------
     // Events
@@ -226,18 +241,40 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit ChannelJoined(channelId, msg.sender, msg.value);
     }
 
-    /// @notice Winner claims the entire pot when opponent folds
+    /// @notice Settles fold using co-signed action transcript verification  
+    /// @param channelId The channel identifier
+    /// @param actions Array of co-signed actions representing the poker hand
+    /// @param signatures Array of signatures (2 per action: player1, player2)
     function settleFold(
         uint256 channelId,
-        address winner
+        Action[] calldata actions,
+        bytes[] calldata signatures
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         ShowdownState storage sd = showdowns[channelId];
         if (sd.inProgress) revert ShowdownInProgress();
-        if (winner != ch.player1 && winner != ch.player2) revert NotPlayer();
+        if (ch.player1 == address(0)) revert NoChannel();
+        if (actions.length == 0) revert NoActionsProvided();
+        
+        // Verify signatures for all actions
+        _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
+        
+        // Replay actions to verify they end in a fold
+        (HeadsUpPokerReplay.End endType, uint8 folder, ) = replay.replayAndGetEndState(
+            actions, 
+            ch.deposit1, 
+            ch.deposit2
+        );
+        
+        if (endType != HeadsUpPokerReplay.End.FOLD) revert ReplayDidNotEndInFold();
+        
+        // Winner is the non-folder
+        address winner = folder == 0 ? ch.player2 : ch.player1;
 
-        // TODO: add verification that opponent actually folded
-
+        // TODO: take the pot from the action replay instead of summing deposits
+        // TODO: do not replace deposits with pot, but rather add/subtract the difference
+        // TODO: return each player's pot from the replay
+        
         uint256 pot = ch.deposit1 + ch.deposit2;
 
         // Add pot to winner's deposit instead of sending to address
@@ -269,6 +306,42 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     ) private pure {
         if (digest.recover(sigA) != addrA) revert CommitWrongSignerA(slot);
         if (digest.recover(sigB) != addrB) revert CommitWrongSignerB(slot);
+    }
+
+    /// @notice Verifies that all actions are co-signed by both players
+    /// @param channelId The channel identifier 
+    /// @param handId The hand identifier
+    /// @param actions Array of actions to verify
+    /// @param signatures Array of signatures (2 per action: player1, player2)
+    /// @param player1 Address of player1
+    /// @param player2 Address of player2
+    function _verifyActionSignatures(
+        uint256 channelId,
+        uint256 handId,
+        Action[] calldata actions,
+        bytes[] calldata signatures,
+        address player1,
+        address player2
+    ) private view {
+        if (actions.length * 2 != signatures.length) revert ActionSignatureLengthMismatch();
+        
+        for (uint256 i = 0; i < actions.length; i++) {
+            Action calldata action = actions[i];
+            
+            // Verify action belongs to correct channel and hand
+            if (action.channelId != channelId) revert ActionWrongChannel();
+            if (action.handId != handId) revert ActionWrongHand();
+            
+            // Get EIP712 digest for this action
+            bytes32 digest = digestAction(action);
+            
+            // Verify both players signed this action
+            bytes calldata sig1 = signatures[i * 2];
+            bytes calldata sig2 = signatures[i * 2 + 1];
+            
+            if (digest.recover(sig1) != player1) revert ActionWrongSignerA();
+            if (digest.recover(sig2) != player2) revert ActionWrongSignerB();
+        }
     }
 
     function verifyCoSignedCommits(
