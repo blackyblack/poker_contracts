@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { ZERO32, domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("./hashes");
+const { domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("./hashes");
 const { SLOT } = require("./slots");
 const { CARD } = require("./cards");
 
@@ -30,13 +30,12 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
         return [sigA, sigB];
     }
 
-    async function buildCommit(a, b, dom, channelId, slot, card, seq, handId = 1n) {
+    async function buildCommit(a, b, dom, channelId, slot, card, handId = 1n) {
         const salt = ethers.hexlify(ethers.randomBytes(32));
         const cHash = commitHash(dom, channelId, slot, card, salt);
         const cc = {
             channelId,
             handId,
-            seq,
             slot,
             commitHash: cHash,
             prevHash: handGenesis(channelId, handId),
@@ -58,7 +57,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
         const slots = [SLOT.A1, SLOT.A2, SLOT.B1, SLOT.B2, SLOT.FLOP1, SLOT.FLOP2, SLOT.FLOP3, SLOT.TURN, SLOT.RIVER];
 
         for (let i = 0; i < allCards.length; i++) {
-            const obj = await buildCommit(wallet1, wallet2, dom, channelId, slots[i], allCards[i], i);
+            const obj = await buildCommit(wallet1, wallet2, dom, channelId, slots[i], allCards[i]);
             commits.push(obj.cc);
             sigs.push(obj.sigA, obj.sigB);
             objs.push(obj);

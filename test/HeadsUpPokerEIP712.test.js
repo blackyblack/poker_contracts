@@ -44,7 +44,6 @@ describe("HeadsUpPokerEIP712", function () {
         const commit = {
             channelId,
             handId: 1n,
-            seq: 2,
             slot: SLOT.A2,
             commitHash: ethers.keccak256(ethers.toUtf8Bytes("commit")),
             prevHash: ethers.ZeroHash

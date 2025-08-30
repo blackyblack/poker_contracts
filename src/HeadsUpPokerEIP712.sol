@@ -30,7 +30,7 @@ contract HeadsUpPokerEIP712 is EIP712 {
         );
     bytes32 internal constant CARD_COMMIT_TYPEHASH =
         keccak256(
-            "CardCommit(uint256 channelId,uint256 handId,uint32 seq,uint8 slot,bytes32 commitHash,bytes32 prevHash)"
+            "CardCommit(uint256 channelId,uint256 handId,uint8 slot,bytes32 commitHash,bytes32 prevHash)"
         );
 
     // ---------------------------------------------------------------------
@@ -39,7 +39,6 @@ contract HeadsUpPokerEIP712 is EIP712 {
     struct CardCommit {
         uint256 channelId;
         uint256 handId;
-        uint32 seq;
         // i.e. SLOT_A1, SLOT_A2, SLOT_B1, SLOT_B2, SLOT_FLOP1, SLOT_FLOP2, SLOT_FLOP3, SLOT_TURN, SLOT_RIVER
         uint8 slot;
         // i.e. keccak256( slot || cardCode || salt )
@@ -82,7 +81,6 @@ contract HeadsUpPokerEIP712 is EIP712 {
                 CARD_COMMIT_TYPEHASH,
                 cc.channelId,
                 cc.handId,
-                cc.seq,
                 cc.slot,
                 cc.commitHash,
                 cc.prevHash
