@@ -183,9 +183,21 @@ contract HeadsUpPokerReplay {
                 if (g.toCall > 0) {
                     if (act.amount != 0) revert CallAmountInvalid();
                     uint256 callAmt = g.toCall;
+                    uint8 opp = 1 - p;
+                    
+                    // Handle side pot: if caller can't match full bet, reduce opponent's contribution
                     if (g.stacks[p] < callAmt) {
                         callAmt = g.stacks[p];
+                        
+                        // Calculate how much the opponent should return (side pot logic)
+                        uint256 excessContrib = g.contrib[opp] - g.contrib[p] - callAmt;
+                        if (excessContrib > 0) {
+                            g.contrib[opp] -= excessContrib;
+                            g.total[opp] -= excessContrib;
+                            g.stacks[opp] += excessContrib; // Return excess to opponent's stack
+                        }
                     }
+                    
                     g.contrib[p] += callAmt;
                     g.total[p] += callAmt;
                     // DEP_A, DEP_B checks are never reached

@@ -261,7 +261,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
         
         // Replay actions to verify they end in a fold
-        (HeadsUpPokerReplay.End endType, uint8 folder, ) = replay.replayAndGetEndState(
+        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 actualPot) = replay.replayAndGetEndState(
             actions, 
             ch.deposit1, 
             ch.deposit2
@@ -272,24 +272,23 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         // Winner is the non-folder
         address winner = folder == 0 ? ch.player2 : ch.player1;
 
-        // TODO: take the pot from the action replay instead of summing deposits
-        // TODO: do not replace deposits with pot, but rather add/subtract the difference
-        // TODO: return each player's pot from the replay
+        // Use actual pot from replay (handles side pots correctly)
+        // Calculate unused deposits that should be returned
+        uint256 totalDeposits = ch.deposit1 + ch.deposit2;
+        uint256 unusedAmount = totalDeposits > actualPot ? totalDeposits - actualPot : 0;
         
-        uint256 pot = ch.deposit1 + ch.deposit2;
-
-        // Add pot to winner's deposit instead of sending to address
+        // Add pot to winner's deposit and handle unused amount
         if (winner == ch.player1) {
-            ch.deposit1 = pot;
+            ch.deposit1 = actualPot + unusedAmount; // Winner gets pot plus any unused deposits
             ch.deposit2 = 0;
         } else {
-            ch.deposit1 = 0;
-            ch.deposit2 = pot;
+            ch.deposit1 = unusedAmount; // Non-winner gets back unused deposits
+            ch.deposit2 = actualPot;
         }
 
         ch.finalized = true;
 
-        emit FoldSettled(channelId, winner, pot);
+        emit FoldSettled(channelId, winner, actualPot);
     }
 
     // ------------------------------------------------------------------

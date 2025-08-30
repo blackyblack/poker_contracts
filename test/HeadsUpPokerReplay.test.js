@@ -525,6 +525,22 @@ describe("HeadsUpPokerReplay", function () {
             const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 5n); // BB only has 5 total
             expect(end).to.equal(1n); // End.SHOWDOWN (BB goes all-in with remaining 3)
         });
+
+        it("correctly calculates side pot when short stack goes all-in", async function () {
+            // Test the specific scenario from the problem statement:
+            // Player1 bets 100, player2 calls with 50 (his full stack) and all-ins.
+            // Only 50 from player1 should go to the pot, not the full 100.
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 100n }, // SB bets 100
+                { action: ACTION.CHECK_CALL, amount: 0n } // BB calls with only 50 total stack
+            ]);
+            const [end, , potSize] = await replay.replayAndGetEndState(actions, 200n, 50n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            // With side pot logic: SB total contribution = 50, BB total contribution = 50
+            expect(potSize).to.equal(100n); // 50 + 50 = 100 (not 150 as before)
+        });
     });
 
     describe("Bet/Raise Action Tests", function () {
