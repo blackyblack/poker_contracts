@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { CARD } = require("./cards");
 
 describe("PokerEvaluator", function () {
     let evaluator;
@@ -8,13 +9,6 @@ describe("PokerEvaluator", function () {
         const PokerEvaluator = await ethers.getContractFactory("PokerEvaluator");
         evaluator = await PokerEvaluator.deploy();
     });
-
-    // Helper function to create a card
-    // suit: 0=Clubs, 1=Diamonds, 2=Hearts, 3=Spades
-    // rank: 1=Ace, 2-10=face value, 11=Jack, 12=Queen, 13=King
-    function makeCard(suit, rank) {
-        return (suit << 4) | rank;
-    }
 
     // Helper to create test hands
     function makeHand(cards) {
@@ -29,13 +23,13 @@ describe("PokerEvaluator", function () {
         it("should rank high card correctly", async function () {
             // A-K-Q-J-9 high (mixed suits)
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 13), // King of Diamonds
-                makeCard(2, 12), // Queen of Hearts
-                makeCard(3, 11), // Jack of Spades
-                makeCard(0, 9),  // 9 of Clubs
-                makeCard(1, 7),  // 7 of Diamonds
-                makeCard(2, 5)   // 5 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.KING_DIAMONDS, // King of Diamonds
+                CARD.QUEEN_HEARTS,  // Queen of Hearts
+                CARD.JACK_SPADES,   // Jack of Spades
+                CARD.NINE_CLUBS,    // 9 of Clubs
+                CARD.SEVEN_DIAMONDS,// 7 of Diamonds
+                CARD.FIVE_HEARTS    // 5 of Hearts
             ]);
 
             const rank = await evaluator.evaluateHand(hand);
@@ -48,13 +42,13 @@ describe("PokerEvaluator", function () {
         it("should rank pair correctly", async function () {
             // Pair of Aces with K-Q-J kickers
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 1),  // Ace of Diamonds
-                makeCard(2, 13), // King of Hearts
-                makeCard(3, 12), // Queen of Spades
-                makeCard(0, 11), // Jack of Clubs
-                makeCard(1, 9),  // 9 of Diamonds
-                makeCard(2, 7)   // 7 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.ACE_DIAMONDS,  // Ace of Diamonds
+                CARD.KING_HEARTS,   // King of Hearts
+                CARD.QUEEN_SPADES,  // Queen of Spades
+                CARD.JACK_CLUBS,    // Jack of Clubs
+                CARD.NINE_DIAMONDS, // 9 of Diamonds
+                CARD.SEVEN_HEARTS   // 7 of Hearts
             ]);
 
             const rank = await evaluator.evaluateHand(hand);
@@ -65,13 +59,13 @@ describe("PokerEvaluator", function () {
         it("should rank two pair correctly", async function () {
             // Aces and Kings with Queen kicker
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 1),  // Ace of Diamonds
-                makeCard(2, 13), // King of Hearts
-                makeCard(3, 13), // King of Spades
-                makeCard(0, 12), // Queen of Clubs
-                makeCard(1, 9),  // 9 of Diamonds
-                makeCard(2, 7)   // 7 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.ACE_DIAMONDS,  // Ace of Diamonds
+                CARD.KING_HEARTS,   // King of Hearts
+                CARD.KING_SPADES,   // King of Spades
+                CARD.QUEEN_CLUBS,   // Queen of Clubs
+                CARD.NINE_DIAMONDS, // 9 of Diamonds
+                CARD.SEVEN_HEARTS   // 7 of Hearts
             ]);
 
             const rank = await evaluator.evaluateHand(hand);
@@ -82,13 +76,13 @@ describe("PokerEvaluator", function () {
         it("should rank three of a kind correctly", async function () {
             // Three Aces with K-Q kickers
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 1),  // Ace of Diamonds
-                makeCard(2, 1),  // Ace of Hearts
-                makeCard(3, 13), // King of Spades
-                makeCard(0, 12), // Queen of Clubs
-                makeCard(1, 9),  // 9 of Diamonds
-                makeCard(2, 7)   // 7 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.ACE_DIAMONDS,  // Ace of Diamonds
+                CARD.ACE_HEARTS,    // Ace of Hearts
+                CARD.KING_SPADES,   // King of Spades
+                CARD.QUEEN_CLUBS,   // Queen of Clubs
+                CARD.NINE_DIAMONDS, // 9 of Diamonds
+                CARD.SEVEN_HEARTS   // 7 of Hearts
             ]);
 
             const rank = await evaluator.evaluateHand(hand);
@@ -99,13 +93,13 @@ describe("PokerEvaluator", function () {
         it("should rank straight correctly", async function () {
             // A-2-3-4-5 straight (wheel)
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 2),  // 2 of Diamonds
-                makeCard(2, 3),  // 3 of Hearts
-                makeCard(3, 4),  // 4 of Spades
-                makeCard(0, 5),  // 5 of Clubs
-                makeCard(1, 9),  // 9 of Diamonds
-                makeCard(2, 7)   // 7 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.TWO_DIAMONDS,  // 2 of Diamonds
+                CARD.THREE_HEARTS,  // 3 of Hearts
+                CARD.FOUR_SPADES,   // 4 of Spades
+                CARD.FIVE_CLUBS,    // 5 of Clubs
+                CARD.NINE_DIAMONDS, // 9 of Diamonds
+                CARD.SEVEN_HEARTS   // 7 of Hearts
             ]);
 
             const rank = await evaluator.evaluateHand(hand);
@@ -116,13 +110,13 @@ describe("PokerEvaluator", function () {
         it("should rank flush correctly", async function () {
             // Ace high flush in clubs
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(0, 13), // King of Clubs
-                makeCard(0, 11), // Jack of Clubs
-                makeCard(0, 9),  // 9 of Clubs
-                makeCard(0, 7),  // 7 of Clubs
-                makeCard(1, 5),  // 5 of Diamonds
-                makeCard(2, 3)   // 3 of Hearts
+                CARD.ACE_CLUBS,    // Ace of Clubs
+                CARD.KING_CLUBS,   // King of Clubs
+                CARD.JACK_CLUBS,   // Jack of Clubs
+                CARD.NINE_CLUBS,   // 9 of Clubs
+                CARD.SEVEN_CLUBS,  // 7 of Clubs
+                CARD.FIVE_DIAMONDS,// 5 of Diamonds
+                CARD.THREE_HEARTS  // 3 of Hearts
             ]);
 
             const rank = await evaluator.evaluateHand(hand);
@@ -133,13 +127,13 @@ describe("PokerEvaluator", function () {
         it("should rank full house correctly", async function () {
             // Aces full of Kings
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 1),  // Ace of Diamonds
-                makeCard(2, 1),  // Ace of Hearts
-                makeCard(3, 13), // King of Spades
-                makeCard(0, 13), // King of Clubs
-                makeCard(1, 9),  // 9 of Diamonds
-                makeCard(2, 7)   // 7 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.ACE_DIAMONDS,  // Ace of Diamonds
+                CARD.ACE_HEARTS,    // Ace of Hearts
+                CARD.KING_SPADES,   // King of Spades
+                CARD.KING_CLUBS,    // King of Clubs
+                CARD.NINE_DIAMONDS, // 9 of Diamonds
+                CARD.SEVEN_HEARTS   // 7 of Hearts
             ]);
 
             const rank = await evaluator.evaluateHand(hand);
@@ -150,13 +144,13 @@ describe("PokerEvaluator", function () {
         it("should rank four of a kind correctly", async function () {
             // Four Aces with King kicker
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 1),  // Ace of Diamonds
-                makeCard(2, 1),  // Ace of Hearts
-                makeCard(3, 1),  // Ace of Spades
-                makeCard(0, 13), // King of Clubs
-                makeCard(1, 9),  // 9 of Diamonds
-                makeCard(2, 7)   // 7 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.ACE_DIAMONDS,  // Ace of Diamonds
+                CARD.ACE_HEARTS,    // Ace of Hearts
+                CARD.ACE_SPADES,    // Ace of Spades
+                CARD.KING_CLUBS,    // King of Clubs
+                CARD.NINE_DIAMONDS, // 9 of Diamonds
+                CARD.SEVEN_HEARTS   // 7 of Hearts
             ]);
 
             const rank = await evaluator.evaluateHand(hand);
@@ -167,13 +161,13 @@ describe("PokerEvaluator", function () {
         it("should rank straight flush correctly", async function () {
             // 5-high straight flush in clubs (wheel)
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(0, 2),  // 2 of Clubs
-                makeCard(0, 3),  // 3 of Clubs
-                makeCard(0, 4),  // 4 of Clubs
-                makeCard(0, 5),  // 5 of Clubs
-                makeCard(1, 9),  // 9 of Diamonds
-                makeCard(2, 7)   // 7 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.TWO_CLUBS,     // 2 of Clubs
+                CARD.THREE_CLUBS,   // 3 of Clubs
+                CARD.FOUR_CLUBS,    // 4 of Clubs
+                CARD.FIVE_CLUBS,    // 5 of Clubs
+                CARD.NINE_DIAMONDS, // 9 of Diamonds
+                CARD.SEVEN_HEARTS   // 7 of Hearts
             ]);
 
             const rank = await evaluator.evaluateHand(hand);
@@ -186,24 +180,24 @@ describe("PokerEvaluator", function () {
         it("should rank flush higher than straight", async function () {
             // Straight: 10-J-Q-K-A
             const straight = makeHand([
-                makeCard(0, 10), // 10 of Clubs
-                makeCard(1, 11), // Jack of Diamonds
-                makeCard(2, 12), // Queen of Hearts
-                makeCard(3, 13), // King of Spades
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 5),  // 5 of Diamonds
-                makeCard(2, 3)   // 3 of Hearts
+                CARD.TEN_CLUBS,     // 10 of Clubs
+                CARD.JACK_DIAMONDS, // Jack of Diamonds
+                CARD.QUEEN_HEARTS,  // Queen of Hearts
+                CARD.KING_SPADES,   // King of Spades
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.FIVE_DIAMONDS, // 5 of Diamonds
+                CARD.THREE_HEARTS   // 3 of Hearts
             ]);
 
             // Flush: 7-high flush
             const flush = makeHand([
-                makeCard(0, 7),  // 7 of Clubs
-                makeCard(0, 5),  // 5 of Clubs
-                makeCard(0, 4),  // 4 of Clubs
-                makeCard(0, 3),  // 3 of Clubs
-                makeCard(0, 2),  // 2 of Clubs
-                makeCard(1, 13), // King of Diamonds
-                makeCard(2, 12)  // Queen of Hearts
+                CARD.SEVEN_CLUBS,   // 7 of Clubs
+                CARD.FIVE_CLUBS,    // 5 of Clubs
+                CARD.FOUR_CLUBS,    // 4 of Clubs
+                CARD.THREE_CLUBS,   // 3 of Clubs
+                CARD.TWO_CLUBS,     // 2 of Clubs
+                CARD.KING_DIAMONDS, // King of Diamonds
+                CARD.QUEEN_HEARTS   // Queen of Hearts
             ]);
 
             const straightRank = await evaluator.evaluateHand(straight);
@@ -215,24 +209,24 @@ describe("PokerEvaluator", function () {
         it("should rank higher pairs correctly", async function () {
             // Pair of Aces
             const acePair = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 1),  // Ace of Diamonds
-                makeCard(2, 13), // King of Hearts
-                makeCard(3, 12), // Queen of Spades
-                makeCard(0, 11), // Jack of Clubs
-                makeCard(1, 9),  // 9 of Diamonds
-                makeCard(2, 7)   // 7 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.ACE_DIAMONDS,  // Ace of Diamonds
+                CARD.KING_HEARTS,   // King of Hearts
+                CARD.QUEEN_SPADES,  // Queen of Spades
+                CARD.JACK_CLUBS,    // Jack of Clubs
+                CARD.NINE_DIAMONDS, // 9 of Diamonds
+                CARD.SEVEN_HEARTS   // 7 of Hearts
             ]);
 
             // Pair of Kings
             const kingPair = makeHand([
-                makeCard(0, 13), // King of Clubs
-                makeCard(1, 13), // King of Diamonds
-                makeCard(2, 1),  // Ace of Hearts
-                makeCard(3, 12), // Queen of Spades
-                makeCard(0, 11), // Jack of Clubs
-                makeCard(1, 9),  // 9 of Diamonds
-                makeCard(2, 7)   // 7 of Hearts
+                CARD.KING_CLUBS,    // King of Clubs
+                CARD.KING_DIAMONDS, // King of Diamonds
+                CARD.ACE_HEARTS,    // Ace of Hearts
+                CARD.QUEEN_SPADES,  // Queen of Spades
+                CARD.JACK_CLUBS,    // Jack of Clubs
+                CARD.NINE_DIAMONDS, // 9 of Diamonds
+                CARD.SEVEN_HEARTS   // 7 of Hearts
             ]);
 
             const aceRank = await evaluator.evaluateHand(acePair);
@@ -246,13 +240,13 @@ describe("PokerEvaluator", function () {
         it("should handle ace-low straight correctly", async function () {
             // A-2-3-4-5 straight
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 2),  // 2 of Diamonds
-                makeCard(2, 3),  // 3 of Hearts
-                makeCard(3, 4),  // 4 of Spades
-                makeCard(0, 5),  // 5 of Clubs
-                makeCard(1, 9),  // 9 of Diamonds
-                makeCard(2, 7)   // 7 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.TWO_DIAMONDS,  // 2 of Diamonds
+                CARD.THREE_HEARTS,  // 3 of Hearts
+                CARD.FOUR_SPADES,   // 4 of Spades
+                CARD.FIVE_CLUBS,    // 5 of Clubs
+                CARD.NINE_DIAMONDS, // 9 of Diamonds
+                CARD.SEVEN_HEARTS   // 7 of Hearts
             ]);
 
             const rank = await evaluator.evaluateHand(hand);
@@ -263,13 +257,13 @@ describe("PokerEvaluator", function () {
         it("should handle broadway straight correctly", async function () {
             // 10-J-Q-K-A straight
             const hand = makeHand([
-                makeCard(0, 10), // 10 of Clubs
-                makeCard(1, 11), // Jack of Diamonds
-                makeCard(2, 12), // Queen of Hearts
-                makeCard(3, 13), // King of Spades
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 5),  // 5 of Diamonds
-                makeCard(2, 3)   // 3 of Hearts
+                CARD.TEN_CLUBS,     // 10 of Clubs
+                CARD.JACK_DIAMONDS, // Jack of Diamonds
+                CARD.QUEEN_HEARTS,  // Queen of Hearts
+                CARD.KING_SPADES,   // King of Spades
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.FIVE_DIAMONDS, // 5 of Diamonds
+                CARD.THREE_HEARTS   // 3 of Hearts
             ]);
 
             const rank = await evaluator.evaluateHand(hand);

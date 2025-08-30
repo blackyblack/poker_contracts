@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { CARD } = require("./cards");
 
 describe("PokerEvaluator Gas Efficiency", function () {
     let evaluatorTest;
@@ -8,11 +9,6 @@ describe("PokerEvaluator Gas Efficiency", function () {
         const PokerEvaluatorTest = await ethers.getContractFactory("PokerEvaluatorTest");
         evaluatorTest = await PokerEvaluatorTest.deploy();
     });
-
-    // Helper function to create a card
-    function makeCard(suit, rank) {
-        return (suit << 4) | rank;
-    }
 
     // Helper to create test hands
     function makeHand(cards) {
@@ -26,13 +22,13 @@ describe("PokerEvaluator Gas Efficiency", function () {
     describe("Gas Usage Tests", function () {
         it("should use reasonable gas for high card evaluation", async function () {
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 13), // King of Diamonds
-                makeCard(2, 12), // Queen of Hearts
-                makeCard(3, 11), // Jack of Spades
-                makeCard(0, 9),  // 9 of Clubs
-                makeCard(1, 7),  // 7 of Diamonds
-                makeCard(2, 5)   // 5 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.KING_DIAMONDS, // King of Diamonds
+                CARD.QUEEN_HEARTS,  // Queen of Hearts
+                CARD.JACK_SPADES,   // Jack of Spades
+                CARD.NINE_CLUBS,    // 9 of Clubs
+                CARD.SEVEN_DIAMONDS,// 7 of Diamonds
+                CARD.FIVE_HEARTS    // 5 of Hearts
             ]);
 
             const tx = await evaluatorTest.evaluateHand(hand);
@@ -45,13 +41,13 @@ describe("PokerEvaluator Gas Efficiency", function () {
 
         it("should use reasonable gas for flush evaluation", async function () {
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(0, 13), // King of Clubs
-                makeCard(0, 11), // Jack of Clubs
-                makeCard(0, 9),  // 9 of Clubs
-                makeCard(0, 7),  // 7 of Clubs
-                makeCard(1, 5),  // 5 of Diamonds
-                makeCard(2, 3)   // 3 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.KING_CLUBS,    // King of Clubs
+                CARD.JACK_CLUBS,    // Jack of Clubs
+                CARD.NINE_CLUBS,    // 9 of Clubs
+                CARD.SEVEN_CLUBS,   // 7 of Clubs
+                CARD.FIVE_DIAMONDS, // 5 of Diamonds
+                CARD.THREE_HEARTS   // 3 of Hearts
             ]);
 
             const tx = await evaluatorTest.evaluateHand(hand);
@@ -63,13 +59,13 @@ describe("PokerEvaluator Gas Efficiency", function () {
 
         it("should use reasonable gas for straight flush evaluation", async function () {
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(0, 2),  // 2 of Clubs
-                makeCard(0, 3),  // 3 of Clubs
-                makeCard(0, 4),  // 4 of Clubs
-                makeCard(0, 5),  // 5 of Clubs
-                makeCard(1, 9),  // 9 of Diamonds
-                makeCard(2, 7)   // 7 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.TWO_CLUBS,     // 2 of Clubs
+                CARD.THREE_CLUBS,   // 3 of Clubs
+                CARD.FOUR_CLUBS,    // 4 of Clubs
+                CARD.FIVE_CLUBS,    // 5 of Clubs
+                CARD.NINE_DIAMONDS, // 9 of Diamonds
+                CARD.SEVEN_HEARTS   // 7 of Hearts
             ]);
 
             const tx = await evaluatorTest.evaluateHand(hand);
@@ -82,15 +78,15 @@ describe("PokerEvaluator Gas Efficiency", function () {
         it("should efficiently handle multiple evaluations", async function () {
             const hands = [
                 // High card
-                makeHand([makeCard(0, 1), makeCard(1, 13), makeCard(2, 11), makeCard(3, 9), makeCard(0, 7), makeCard(1, 5), makeCard(2, 3)]),
+                makeHand([CARD.ACE_CLUBS, CARD.KING_DIAMONDS, CARD.JACK_HEARTS, CARD.NINE_SPADES, CARD.SEVEN_CLUBS, CARD.FIVE_DIAMONDS, CARD.THREE_HEARTS]),
                 // Pair
-                makeHand([makeCard(0, 1), makeCard(1, 1), makeCard(2, 13), makeCard(3, 11), makeCard(0, 9), makeCard(1, 7), makeCard(2, 5)]),
+                makeHand([CARD.ACE_CLUBS, CARD.ACE_DIAMONDS, CARD.KING_HEARTS, CARD.JACK_SPADES, CARD.NINE_CLUBS, CARD.SEVEN_DIAMONDS, CARD.FIVE_HEARTS]),
                 // Two pair
-                makeHand([makeCard(0, 1), makeCard(1, 1), makeCard(2, 13), makeCard(3, 13), makeCard(0, 11), makeCard(1, 9), makeCard(2, 7)]),
+                makeHand([CARD.ACE_CLUBS, CARD.ACE_DIAMONDS, CARD.KING_HEARTS, CARD.KING_SPADES, CARD.JACK_CLUBS, CARD.NINE_DIAMONDS, CARD.SEVEN_HEARTS]),
                 // Straight
-                makeHand([makeCard(0, 1), makeCard(1, 2), makeCard(2, 3), makeCard(3, 4), makeCard(0, 5), makeCard(1, 9), makeCard(2, 7)]),
+                makeHand([CARD.ACE_CLUBS, CARD.TWO_DIAMONDS, CARD.THREE_HEARTS, CARD.FOUR_SPADES, CARD.FIVE_CLUBS, CARD.NINE_DIAMONDS, CARD.SEVEN_HEARTS]),
                 // Flush
-                makeHand([makeCard(0, 1), makeCard(0, 13), makeCard(0, 11), makeCard(0, 9), makeCard(0, 7), makeCard(1, 5), makeCard(2, 3)])
+                makeHand([CARD.ACE_CLUBS, CARD.KING_CLUBS, CARD.JACK_CLUBS, CARD.NINE_CLUBS, CARD.SEVEN_CLUBS, CARD.FIVE_DIAMONDS, CARD.THREE_HEARTS])
             ];
 
             let totalGas = 0n;
@@ -111,13 +107,13 @@ describe("PokerEvaluator Gas Efficiency", function () {
     describe("Correctness Verification", function () {
         it("should return consistent results for the same hand", async function () {
             const hand = makeHand([
-                makeCard(0, 1),  // Ace of Clubs
-                makeCard(1, 1),  // Ace of Diamonds
-                makeCard(2, 13), // King of Hearts
-                makeCard(3, 12), // Queen of Spades
-                makeCard(0, 11), // Jack of Clubs
-                makeCard(1, 9),  // 9 of Diamonds
-                makeCard(2, 7)   // 7 of Hearts
+                CARD.ACE_CLUBS,     // Ace of Clubs
+                CARD.ACE_DIAMONDS,  // Ace of Diamonds
+                CARD.KING_HEARTS,   // King of Hearts
+                CARD.QUEEN_SPADES,  // Queen of Spades
+                CARD.JACK_CLUBS,    // Jack of Clubs
+                CARD.NINE_DIAMONDS, // 9 of Diamonds
+                CARD.SEVEN_HEARTS   // 7 of Hearts
             ]);
 
             const result1 = await evaluatorTest.evaluateHand(hand);
@@ -129,26 +125,26 @@ describe("PokerEvaluator Gas Efficiency", function () {
         it("should rank hands in correct order", async function () {
             // High card
             const highCard = makeHand([
-                makeCard(0, 1), makeCard(1, 13), makeCard(2, 11), makeCard(3, 9), 
-                makeCard(0, 7), makeCard(1, 5), makeCard(2, 3)
+                CARD.ACE_CLUBS, CARD.KING_DIAMONDS, CARD.JACK_HEARTS, CARD.NINE_SPADES, 
+                CARD.SEVEN_CLUBS, CARD.FIVE_DIAMONDS, CARD.THREE_HEARTS
             ]);
 
             // Pair
             const pair = makeHand([
-                makeCard(0, 1), makeCard(1, 1), makeCard(2, 13), makeCard(3, 11), 
-                makeCard(0, 9), makeCard(1, 7), makeCard(2, 5)
+                CARD.ACE_CLUBS, CARD.ACE_DIAMONDS, CARD.KING_HEARTS, CARD.JACK_SPADES, 
+                CARD.NINE_CLUBS, CARD.SEVEN_DIAMONDS, CARD.FIVE_HEARTS
             ]);
 
             // Straight
             const straight = makeHand([
-                makeCard(0, 1), makeCard(1, 2), makeCard(2, 3), makeCard(3, 4), 
-                makeCard(0, 5), makeCard(1, 9), makeCard(2, 7)
+                CARD.ACE_CLUBS, CARD.TWO_DIAMONDS, CARD.THREE_HEARTS, CARD.FOUR_SPADES, 
+                CARD.FIVE_CLUBS, CARD.NINE_DIAMONDS, CARD.SEVEN_HEARTS
             ]);
 
             // Flush
             const flush = makeHand([
-                makeCard(0, 1), makeCard(0, 13), makeCard(0, 11), makeCard(0, 9), 
-                makeCard(0, 7), makeCard(1, 5), makeCard(2, 3)
+                CARD.ACE_CLUBS, CARD.KING_CLUBS, CARD.JACK_CLUBS, CARD.NINE_CLUBS, 
+                CARD.SEVEN_CLUBS, CARD.FIVE_DIAMONDS, CARD.THREE_HEARTS
             ]);
 
             const highCardRank = await evaluatorTest.evaluateHand(highCard);

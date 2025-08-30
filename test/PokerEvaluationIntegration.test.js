@@ -2,16 +2,12 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ZERO32, domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("./hashes");
 const { SLOT } = require("./slots");
+const { CARD } = require("./cards");
 
 describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
     let escrow, player1, player2;
     const channelId = 1n;
     const deposit = ethers.parseEther("1.0");
-
-    // Helper function to create a card
-    function makeCard(suit, rank) {
-        return (suit << 4) | rank;
-    }
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
@@ -78,23 +74,23 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
         it("should determine winner correctly - pair beats high card", async function () {
             // Player 1: A♠ K♠ with A♣ 5♦ 3♥ 2♠ 7♣ board = Pair of Aces
             const player1Cards = [
-                makeCard(3, 1),  // A♠
-                makeCard(3, 13)  // K♠
+                CARD.ACE_SPADES,    // A♠
+                CARD.KING_SPADES    // K♠
             ];
 
             // Player 2: Q♥ J♥ with board = Queen high
             const player2Cards = [
-                makeCard(2, 12), // Q♥
-                makeCard(2, 11)  // J♥
+                CARD.QUEEN_HEARTS,  // Q♥
+                CARD.JACK_HEARTS    // J♥
             ];
 
             // Board: A♣ 5♦ 3♥ 2♠ 7♣
             const boardCards = [
-                makeCard(0, 1),  // A♣
-                makeCard(1, 5),  // 5♦
-                makeCard(2, 3),  // 3♥
-                makeCard(3, 2),  // 2♠
-                makeCard(0, 7)   // 7♣
+                CARD.ACE_CLUBS,     // A♣
+                CARD.FIVE_DIAMONDS, // 5♦
+                CARD.THREE_HEARTS,  // 3♥
+                CARD.TWO_SPADES,    // 2♠
+                CARD.SEVEN_CLUBS    // 7♣
             ];
 
             const { commits, sigs, boardSalts, player1Salts, player2Cards: p2Cards } = 
@@ -127,23 +123,23 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
         it("should determine winner correctly - straight beats pair", async function () {
             // Player 1: A♠ 2♠ with 3♣ 4♦ 5♥ 6♠ 7♣ board = 7-high straight
             const player1Cards = [
-                makeCard(3, 1),  // A♠
-                makeCard(3, 2)   // 2♠
+                CARD.ACE_SPADES,    // A♠
+                CARD.TWO_SPADES     // 2♠
             ];
 
             // Player 2: 7♥ 7♦ with board = Pair of 7s
             const player2Cards = [
-                makeCard(2, 7),  // 7♥
-                makeCard(1, 7)   // 7♦
+                CARD.SEVEN_HEARTS,  // 7♥
+                CARD.SEVEN_DIAMONDS // 7♦
             ];
 
             // Board: 3♣ 4♦ 5♥ 6♠ 7♣
             const boardCards = [
-                makeCard(0, 3),  // 3♣
-                makeCard(1, 4),  // 4♦
-                makeCard(2, 5),  // 5♥
-                makeCard(3, 6),  // 6♠
-                makeCard(0, 7)   // 7♣
+                CARD.THREE_CLUBS,   // 3♣
+                CARD.FOUR_DIAMONDS, // 4♦
+                CARD.FIVE_HEARTS,   // 5♥
+                CARD.SIX_SPADES,    // 6♠
+                CARD.SEVEN_CLUBS    // 7♣
             ];
 
             const { commits, sigs, boardSalts, player1Salts, player2Cards: p2Cards } = 
@@ -176,22 +172,22 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
         it("should handle ties correctly", async function () {
             // Both players have the same pair on the board
             const player1Cards = [
-                makeCard(3, 2),  // 2♠
-                makeCard(3, 3)   // 3♠
+                CARD.TWO_SPADES,    // 2♠
+                CARD.THREE_SPADES   // 3♠
             ];
 
             const player2Cards = [
-                makeCard(2, 4),  // 4♥
-                makeCard(1, 5)   // 5♦
+                CARD.FOUR_HEARTS,   // 4♥
+                CARD.FIVE_DIAMONDS  // 5♦
             ];
 
             // Board: A♣ A♦ K♥ Q♠ J♣ - both players have pair of Aces
             const boardCards = [
-                makeCard(0, 1),  // A♣
-                makeCard(1, 1),  // A♦
-                makeCard(2, 13), // K♥
-                makeCard(3, 12), // Q♠
-                makeCard(0, 11)  // J♣
+                CARD.ACE_CLUBS,     // A♣
+                CARD.ACE_DIAMONDS,  // A♦
+                CARD.KING_HEARTS,   // K♥
+                CARD.QUEEN_SPADES,  // Q♠
+                CARD.JACK_CLUBS     // J♣
             ];
 
             const { commits, sigs, boardSalts, player1Salts, player2Cards: p2Cards } = 
