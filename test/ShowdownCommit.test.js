@@ -399,7 +399,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
         ).to.be.revertedWithCustomError(escrow, "HashMismatch");
     });
 
-    it("allows resubmitting identical commit (same seq, same content)", async () => {
+    it("allows resubmitting identical commit", async () => {
         const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
 
         // Start showdown with initial commits
@@ -407,7 +407,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             .connect(player1)
             .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts);
 
-        // Resubmit the exact same commit for slot 0 (same seq, same content)
+        // Resubmit the exact same commit for slot 0
         const originalCommit = commits[0];
         const originalSigs = [sigs[0], sigs[1]];
 
