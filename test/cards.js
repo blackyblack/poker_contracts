@@ -6,7 +6,7 @@
  * - Ranks: 1=Ace, 2-10=face value, 11=Jack, 12=Queen, 13=King
  */
 
-// Helper function to create a card (same as makeCard in tests)
+// Helper function to create a card
 function makeCard(suit, rank) {
     return (suit << 4) | rank;
 }
