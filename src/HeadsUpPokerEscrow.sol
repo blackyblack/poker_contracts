@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
+import {PokerEvaluator} from "./PokerEvaluator.sol";
 
 /// @title HeadsUpPokerEscrow - Simple escrow contract for heads up poker matches using ETH only
 /// @notice Supports opening channels, joining, settling on fold and basic showdown flow
@@ -667,7 +668,44 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
 
         // TODO: Evaluate hands and determine actual winner
-        address winner = sd.initiator;
+        uint8[7] memory player1Cards;
+        uint8[7] memory player2Cards;
+        
+        // Determine which player is which based on the initiator
+        if (sd.initiator == ch.player1) {
+            // Initiator is player1, opponent is player2
+            player1Cards[0] = sd.initiatorHole[0];
+            player1Cards[1] = sd.initiatorHole[1];
+            player2Cards[0] = oppHoleCodes[0];
+            player2Cards[1] = oppHoleCodes[1];
+        } else {
+            // Initiator is player2, opponent is player1
+            player1Cards[0] = oppHoleCodes[0];
+            player1Cards[1] = oppHoleCodes[1];
+            player2Cards[0] = sd.initiatorHole[0];
+            player2Cards[1] = sd.initiatorHole[1];
+        }
+        
+        // Add community cards to both hands
+        for (uint256 i = 0; i < 5; i++) {
+            player1Cards[i + 2] = sd.board[i];
+            player2Cards[i + 2] = sd.board[i];
+        }
+        
+        // Evaluate both hands
+        uint256 player1Rank = PokerEvaluator.evaluateHand(player1Cards);
+        uint256 player2Rank = PokerEvaluator.evaluateHand(player2Cards);
+        
+        // Determine winner (higher rank wins)
+        address winner;
+        if (player1Rank > player2Rank) {
+            winner = ch.player1;
+        } else if (player2Rank > player1Rank) {
+            winner = ch.player2;
+        } else {
+            // Tie - default to initiator (could be changed to split pot)
+            winner = sd.initiator;
+        }
 
         ch.finalized = true;
         uint256 finalPot = ch.deposit1 + ch.deposit2;
