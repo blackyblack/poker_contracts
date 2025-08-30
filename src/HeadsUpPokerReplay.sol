@@ -208,7 +208,7 @@ contract HeadsUpPokerReplay {
                     if (g.street > 3) revert StreetOverflow();
                     g.contrib[0] = 0;
                     g.contrib[1] = 0;
-                    g.actor = 1;
+                    g.actor = bigBlindPlayer;
                     g.raiseCount = 0; // Reset raise counter for new street
                     continue;
                 }
@@ -221,7 +221,7 @@ contract HeadsUpPokerReplay {
                     }
                     g.contrib[0] = 0;
                     g.contrib[1] = 0;
-                    g.actor = 1;
+                    g.actor = bigBlindPlayer;
                     g.checked = false;
                     g.reopen = true;
                     g.lastRaise = bigBlind;

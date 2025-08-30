@@ -43,10 +43,10 @@ describe("HeadsUpPokerReplay", function () {
             ]);
             const stackA = 10n;
             const stackB = 10n;
-            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, stackA, stackB);
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, stackA, stackB);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n);
-            expect(potSize).to.equal(3n); // SB: 1 + BB: 2
+            expect(wonAmount).to.equal(1n); // SB: 1
         });
 
         it("returns fold when big blind folds preflop", async function () {
@@ -56,10 +56,10 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 3n }, // SB makes min raise (1->4)
                 { action: ACTION.FOLD, amount: 0n } // BB folds
             ]);
-            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
-            expect(potSize).to.equal(6n); // SB: 1 + BB: 2 + SB raise: 3 = 6
+            expect(wonAmount).to.equal(2n); // BB: 2
         });
 
         it("reaches showdown after checks on all streets", async function () {
@@ -75,11 +75,11 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
             ]);
-            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
             // showdown always has 0 as folder, do not test it further
             expect(folder).to.equal(0n);
-            expect(potSize).to.equal(4n); // SB: 1 + BB: 2 + SB call: 1 = 4
+            expect(wonAmount).to.equal(2n); // BB: 2 called
         });
 
         it("reaches showdown when both players are all-in", async function () {
@@ -89,9 +89,9 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 9n }, // SB goes all-in
                 { action: ACTION.CHECK_CALL, amount: 0n } // BB calls
             ]);
-            const [end, , potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(1n); // End.SHOWDOWN
-            expect(potSize).to.equal(20n); // Both players all-in: 10 + 10 = 20
+            expect(wonAmount).to.equal(10n); // Both players all-in: 10 won by one of them
         });
     });
 
@@ -988,10 +988,10 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 6n }, // BB re-raises min: toCall 3 + raise inc 3
                 { action: ACTION.FOLD, amount: 0n } // SB folds
             ]);
-            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 20n, 20n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
-            expect(potSize).to.equal(13n); // SB: 1 + BB: 2 + SB raise: 4 + BB raise: 6 = 13
+            expect(wonAmount).to.equal(5n); // SB: 1 + SB raise: 4 = 5
         });
     });
 
@@ -1085,10 +1085,10 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.FOLD, amount: 0n } // Small blind folds
             ], 1n);
 
-            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // Player 0 (small blind) folded
-            expect(potSize).to.equal(3n); // SB: 1 + BB: 2
+            expect(wonAmount).to.equal(1n); // SB: 1
         });
 
         it("should have Player 1 as small blind for even handId", async function () {
@@ -1099,10 +1099,10 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.FOLD, amount: 0n } // Small blind folds
             ], 2n);
 
-            const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // Player 1 (small blind) folded
-            expect(potSize).to.equal(3n); // SB: 1 + BB: 2
+            expect(wonAmount).to.equal(1n); // SB: 1
         });
 
         it("should alternate properly across multiple handIds", async function () {
@@ -1121,10 +1121,10 @@ describe("HeadsUpPokerReplay", function () {
                     { action: ACTION.FOLD, amount: 0n } // Small blind folds
                 ], testCase.handId);
 
-                const [end, folder, potSize] = await replay.replayAndGetEndState(actions, 10n, 10n);
+                const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n);
                 expect(end).to.equal(0n); // End.FOLD
                 expect(folder).to.equal(testCase.expectedSbFolder); // Check correct player folded
-                expect(potSize).to.equal(3n); // SB: 1 + BB: 2
+                expect(wonAmount).to.equal(1n); // SB: 1
             }
         });
 
@@ -1139,9 +1139,9 @@ describe("HeadsUpPokerReplay", function () {
 
             // Player 0 has 10 chips, Player 1 has 5 chips
             // Player 1 posts SB (5), Player 0 posts BB (10) - should go all-in
-            const [end, , potSize] = await replay.replayAndGetEndState(actions, 10n, 5n);
+            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 5n);
             expect(end).to.equal(1n); // End.SHOWDOWN (both all-in)
-            expect(potSize).to.equal(15n); // Total pot: 5 + 10 = 15
+            expect(wonAmount).to.equal(5n); // Max win is: min(5, 10) = 5
         });
 
         it("should validate small blind amount against correct player's stack", async function () {
