@@ -640,6 +640,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (!sd.inProgress) revert NoShowdownInProgress();
         if (block.timestamp <= sd.deadline) revert StillRevealing();
 
+        // TODO: forfeit to last acting player
         // require full commit set or forfeit to initiator
         if (sd.lockedCommitMask != MASK_ALL) {
             _forfeitToInitiator(channelId);

@@ -2,16 +2,12 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ZERO32, domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("./hashes");
 const { SLOT } = require("./slots");
+const { CARD } = require("./cards");
 
 describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
     let escrow, player1, player2;
     const channelId = 1n;
     const deposit = ethers.parseEther("1.0");
-
-    // Helper function to create a card
-    function makeCard(suit, rank) {
-        return (suit << 4) | rank;
-    }
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
@@ -70,34 +66,34 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
 
         const boardSalts = boardCards.map((_, i) => objs[i + 4].salt);
         const player1Salts = player1Cards.map((_, i) => objs[i].salt);
+        const player2Salts = player2Cards.map((_, i) => objs[i + 2].salt);
 
-        return { commits, sigs, boardCards, boardSalts, player1Cards, player1Salts, objs, dom, player2Cards };
+        return { commits, sigs, boardCards, boardSalts, player1Cards, player1Salts, player2Salts, objs, dom, player2Cards };
     }
 
     describe("Poker Hand Evaluation", function () {
         it("should determine winner correctly - pair beats high card", async function () {
             // Player 1: A♠ K♠ with A♣ 5♦ 3♥ 2♠ 7♣ board = Pair of Aces
             const player1Cards = [
-                makeCard(3, 1),  // A♠
-                makeCard(3, 13)  // K♠
+                CARD.ACE_SPADES,
+                CARD.KING_SPADES
             ];
 
             // Player 2: Q♥ J♥ with board = Queen high
             const player2Cards = [
-                makeCard(2, 12), // Q♥
-                makeCard(2, 11)  // J♥
+                CARD.QUEEN_HEARTS,
+                CARD.JACK_HEARTS
             ];
 
             // Board: A♣ 5♦ 3♥ 2♠ 7♣
             const boardCards = [
-                makeCard(0, 1),  // A♣
-                makeCard(1, 5),  // 5♦
-                makeCard(2, 3),  // 3♥
-                makeCard(3, 2),  // 2♠
-                makeCard(0, 7)   // 7♣
+                CARD.ACE_CLUBS,
+                CARD.FIVE_DIAMONDS,
+                CARD.THREE_HEARTS,
+                CARD.TWO_SPADES,
+                CARD.SEVEN_CLUBS
             ];
-
-            const { commits, sigs, boardSalts, player1Salts, player2Cards: p2Cards } = 
+            const { commits, sigs, boardSalts, player1Salts, player2Salts, player2Cards: p2Cards } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
 
             // Start showdown
@@ -110,8 +106,6 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
             await ethers.provider.send("evm_mine");
 
             // Finalize with player2's hole cards
-            const player2Salts = [ethers.hexlify(ethers.randomBytes(32)), ethers.hexlify(ethers.randomBytes(32))];
-            
             const tx = await escrow.finalizeShowdownWithCommits(channelId, p2Cards, player2Salts);
             
             await expect(tx)
@@ -125,28 +119,28 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
         });
 
         it("should determine winner correctly - straight beats pair", async function () {
-            // Player 1: A♠ 2♠ with 3♣ 4♦ 5♥ 6♠ 7♣ board = 7-high straight
+            // Player 1: A♠ 2♠ with 3♣ 4♦ 5♥ 6♠ 8♣ board = 7-high straight
             const player1Cards = [
-                makeCard(3, 1),  // A♠
-                makeCard(3, 2)   // 2♠
+                CARD.ACE_SPADES,
+                CARD.TWO_SPADES
             ];
 
-            // Player 2: 7♥ 7♦ with board = Pair of 7s
+            // Player 2: 9♥ 9♦ with board = Pair of 9s
             const player2Cards = [
-                makeCard(2, 7),  // 7♥
-                makeCard(1, 7)   // 7♦
+                CARD.NINE_HEARTS,
+                CARD.NINE_DIAMONDS
             ];
 
-            // Board: 3♣ 4♦ 5♥ 6♠ 7♣
+            // Board: 3♣ 4♦ 5♥ 6♠ 8♣
             const boardCards = [
-                makeCard(0, 3),  // 3♣
-                makeCard(1, 4),  // 4♦
-                makeCard(2, 5),  // 5♥
-                makeCard(3, 6),  // 6♠
-                makeCard(0, 7)   // 7♣
+                CARD.THREE_CLUBS,
+                CARD.FOUR_DIAMONDS,
+                CARD.FIVE_HEARTS,
+                CARD.SIX_SPADES,
+                CARD.EIGHT_CLUBS
             ];
 
-            const { commits, sigs, boardSalts, player1Salts, player2Cards: p2Cards } = 
+            const { commits, sigs, boardSalts, player1Salts, player2Salts, player2Cards: p2Cards } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
 
             // Start showdown
@@ -158,9 +152,6 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
             await ethers.provider.send("evm_increaseTime", [3600 + 1]);
             await ethers.provider.send("evm_mine");
 
-            // Finalize with player2's hole cards
-            const player2Salts = [ethers.hexlify(ethers.randomBytes(32)), ethers.hexlify(ethers.randomBytes(32))];
-            
             const tx = await escrow.finalizeShowdownWithCommits(channelId, p2Cards, player2Salts);
             
             await expect(tx)
@@ -176,25 +167,25 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
         it("should handle ties correctly", async function () {
             // Both players have the same pair on the board
             const player1Cards = [
-                makeCard(3, 2),  // 2♠
-                makeCard(3, 3)   // 3♠
+                CARD.TWO_SPADES,
+                CARD.THREE_SPADES
             ];
 
             const player2Cards = [
-                makeCard(2, 4),  // 4♥
-                makeCard(1, 5)   // 5♦
+                CARD.FOUR_HEARTS,
+                CARD.FIVE_DIAMONDS
             ];
 
             // Board: A♣ A♦ K♥ Q♠ J♣ - both players have pair of Aces
             const boardCards = [
-                makeCard(0, 1),  // A♣
-                makeCard(1, 1),  // A♦
-                makeCard(2, 13), // K♥
-                makeCard(3, 12), // Q♠
-                makeCard(0, 11)  // J♣
+                CARD.ACE_CLUBS,
+                CARD.ACE_DIAMONDS,
+                CARD.KING_HEARTS,
+                CARD.QUEEN_SPADES,
+                CARD.JACK_CLUBS
             ];
 
-            const { commits, sigs, boardSalts, player1Salts, player2Cards: p2Cards } = 
+            const { commits, sigs, boardSalts, player1Salts, player2Salts, player2Cards: p2Cards } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
 
             // Start showdown
@@ -206,9 +197,6 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
             await ethers.provider.send("evm_increaseTime", [3600 + 1]);
             await ethers.provider.send("evm_mine");
 
-            // Finalize with player2's hole cards
-            const player2Salts = [ethers.hexlify(ethers.randomBytes(32)), ethers.hexlify(ethers.randomBytes(32))];
-            
             const tx = await escrow.finalizeShowdownWithCommits(channelId, p2Cards, player2Salts);
             
             // In case of tie, initiator (player1) should win

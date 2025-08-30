@@ -74,16 +74,16 @@ library PokerEvaluator {
         uint256 suitCounts = 0; // 4 bits per suit (0-3), packed into uint256
         
         for (uint256 i = 0; i < 7; i++) {
-            uint8 rank = ranks[i];
-            uint8 suit = suits[i];
+            uint8 currentRank = ranks[i];
+            uint8 currentSuit = suits[i];
             
             // Increment rank count (4 bits per rank, starting at rank*4)
-            uint256 rankOffset = rank * 4;
+            uint256 rankOffset = currentRank * 4;
             uint256 currentRankCount = (rankCounts >> rankOffset) & 0x0F;
             rankCounts = (rankCounts & ~(0x0F << rankOffset)) | ((currentRankCount + 1) << rankOffset);
             
             // Increment suit count (4 bits per suit, starting at suit*4)
-            uint256 suitOffset = suit * 4;
+            uint256 suitOffset = currentSuit * 4;
             uint256 currentSuitCount = (suitCounts >> suitOffset) & 0x0F;
             suitCounts = (suitCounts & ~(0x0F << suitOffset)) | ((currentSuitCount + 1) << suitOffset);
         }
