@@ -4,6 +4,28 @@ pragma solidity 0.8.24;
 /// @title PokerEvaluator - Gas-efficient 7-card poker hand evaluator
 /// @notice Evaluates the best 5-card poker hand from 7 cards and returns a sortable rank
 /// @dev Uses bit masks and precomputed lookups for maximum gas efficiency
+///
+/// Design choices for gas optimization:
+/// - Card encoding: 4 bits suit + 4 bits rank (fits in uint8)
+/// - Rank counting: Packed into single uint256 (4 bits per rank)
+/// - Suit counting: Packed into single uint256 (4 bits per suit)
+/// - Straight detection: Bit mask operations for O(1) lookup
+/// - Flush detection: Single pass count, then extract flush cards
+/// - Hand ranking: Single uint256 with hand type in high bits, kickers in low bits
+/// - Memory usage: Fixed-size arrays to avoid dynamic allocation
+///
+/// Card encoding format:
+/// - Suit: 0=Clubs, 1=Diamonds, 2=Hearts, 3=Spades (upper 4 bits)
+/// - Rank: 1=Ace, 2-10=pip cards, 11=Jack, 12=Queen, 13=King (lower 4 bits)
+/// - Internal rank conversion: Ace=14 for proper high-card comparison
+///
+/// Rank format (24 bits used):
+/// - Bits 20-23: Hand type (0-8)
+/// - Bits 16-19: Primary rank (quads, trips, high pair, or high card)
+/// - Bits 12-15: Secondary rank (full house pair, two pair low, or second kicker)
+/// - Bits 8-11:  Third rank (third kicker)
+/// - Bits 4-7:   Fourth rank (fourth kicker)
+/// - Bits 0-3:   Fifth rank (fifth kicker)
 library PokerEvaluator {
     // Hand type constants (higher values = better hands)
     uint256 constant HAND_HIGH_CARD = 0;
@@ -224,25 +246,23 @@ library PokerEvaluator {
         uint8 kickerCount = 0;
         
         // Analyze from high to low for proper kicker ordering
-        for (uint8 rank = ACE; rank >= 2; rank--) {
+        for (uint16 rank = ACE; rank >= 2 && kickerCount < 5; rank--) {
             uint256 rankOffset = rank * 4;
             uint256 count = (rankCounts >> rankOffset) & 0x0F;
             
             if (count == 4) {
-                quads = rank;
+                quads = uint8(rank);
             } else if (count == 3) {
-                trips = rank;
+                trips = uint8(rank);
             } else if (count == 2) {
                 if (pairs1 == 0) {
-                    pairs1 = rank;
+                    pairs1 = uint8(rank);
                 } else {
-                    pairs2 = rank;
+                    pairs2 = uint8(rank);
                 }
             } else if (count == 1 && kickerCount < 5) {
-                kickers[kickerCount++] = rank;
+                kickers[kickerCount++] = uint8(rank);
             }
-            
-            if (rank == 2) break; // Avoid underflow
         }
         
         return (quads, trips, pairs1, pairs2, kickers);
