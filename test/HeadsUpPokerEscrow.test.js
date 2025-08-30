@@ -393,6 +393,27 @@ describe("HeadsUpPokerEscrow", function () {
                 .to.be.revertedWithCustomError(escrow, "ActionSignatureLengthMismatch");
         });
 
+        it("should reject duplicate settlement", async function () {
+             const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 3n }, // Small blind raises
+                { action: ACTION.FOLD, amount: 0n } // Big blind folds
+            ], channelId, handId);
+
+            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+
+            // Calculate expected called amount: min(1+3, 2) = min(4, 2) = 2
+            const calledAmount = 2n;
+
+            const tx = await escrow.settleFold(channelId, actions, signatures);
+            await expect(tx)
+                .to.emit(escrow, "FoldSettled")
+                .withArgs(channelId, player1.address, calledAmount);
+            await expect(escrow.settleFold(channelId, actions, signatures))
+                .to.be.revertedWithCustomError(escrow, "AlreadyFinalized");
+        });
+
         it("should handle big blind fold scenario correctly", async function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -673,8 +694,6 @@ describe("HeadsUpPokerEscrow", function () {
         const deposit = ethers.parseEther("1.0");
 
         beforeEach(async function () {
-            const HeadsUpPokerEscrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
-            escrow = await HeadsUpPokerEscrow.deploy();
             await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
         });
@@ -693,7 +712,6 @@ describe("HeadsUpPokerEscrow", function () {
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
             // Should succeed and declare player2 (big blind) as winner
-            await escrow.settleFold(channelId, actions, signatures);
             const foldTx = await escrow.settleFold(channelId, actions, signatures);
             await expect(foldTx)
                 .to.emit(escrow, "FoldSettled")
@@ -703,17 +721,15 @@ describe("HeadsUpPokerEscrow", function () {
 
             const tx = await escrow.connect(player2).withdraw(channelId);
             const receipt = await tx.wait();
-            const gasPrice = receipt.gasPrice ?? receipt.effectiveGasPrice;
-            const gasUsed = receipt.gasUsed * gasPrice;
+            const gasUsed = receipt.gasUsed * receipt.gasPrice;
 
             const finalBalance = await ethers.provider.getBalance(player2.address);
 
             // Should receive pot minus gas costs
-            //expect(finalBalance).to.be.closeTo(initialBalance + ethers.parseEther("1.1") - gasUsed, ethers.parseEther("0.001"));
+            expect(finalBalance).to.be.closeTo(initialBalance + ethers.parseEther("1.1") - gasUsed, ethers.parseEther("0.001"));
 
-            // Check deposits are zero after withdrawal
-            const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(0);
+            // Check player2 deposit is zero after withdrawal
+            const [_, p2Stack] = await escrow.stacks(channelId);
             expect(p2Stack).to.equal(0);
         });
 

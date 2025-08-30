@@ -256,6 +256,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (sd.inProgress) revert ShowdownInProgress();
         if (ch.player1 == address(0)) revert NoChannel();
         if (actions.length == 0) revert NoActionsProvided();
+        if (ch.finalized) revert AlreadyFinalized();
         
         // Verify signatures for all actions
         _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
