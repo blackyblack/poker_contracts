@@ -86,7 +86,7 @@ contract HeadsUpPokerReplay {
         Action[] calldata actions,
         uint256 stackA,
         uint256 stackB
-    ) external pure returns (End end, uint8 folder, uint256 potSize) {
+    ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
         if (actions.length < 2) revert NoBlinds();
 
         Action calldata sb = actions[0];
@@ -145,7 +145,7 @@ contract HeadsUpPokerReplay {
 
         // If both players are all-in after blinds, go directly to showdown
         if (g.allIn[0] && g.allIn[1]) {
-            return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
+            return (End.SHOWDOWN, 0, _calculateCalledAmount(g));
         }
 
         uint256[2] memory maxDeposit = [stackA, stackB];
@@ -164,10 +164,10 @@ contract HeadsUpPokerReplay {
             // allow to move to showdown if someone is all-in
             if (g.allIn[p]) {
                 if (g.allIn[opp]) {
-                    return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
+                    return (End.SHOWDOWN, 0, _calculateCalledAmount(g));
                 }
                 if (act.action != ACT_CHECK_CALL || act.amount != 0) revert PlayerAllIn();
-                return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
+                return (End.SHOWDOWN, 0, _calculateCalledAmount(g));
             }
 
             if (g.allIn[p]) revert PlayerAllIn();
@@ -176,7 +176,7 @@ contract HeadsUpPokerReplay {
                 if (act.amount != 0) revert FoldAmountInvalid();
                 folder = uint8(p);
                 end = End.FOLD;
-                return (end, folder, g.total[0] + g.total[1]);
+                return (end, folder, _calculateCalledAmount(g));
             }
 
             if (act.action == ACT_CHECK_CALL) {
@@ -202,13 +202,13 @@ contract HeadsUpPokerReplay {
                     g.reopen = true;
                     // if someone has all-in and no bet to call, we go to showdown
                     if (g.allIn[0] || g.allIn[1]) {
-                        return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
+                        return (End.SHOWDOWN, 0, _calculateCalledAmount(g));
                     }
                     g.street++;
                     if (g.street > 3) revert StreetOverflow();
                     g.contrib[0] = 0;
                     g.contrib[1] = 0;
-                    g.actor = 1;
+                    g.actor = bigBlindPlayer;
                     g.raiseCount = 0; // Reset raise counter for new street
                     continue;
                 }
@@ -217,11 +217,11 @@ contract HeadsUpPokerReplay {
                 if (g.checked) {
                     g.street++;
                     if (g.street == 4) {
-                        return (End.SHOWDOWN, 0, g.total[0] + g.total[1]);
+                        return (End.SHOWDOWN, 0, _calculateCalledAmount(g));
                     }
                     g.contrib[0] = 0;
                     g.contrib[1] = 0;
-                    g.actor = 1;
+                    g.actor = bigBlindPlayer;
                     g.checked = false;
                     g.reopen = true;
                     g.lastRaise = bigBlind;
@@ -297,6 +297,14 @@ contract HeadsUpPokerReplay {
         }
 
         revert HandNotDone();
+    }
+
+    /// @notice Calculate the called amount - the minimum contribution between both players
+    /// @dev This represents the amount that should transfer from loser to winner
+    function _calculateCalledAmount(Game memory g) private pure returns (uint256) {
+        // The called amount is the minimum of what both players contributed
+        // This ensures only the "called" portion changes hands
+        return g.total[0] < g.total[1] ? g.total[0] : g.total[1];
     }
 
     function _hashAction(Action calldata act) private pure returns (bytes32) {
