@@ -416,15 +416,18 @@ describe("HeadsUpPokerEscrow", function () {
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
+            // Calculate expected called amount: min(1+3, 2) = 2
+            const calledAmount = 2n;
+
             const tx = await escrow.settleFold(channelId, actions, signatures);
             await expect(tx)
                 .to.emit(escrow, "FoldSettled")
-                .withArgs(channelId, player1.address, deposit * 2n); // Player1 wins
+                .withArgs(channelId, player1.address, calledAmount);
 
-            // Verify pot goes to player1 (the non-folder)
+            // Verify only called amount transfers
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit * 2n);
-            expect(p2Stack).to.equal(0);
+            expect(p1Stack).to.equal(deposit + calledAmount);
+            expect(p2Stack).to.equal(deposit - calledAmount);
         });
     });
 
@@ -671,20 +674,24 @@ describe("HeadsUpPokerEscrow", function () {
             await escrow.connect(player2).join(channelId, { value: deposit });
         });
 
-        it("should add fold settlement pot to winner's deposit", async function () {
+        it("should add fold settlement called amount to winner's deposit", async function () {
             await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
+            // Player1 wins scenario: contributions are 4 vs 2, called amount = 2
+            const calledAmount = 2n;
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit * 2n);
-            expect(p2Stack).to.equal(0);
+            expect(p1Stack).to.equal(deposit + calledAmount);
+            expect(p2Stack).to.equal(deposit - calledAmount);
         });
 
-        it("should add fold settlement pot to player2's deposit", async function () {
+        it("should add fold settlement called amount to player2's deposit", async function () {
             await settleFoldLegacy(escrow, channelId, player2.address, wallet1, wallet2, chainId);
 
+            // Player2 wins scenario: contributions are 1 vs 2, called amount = 1
+            const calledAmount = 1n;
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(0);
-            expect(p2Stack).to.equal(deposit * 2n);
+            expect(p1Stack).to.equal(deposit - calledAmount);
+            expect(p2Stack).to.equal(deposit + calledAmount);
         });
     });
 
