@@ -14,7 +14,7 @@ const ACTION_TYPEHASH = ethers.keccak256(
 );
 const CARD_COMMIT_TYPEHASH = ethers.keccak256(
     ethers.toUtf8Bytes(
-        "CardCommit(uint256 channelId,uint256 handId,uint32 seq,uint8 slot,bytes32 commitHash,bytes32 prevHash)"
+        "CardCommit(uint256 channelId,uint256 handId,uint8 slot,bytes32 commitHash,bytes32 prevHash)"
     )
 );
 
@@ -56,7 +56,6 @@ function cardCommitDigest(dom, cc) {
                 "bytes32",
                 "uint256",
                 "uint256",
-                "uint32",
                 "uint8",
                 "bytes32",
                 "bytes32",
@@ -65,7 +64,6 @@ function cardCommitDigest(dom, cc) {
                 CARD_COMMIT_TYPEHASH,
                 cc.channelId,
                 cc.handId,
-                cc.seq,
                 cc.slot,
                 cc.commitHash,
                 cc.prevHash,

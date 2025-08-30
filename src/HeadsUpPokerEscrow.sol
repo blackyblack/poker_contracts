@@ -79,8 +79,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint8[2] initiatorHole;
         uint16 lockedCommitMask;
         bytes32[9] lockedCommitHashes;
-        uint32[9] lockedCommitSeqs;
-        uint32 maxSeq;
     }
 
     mapping(uint256 => ShowdownState) private showdowns;
@@ -133,8 +131,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     event CommitsUpdated(
         uint256 indexed channelId,
         address indexed submitter,
-        uint16 newMask,
-        uint32 maxSeq
+        uint16 newMask
     );
     event Withdrawn(
         uint256 indexed channelId,
@@ -220,7 +217,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             sd.opponent = address(0);
             sd.deadline = 0;
             sd.lockedCommitMask = 0;
-            sd.maxSeq = 0;
         }
 
         emit ChannelOpened(channelId, msg.sender, opponent, msg.value, handId);
@@ -353,9 +349,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         view
         returns (
             bytes32[9] memory hashes,
-            uint32[9] memory seqs,
-            uint16 presentMask,
-            uint32 maxSeq
+            uint16 presentMask
         )
     {
         if (commits.length * 2 != sigs.length) revert SignatureLengthMismatch();
@@ -373,10 +367,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
                 if (cc.channelId != channelId) revert CommitWrongChannel(slot);
 
-                if (cc.seq > maxSeq) {
-                    maxSeq = cc.seq;
-                }
-
                 bytes32 digest = digestCardCommit(cc);
                 _checkSigners(
                     slot,
@@ -388,7 +378,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                 );
 
                 hashes[slot] = cc.commitHash;
-                seqs[slot] = cc.seq;
                 presentMask |= bit;
             }
         }
@@ -405,7 +394,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bytes32[2] calldata holeSalts,
         address submitter,
         bool requireOverlap
-    ) internal returns (uint16 finalMask, uint32 finalMaxSeq) {
+    ) internal returns (uint16 finalMask) {
         Channel storage ch = channels[channelId];
         ShowdownState storage sd = showdowns[channelId];
 
@@ -414,9 +403,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         (
             bytes32[9] memory newHashes,
-            uint32[9] memory newSeqs,
-            uint16 newMask,
-            uint32 newMaxSeq
+            uint16 newMask
         ) = verifyCoSignedCommits(
                 channelId,
                 commits,
@@ -434,18 +421,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             for (uint8 slot = 0; slot < 9; slot++) {
                 uint16 bit = uint16(1) << slot;
                 if (((newMask & oldMask) & bit) != 0) {
-                    // Allow override if new commit has higher sequence number
-                    if (newSeqs[slot] > sd.lockedCommitSeqs[slot]) {
-                        // Override is allowed, continue to merging
-                        continue;
-                    }
-                    if (newSeqs[slot] == sd.lockedCommitSeqs[slot]) {
-                        // Same sequence number - require exact match
-                        if (newHashes[slot] != sd.lockedCommitHashes[slot]) revert HashMismatch();
-                        continue;
-                    }
-                    // Lower sequence number - not allowed
-                    revert SequenceTooLow();
+                    // Require exact match for existing commits (no overrides)
+                    if (newHashes[slot] != sd.lockedCommitHashes[slot]) revert HashMismatch();
                 }
             }
         }
@@ -455,18 +432,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         for (uint8 slot2 = 0; slot2 < 9; slot2++) {
             uint16 bit2 = uint16(1) << slot2;
             if ((newMask & bit2) != 0) {
-                // Update slot if it's new OR if it's an override with higher seq
-                if ((oldMask & bit2) == 0 || newSeqs[slot2] > sd.lockedCommitSeqs[slot2]) {
+                // Update slot if it's new or if it matches existing hash
+                if ((oldMask & bit2) == 0 || newHashes[slot2] == sd.lockedCommitHashes[slot2]) {
                     sd.lockedCommitHashes[slot2] = newHashes[slot2];
-                    sd.lockedCommitSeqs[slot2] = newSeqs[slot2];
                 }
             }
         }
         sd.lockedCommitMask = mergedMask;
-
-        if (newMaxSeq > sd.maxSeq) {
-            sd.maxSeq = newMaxSeq;
-        }
 
         uint8 submitterSlot1;
         uint8 submitterSlot2;
@@ -534,7 +506,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             }
         }
 
-        return (sd.lockedCommitMask, sd.maxSeq);
+        return sd.lockedCommitMask;
     }
 
     function _forfeitToInitiator(uint256 channelId) internal {
@@ -634,7 +606,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
 
         emit ShowdownStarted(channelId);
-        emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask, sd.maxSeq);
+        emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask);
     }
 
     /// @notice Submit additional commits during reveal window
@@ -693,7 +665,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             // require non-empty overlap with the existing locked set
             true
         );
-        emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask, sd.maxSeq);
+        emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask);
     }
 
     /// @notice Finalize showdown using best commit set locked in dispute
