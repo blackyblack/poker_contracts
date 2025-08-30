@@ -243,12 +243,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     /// @notice Settles fold using co-signed action transcript verification  
     /// @param channelId The channel identifier
-    /// @param handId The hand identifier for the actions
     /// @param actions Array of co-signed actions representing the poker hand
     /// @param signatures Array of signatures (2 per action: player1, player2)
     function settleFold(
         uint256 channelId,
-        uint256 handId,
         Action[] calldata actions,
         bytes[] calldata signatures
     ) external nonReentrant {
@@ -259,7 +257,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (actions.length == 0) revert NoActionsProvided();
         
         // Verify signatures for all actions
-        _verifyActionSignatures(channelId, handId, actions, signatures, ch.player1, ch.player2);
+        _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
         
         // Replay actions to verify they end in a fold
         (HeadsUpPokerReplay.End endType, uint8 folder, ) = replay.replayAndGetEndState(
@@ -272,6 +270,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         
         // Winner is the non-folder
         address winner = folder == 0 ? ch.player2 : ch.player1;
+
+        // TODO: take the pot from the action replay instead of summing deposits
+        // TODO: do not replace deposits with pot, but rather add/subtract the difference
+        // TODO: return each player's pot from the replay
         
         uint256 pot = ch.deposit1 + ch.deposit2;
 
