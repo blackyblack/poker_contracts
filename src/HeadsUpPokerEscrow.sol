@@ -544,6 +544,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         uint256 pot = ch.deposit1 + ch.deposit2;
         
+        // Calculate won amount (what initiator gains from opponent)
+        uint256 wonAmount = sd.initiator == ch.player1 ? ch.deposit2 : ch.deposit1;
+        
         // Add pot to initiator's deposit instead of sending to address
         if (sd.initiator == ch.player1) {
             ch.deposit1 = pot;
@@ -553,7 +556,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             ch.deposit2 = pot;
         }
 
-        emit ShowdownFinalized(channelId, sd.initiator, pot);
+        emit ShowdownFinalized(channelId, sd.initiator, wonAmount);
     }
 
     function getShowdown(
@@ -778,6 +781,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ch.finalized = true;
         uint256 finalPot = ch.deposit1 + ch.deposit2;
         
+        // Calculate won amount (what winner gains from opponent)
+        uint256 wonAmount = winner == ch.player1 ? ch.deposit2 : ch.deposit1;
+        
         // Add pot to winner's deposit instead of sending to address
         if (winner == ch.player1) {
             ch.deposit1 = finalPot;
@@ -787,6 +793,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             ch.deposit2 = finalPot;
         }
 
-        emit ShowdownFinalized(channelId, winner, finalPot);
+        emit ShowdownFinalized(channelId, winner, wonAmount);
     }
 }
