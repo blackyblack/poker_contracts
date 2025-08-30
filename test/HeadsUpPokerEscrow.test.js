@@ -314,12 +314,12 @@ describe("HeadsUpPokerEscrow", function () {
             const tx = await escrow.settleFold(channelId, actions, signatures);
             await expect(tx)
                 .to.emit(escrow, "FoldSettled")
-                .withArgs(channelId, player2.address, deposit * 2n);
+                .withArgs(channelId, player2.address, ethers.parseEther("0.01")); // Won amount
 
-            // Verify pot goes to player2 (the non-folder)
+            // Verify deposits are updated correctly
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(0);
-            expect(p2Stack).to.equal(deposit * 2n);
+            expect(p1Stack).to.equal(deposit - ethers.parseEther("0.01")); // Lost the small blind
+            expect(p2Stack).to.equal(deposit + ethers.parseEther("0.01")); // Won the small blind
         });
 
         it("should reject settlement with invalid signatures", async function () {
@@ -469,10 +469,11 @@ describe("HeadsUpPokerEscrow", function () {
             // Player1 wins by fold
             await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
-            // Check that player1 has the pot in their deposit
+            // Check that player1 has the won amount added to their deposit
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit * 2n);
-            expect(p2Stack).to.equal(0);
+            // Player1 wins 0.02 ETH from player2 (who folded after posting big blind)
+            expect(p1Stack).to.equal(deposit + ethers.parseEther("0.02"));
+            expect(p2Stack).to.equal(deposit - ethers.parseEther("0.02"));
 
             // Player1 withdraws winnings
             await escrow.connect(player1).withdraw(channelId);
