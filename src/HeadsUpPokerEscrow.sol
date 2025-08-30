@@ -261,7 +261,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
         
         // Replay actions to verify they end in a fold
-        (HeadsUpPokerReplay.End endType, uint8 folder, ) = replay.replayAndGetEndState(
+        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 wonAmount) = replay.replayAndGetEndState(
             actions, 
             ch.deposit1, 
             ch.deposit2
@@ -272,24 +272,18 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         // Winner is the non-folder
         address winner = folder == 0 ? ch.player2 : ch.player1;
 
-        // TODO: take the pot from the action replay instead of summing deposits
-        // TODO: do not replace deposits with pot, but rather add/subtract the difference
-        // TODO: return each player's pot from the replay
-        
-        uint256 pot = ch.deposit1 + ch.deposit2;
-
-        // Add pot to winner's deposit instead of sending to address
+        // Award won amount to winner and deduct from loser
         if (winner == ch.player1) {
-            ch.deposit1 = pot;
-            ch.deposit2 = 0;
+            ch.deposit1 += wonAmount;
+            ch.deposit2 -= wonAmount;
         } else {
-            ch.deposit1 = 0;
-            ch.deposit2 = pot;
+            ch.deposit1 -= wonAmount;
+            ch.deposit2 += wonAmount;
         }
 
         ch.finalized = true;
 
-        emit FoldSettled(channelId, winner, pot);
+        emit FoldSettled(channelId, winner, wonAmount);
     }
 
     // ------------------------------------------------------------------

@@ -176,7 +176,8 @@ contract HeadsUpPokerReplay {
                 if (act.amount != 0) revert FoldAmountInvalid();
                 folder = uint8(p);
                 end = End.FOLD;
-                return (end, folder, g.total[0] + g.total[1]);
+                // Return the amount the folder contributed (won amount)
+                return (end, folder, g.total[folder]);
             }
 
             if (act.action == ACT_CHECK_CALL) {
