@@ -247,14 +247,17 @@ describe("HeadsUpPokerEscrow", function () {
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
+            // Calculate expected called amount: min(1+3, 2) = min(4, 2) = 2
+            const calledAmount = 2n;
+
             const tx = await escrow.settleFold(channelId, actions, signatures);
             await expect(tx)
                 .to.emit(escrow, "FoldSettled")
-                .withArgs(channelId, player1.address, deposit * 2n);
+                .withArgs(channelId, player1.address, calledAmount);
 
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit * 2n);
-            expect(p2Stack).to.equal(0);
+            expect(p1Stack).to.equal(deposit + calledAmount);
+            expect(p2Stack).to.equal(deposit - calledAmount);
         });
 
         it("should allow fold settlement for player2 as winner", async function () {
@@ -267,14 +270,17 @@ describe("HeadsUpPokerEscrow", function () {
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
+            // Calculate expected called amount: min(1, 2) = 1
+            const calledAmount = 1n;
+
             const tx = await escrow.settleFold(channelId, actions, signatures);
             await expect(tx)
                 .to.emit(escrow, "FoldSettled")
-                .withArgs(channelId, player2.address, deposit * 2n);
+                .withArgs(channelId, player2.address, calledAmount);
 
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(0);
-            expect(p2Stack).to.equal(deposit * 2n);
+            expect(p1Stack).to.equal(deposit - calledAmount);
+            expect(p2Stack).to.equal(deposit + calledAmount);
         });
 
         it("should reject fold settlement with invalid signatures", async function () {
@@ -302,16 +308,19 @@ describe("HeadsUpPokerEscrow", function () {
             // Sign all actions with both players
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
+            // Calculate expected called amount: min(1, 2) = 1
+            const calledAmount = 1n;
+
             // Should succeed and declare player2 (big blind) as winner
             const tx = await escrow.settleFold(channelId, actions, signatures);
             await expect(tx)
                 .to.emit(escrow, "FoldSettled")
-                .withArgs(channelId, player2.address, deposit * 2n);
+                .withArgs(channelId, player2.address, calledAmount);
 
-            // Verify pot goes to player2 (the non-folder)
+            // Verify only called amount transfers
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(0);
-            expect(p2Stack).to.equal(deposit * 2n);
+            expect(p1Stack).to.equal(deposit - calledAmount);
+            expect(p2Stack).to.equal(deposit + calledAmount);
         });
 
         it("should reject settlement with invalid signatures", async function () {
