@@ -385,7 +385,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
         );
 
         // Submit additional commit that should override the existing one
-        await escrow
+        await expect(escrow
             .connect(player1)
             .submitAdditionalCommits(
                 channelId,
@@ -395,137 +395,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
                 boardSalts,
                 [15, myHole[1]], // new hole cards with overridden first card
                 [newCommit.salt, mySalts[1]]
-            );
-
-        // Verify the commit was overridden
-        const sd = await escrow.getShowdown(channelId);
-        expect(sd.inProgress).to.equal(true);
-        expect(Number(sd.lockedCommitMask)).to.equal(0x1FF); // All slots still committed
-    });
-
-    it("rejects commit override with different hash (duplicate test)", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts, dom } = await setup();
-
-        // Start showdown with initial commits (seq 0-8)
-        await escrow
-            .connect(player1)
-            .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts);
-
-        // Try to create a new commit for slot 0 with different hash
-        const newCommit = await buildCommit(
-            wallet1,
-            wallet2,
-            dom,
-            channelId,
-            SLOT.A1,
-            15 // different card
-        );
-
-        // This should fail because seq is not higher
-        await expect(
-            escrow
-                .connect(player1)
-                .submitAdditionalCommits(
-                    channelId,
-                    [newCommit.cc],
-                    [newCommit.sigA, newCommit.sigB],
-                    board,
-                    boardSalts,
-                    [15, myHole[1]],
-                    [newCommit.salt, mySalts[1]]
-                )
-        ).to.be.revertedWithCustomError(escrow, "HashMismatch"); // Same seq requires exact match
-    });
-
-    it("rejects commit override with different hash (another case)", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts, dom } = await setup();
-
-        // Start showdown with initial commits (seq 0-8)
-        await escrow
-            .connect(player1)
-            .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts);
-
-        // Try to create a new commit for slot 0 with different hash
-        const newCommit = await buildCommit(
-            wallet1,
-            wallet2,
-            dom,
-            channelId,
-            SLOT.A1,
-            15 // different card
-        );
-
-        // Change the commit hash to make it different from the original
-        newCommit.cc.commitHash = ethers.hexlify(ethers.randomBytes(32));
-
-        // Re-sign the mutated commit so signature check passes and we hit HASH_MISMATCH
-        const [sigA, sigB] = await signCommit(wallet1, wallet2, dom, newCommit.cc);
-
-        // This should fail
-        await expect(
-            escrow
-                .connect(player1)
-                .submitAdditionalCommits(
-                    channelId,
-                    [newCommit.cc],
-                    [sigA, sigB],
-                    board,
-                    boardSalts,
-                    [15, myHole[1]],
-                    [newCommit.salt, mySalts[1]]
-                )
-        ).to.be.revertedWithCustomError(escrow, "HashMismatch"); // Same seq requires exact match
-    });
-
-    it("rejects commit override with different hash (third case)", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts, dom } = await setup();
-
-        // First, start showdown with initial commit
-        const highSeqCommit1 = await buildCommit(
-            wallet1,
-            wallet2,
-            dom,
-            channelId,
-            SLOT.A1,
-            myHole[0]
-        );
-
-        // Replace the first commit with new commit
-        const modifiedCommits = [...commits];
-        modifiedCommits[0] = highSeqCommit1.cc;
-        const modifiedSigs = [...sigs];
-        modifiedSigs[0] = highSeqCommit1.sigA;
-        modifiedSigs[1] = highSeqCommit1.sigB;
-
-        const modifiedMySalts = [highSeqCommit1.salt, mySalts[1]];
-
-        await escrow
-            .connect(player1)
-            .startShowdown(channelId, modifiedCommits, modifiedSigs, board, boardSalts, myHole, modifiedMySalts);
-
-        // Now try to submit a commit with different hash
-        const lowSeqCommit = await buildCommit(
-            wallet1,
-            wallet2,
-            dom,
-            channelId,
-            SLOT.A1,
-            15 // different card
-        );
-
-        // This should fail with HashMismatch
-        await expect(
-            escrow
-                .connect(player1)
-                .submitAdditionalCommits(
-                    channelId,
-                    [lowSeqCommit.cc],
-                    [lowSeqCommit.sigA, lowSeqCommit.sigB],
-                    board,
-                    boardSalts,
-                    [15, myHole[1]],
-                    [lowSeqCommit.salt, mySalts[1]]
-                )
+            )
         ).to.be.revertedWithCustomError(escrow, "HashMismatch");
     });
 

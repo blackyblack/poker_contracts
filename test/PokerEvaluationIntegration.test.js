@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { ZERO32, domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("./hashes");
+const { domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("./hashes");
 const { SLOT } = require("./slots");
 const { CARD } = require("./cards");
 
