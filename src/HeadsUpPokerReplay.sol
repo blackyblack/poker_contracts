@@ -51,7 +51,6 @@ contract HeadsUpPokerReplay {
     error RaiseInsufficientIncrease();
     error MinimumRaiseNotMet();
     error NoReopenAllowed();
-    error FoldNotAllowedWhenNoCall();
     error UnknownAction();
     error HandNotDone();
 
@@ -175,7 +174,6 @@ contract HeadsUpPokerReplay {
 
             if (act.action == ACT_FOLD) {
                 if (act.amount != 0) revert FoldAmountInvalid();
-                if (g.toCall == 0) revert FoldNotAllowedWhenNoCall();
                 folder = uint8(p);
                 end = End.FOLD;
                 return (end, folder, _calculateCalledAmount(g));

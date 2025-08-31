@@ -1183,16 +1183,17 @@ describe("HeadsUpPokerReplay", function () {
     });
 
     describe("Guard Rails Tests", function () {
-        it("prevents fold when toCall is 0", async function () {
-            // When toCall == 0, player should check, not fold
+        it("allows fold when toCall is 0", async function () {
+            // Folding when toCall == 0 should be allowed (player chooses to fold rather than check for free)
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, toCall becomes 0
-                { action: ACTION.FOLD, amount: 0n } // BB tries to fold when toCall == 0 (should revert)
+                { action: ACTION.FOLD, amount: 0n } // BB folds when toCall == 0 (should be allowed)
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n))
-                .to.be.revertedWithCustomError(replay, "FoldNotAllowedWhenNoCall");
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // BB folded
         });
 
         it("allows check when toCall is 0", async function () {
