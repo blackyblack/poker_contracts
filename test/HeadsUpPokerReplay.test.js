@@ -1181,4 +1181,133 @@ describe("HeadsUpPokerReplay", function () {
                 .to.be.revertedWithCustomError(replay, "BigBlindStackInvalid");
         });
     });
+
+    describe("WonAmount Verification Tests - min(total0, total1)", function () {
+
+        it("blinds-only fold: SB posts blind then immediately folds", async function () {
+            // Small blind posts 1, big blind posts 2, then small blind folds
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.FOLD, amount: 0n } // SB folds immediately
+            ]);
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(0n); // SB folded
+            // total0 = 1 (SB), total1 = 2 (BB), wonAmount should be min(1, 2) = 1
+            expect(wonAmount).to.equal(1n);
+        });
+
+        it("blinds-only fold: BB folds to SB's blind", async function () {
+            // SB posts 1, BB posts 2, SB raises, BB folds
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises (total contribution = 4)
+                { action: ACTION.FOLD, amount: 0n } // BB folds
+            ]);
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // BB folded
+            // total0 = 4 (SB: 1 + 3), total1 = 2 (BB), wonAmount should be min(4, 2) = 2
+            expect(wonAmount).to.equal(2n);
+        });
+
+        it("bet/fold: one player bets, other folds", async function () {
+            // SB calls BB, then SB bets on flop, BB folds
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls (total = 2)
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                { action: ACTION.BET_RAISE, amount: 5n }, // SB bets 5 on flop (total = 7)
+                { action: ACTION.FOLD, amount: 0n } // BB folds
+            ]);
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // BB folded
+            // total0 = 7 (SB: 2 + 5), total1 = 2 (BB), wonAmount should be min(7, 2) = 2
+            expect(wonAmount).to.equal(2n);
+        });
+
+        it("all-in call-for-less: player calls all-in but has less than bet amount", async function () {
+            // SB has 10, BB has 5, SB bets big, BB calls all-in for less
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 8n }, // SB bets 8 (total = 9)
+                { action: ACTION.CHECK_CALL, amount: 0n } // BB calls all-in with only 3 left (total = 5)
+            ]);
+            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 5n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            // total0 = 9 (SB: 1 + 8), total1 = 5 (BB: 2 + 3), wonAmount should be min(9, 5) = 5
+            expect(wonAmount).to.equal(5n);
+        });
+
+        it("equal all-in: both players go all-in with exactly equal stacks", async function () {
+            // Both players have 5 chips, SB goes all-in, BB calls all-in
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 3n }, // SB goes all-in (total = 4)
+                { action: ACTION.CHECK_CALL, amount: 0n } // BB calls all-in (total = 5)
+            ]);
+            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 5n, 5n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            // total0 = 4 (SB all-in), total1 = 5 (BB all-in), wonAmount should be min(4, 5) = 4
+            expect(wonAmount).to.equal(4n);
+        });
+
+        it("equal all-in: both players with exactly same total contribution", async function () {
+            // Test case where both players contribute exactly the same amount
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 2n },
+                { action: ACTION.BIG_BLIND, amount: 4n },
+                { action: ACTION.BET_RAISE, amount: 4n }, // SB adds 4 more (total = 6)
+                { action: ACTION.CHECK_CALL, amount: 0n } // BB calls with 2 more (total = 6)
+            ]);
+            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 6n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            // total0 = 6 (SB: 2 + 4), total1 = 6 (BB: 4 + 2), wonAmount should be min(6, 6) = 6
+            expect(wonAmount).to.equal(6n);
+        });
+
+        it("check-check showdown: players check down to showdown", async function () {
+            // SB calls BB, then both check down to showdown
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls (total = 2)
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to turn
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to river
+                { action: ACTION.CHECK_CALL, amount: 0n } // SB checks -> showdown
+            ]);
+            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            // total0 = 2 (SB: 1 + 1), total1 = 2 (BB: 2), wonAmount should be min(2, 2) = 2
+            expect(wonAmount).to.equal(2n);
+        });
+
+        it("check-check showdown with different initial contributions", async function () {
+            // Test showdown where players have different contributions
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 3n },
+                { action: ACTION.BIG_BLIND, amount: 6n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls (total = 6)
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to turn
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to river
+                { action: ACTION.CHECK_CALL, amount: 0n } // SB checks -> showdown
+            ]);
+            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            // total0 = 6 (SB: 3 + 3), total1 = 6 (BB: 6), wonAmount should be min(6, 6) = 6
+            expect(wonAmount).to.equal(6n);
+        });
+    });
 });
