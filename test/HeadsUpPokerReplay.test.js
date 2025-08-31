@@ -1188,20 +1188,20 @@ describe("HeadsUpPokerReplay", function () {
                 const actions = buildActions([
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
-                    { action: ACTION.BET_RAISE, amount: 4n }, // SB raises to 5 total (min raise is 2)
-                    { action: ACTION.BET_RAISE, amount: 1n }, // BB short all-in to 6 total (< min raise of 4, closes betting)
-                    { action: ACTION.BET_RAISE, amount: 5n } // SB attempts re-raise (should fail)
+                    { action: ACTION.BET_RAISE, amount: 3n }, // SB adds 3 (total: 4), min raise becomes 2
+                    { action: ACTION.BET_RAISE, amount: 3n }, // BB adds 3 (total: 5), but with stack 5 this is short all-in
+                    { action: ACTION.BET_RAISE, amount: 5n } // SB attempts re-raise (should fail)  
                 ]);
-                await expect(replay.replayAndGetEndState(actions, 20n, 4n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
+                await expect(replay.replayAndGetEndState(actions, 10n, 5n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
             });
 
             it("TAG_expected_fail multiple short all-ins close betting permanently", async function () {
                 const actions = buildActions([
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
-                    { action: ACTION.BET_RAISE, amount: 2n }, // SB short all-in to 3 total (closes betting)
-                    { action: ACTION.BET_RAISE, amount: 1n }, // BB short all-in to 4 total (should still close)
-                    { action: ACTION.BET_RAISE, amount: 1n } // SB attempts raise with remaining (should fail)
+                    { action: ACTION.BET_RAISE, amount: 2n }, // SB adds 2 (total: 3), short all-in with stack 3
+                    { action: ACTION.BET_RAISE, amount: 1n }, // BB adds 1 (total: 3), calls and closes betting
+                    { action: ACTION.BET_RAISE, amount: 1n } // SB attempts raise (should fail - no stack left)
                 ]);
                 await expect(replay.replayAndGetEndState(actions, 3n, 3n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
             });
@@ -1254,10 +1254,10 @@ describe("HeadsUpPokerReplay", function () {
                 const actions = buildActions([
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
-                    { action: ACTION.BET_RAISE, amount: 7n }, // SB raises to 8 total
-                    { action: ACTION.CHECK_CALL, amount: 0n } // BB calls all-in with exactly 2 remaining
+                    { action: ACTION.BET_RAISE, amount: 7n }, // SB adds 7 (total: 8)
+                    { action: ACTION.CHECK_CALL, amount: 0n } // BB calls all-in with remaining 2
                 ]);
-                const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 4n); // BB has only 4 total, 2 left after big blind
+                const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 4n); // BB has 4 total, 2 left after BB
                 expect(end).to.equal(1n); // Should reach showdown
             });
 
@@ -1265,19 +1265,19 @@ describe("HeadsUpPokerReplay", function () {
                 const actions = buildActions([
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
-                    { action: ACTION.BET_RAISE, amount: 3n }, // SB raises min (to 4 total)
-                    { action: ACTION.BET_RAISE, amount: 2n } // BB raises exactly min raise amount with remaining stack
+                    { action: ACTION.BET_RAISE, amount: 3n }, // SB adds 3 (total: 4), min raise becomes 2
+                    { action: ACTION.BET_RAISE, amount: 3n } // BB adds 3 (total: 5), raise inc: 5-4=1 < 2, short all-in
                 ]);
-                const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 5n); // BB has exactly enough for min raise
-                expect(end).to.equal(0n); // Should not revert if exact minimum
+                const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 5n); // BB has exactly 5, goes all-in
+                expect(end).to.equal(1n); // Should reach showdown (both all-in scenario)
             });
 
             it("TAG_expected_fail exact stack raise below minimum closes betting", async function () {
                 const actions = buildActions([
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
-                    { action: ACTION.BET_RAISE, amount: 5n }, // SB raises to 6 total (min raise is 4)
-                    { action: ACTION.BET_RAISE, amount: 1n }, // BB has only 1 left, short all-in closes betting
+                    { action: ACTION.BET_RAISE, amount: 5n }, // SB adds 5 (total: 6), min raise becomes 4
+                    { action: ACTION.BET_RAISE, amount: 1n }, // BB adds 1 (total: 3), short all-in, closes betting
                     { action: ACTION.BET_RAISE, amount: 1n } // SB cannot re-raise
                 ]);
                 await expect(replay.replayAndGetEndState(actions, 10n, 4n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
@@ -1289,8 +1289,8 @@ describe("HeadsUpPokerReplay", function () {
                 const actions = buildActions([
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
-                    { action: ACTION.BET_RAISE, amount: 98n }, // SB raises big (min raise becomes 96)
-                    { action: ACTION.BET_RAISE, amount: 1n }, // BB short all-in with 1 wei (way below min)
+                    { action: ACTION.BET_RAISE, amount: 98n }, // SB adds 98 (total: 99), min raise becomes 97  
+                    { action: ACTION.BET_RAISE, amount: 1n }, // BB adds 1 (total: 3), way below min, short all-in
                     { action: ACTION.BET_RAISE, amount: 1n } // SB cannot re-raise
                 ]);
                 await expect(replay.replayAndGetEndState(actions, 100n, 4n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
@@ -1300,18 +1300,18 @@ describe("HeadsUpPokerReplay", function () {
                 const actions = buildActions([
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
-                    { action: ACTION.BET_RAISE, amount: 4n }, // SB raises to 5 total (min raise is 3)
-                    { action: ACTION.BET_RAISE, amount: 2n } // BB has exactly 2 left - exactly 1 below min raise
+                    { action: ACTION.BET_RAISE, amount: 4n }, // SB adds 4 (total: 5), min raise becomes 3
+                    { action: ACTION.BET_RAISE, amount: 4n } // BB adds 4 (total: 6), raise inc: 6-5=1 < 3, short all-in
                 ]);
-                // This should close betting since raise increment (2) < min raise (3)
+                // This should close betting since raise increment (1) < min raise (3)
                 const actions2 = buildActions([
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
-                    { action: ACTION.BET_RAISE, amount: 4n }, // SB raises to 5 total 
-                    { action: ACTION.BET_RAISE, amount: 2n }, // BB short all-in (closes betting)
+                    { action: ACTION.BET_RAISE, amount: 4n }, // SB adds 4 (total: 5) 
+                    { action: ACTION.BET_RAISE, amount: 4n }, // BB adds 4 (short all-in, closes betting)
                     { action: ACTION.BET_RAISE, amount: 1n } // SB tries to raise
                 ]);
-                await expect(replay.replayAndGetEndState(actions2, 10n, 5n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
+                await expect(replay.replayAndGetEndState(actions2, 10n, 6n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
             });
 
             it("TAG_expected_fail very small stacks with min raise logic", async function () {
