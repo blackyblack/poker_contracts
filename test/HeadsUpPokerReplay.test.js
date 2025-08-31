@@ -1290,7 +1290,7 @@ describe("HeadsUpPokerReplay", function () {
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
                     { action: ACTION.BET_RAISE, amount: 98n }, // SB adds 98 (total: 99), min raise becomes 97  
-                    { action: ACTION.BET_RAISE, amount: 1n }, // BB adds 1 (total: 3), way below min, short all-in
+                    { action: ACTION.BET_RAISE, amount: 2n }, // BB adds 2 (total: 4), calls and goes all-in, closes betting
                     { action: ACTION.BET_RAISE, amount: 1n } // SB cannot re-raise
                 ]);
                 await expect(replay.replayAndGetEndState(actions, 100n, 4n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
@@ -1309,7 +1309,7 @@ describe("HeadsUpPokerReplay", function () {
                     { action: ACTION.BIG_BLIND, amount: 2n },
                     { action: ACTION.BET_RAISE, amount: 4n }, // SB adds 4 (total: 5) 
                     { action: ACTION.BET_RAISE, amount: 4n }, // BB adds 4 (short all-in, closes betting)
-                    { action: ACTION.BET_RAISE, amount: 1n } // SB tries to raise
+                    { action: ACTION.BET_RAISE, amount: 2n } // SB tries to raise by 2 (toCall=1, so sufficient)
                 ]);
                 await expect(replay.replayAndGetEndState(actions2, 10n, 6n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
             });
