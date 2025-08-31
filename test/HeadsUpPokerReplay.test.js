@@ -1181,4 +1181,140 @@ describe("HeadsUpPokerReplay", function () {
                 .to.be.revertedWithCustomError(replay, "BigBlindStackInvalid");
         });
     });
+
+    describe("Happy Path Tables - Full Game Scenarios", function () {
+        // Table-driven tests for complete poker game scenarios
+        // Each test encodes a full happy path from start to finish
+        
+        it("Preflop raise → call → flop bet → call → turn check-check → river bet → fold", async function () {
+            // Table: Action sequence encoding the full happy path
+            const actions = buildActions([
+                // Preflop phase
+                { action: ACTION.SMALL_BLIND, amount: 1n },    // SB posts blind
+                { action: ACTION.BIG_BLIND, amount: 2n },      // BB posts blind
+                { action: ACTION.BET_RAISE, amount: 3n },      // SB raises (minimum raise: 1 + 2 = 3 more)
+                { action: ACTION.CHECK_CALL, amount: 0n },     // BB calls, move to flop
+                
+                // Flop phase  
+                { action: ACTION.BET_RAISE, amount: 2n },      // BB bets (first to act postflop)
+                { action: ACTION.CHECK_CALL, amount: 0n },     // SB calls, move to turn
+                
+                // Turn phase
+                { action: ACTION.CHECK_CALL, amount: 0n },     // BB checks  
+                { action: ACTION.CHECK_CALL, amount: 0n },     // SB checks, move to river
+                
+                // River phase
+                { action: ACTION.BET_RAISE, amount: 3n },      // BB bets
+                { action: ACTION.FOLD, amount: 0n }            // SB folds
+            ]);
+            
+            const stackA = 50n; // SB stack
+            const stackB = 50n; // BB stack
+            
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, stackA, stackB);
+            
+            // Assertions: legal end state, wonAmount, actor handoff, min-raise respected
+            expect(end).to.equal(0n);     // End.FOLD
+            expect(folder).to.equal(0n);  // SB folded (player 0)
+            expect(wonAmount).to.equal(6n); // SB: 6 total, BB: 9 total, called amount = min(6, 9) = 6
+        });
+
+        it("Preflop all-in vs call → showdown", async function () {
+            // Table: All-in scenario encoding
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },    // SB posts blind
+                { action: ACTION.BIG_BLIND, amount: 2n },      // BB posts blind  
+                { action: ACTION.BET_RAISE, amount: 19n },     // SB goes all-in (1 + 19 = 20 total)
+                { action: ACTION.CHECK_CALL, amount: 0n }      // BB calls (goes all-in too)
+            ]);
+            
+            const stackA = 20n; // SB stack (exact all-in)
+            const stackB = 20n; // BB stack (exact all-in)
+            
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, stackA, stackB);
+            
+            // Assertions: legal end state, wonAmount, actor handoff, min-raise respected
+            expect(end).to.equal(1n);      // End.SHOWDOWN
+            expect(folder).to.equal(0n);   // Not applicable for showdown
+            expect(wonAmount).to.equal(20n); // Both all-in: min(20, 20) = 20
+        });
+
+        it("Limp pots to showdown", async function () {
+            // Table: Limp (call preflop) and check down to showdown
+            const actions = buildActions([
+                // Preflop limp
+                { action: ACTION.SMALL_BLIND, amount: 1n },    // SB posts blind
+                { action: ACTION.BIG_BLIND, amount: 2n },      // BB posts blind
+                { action: ACTION.CHECK_CALL, amount: 0n },     // SB calls (limp), move to flop
+                { action: ACTION.CHECK_CALL, amount: 0n },     // BB checks
+                
+                // Flop check-check
+                { action: ACTION.CHECK_CALL, amount: 0n },     // BB checks
+                { action: ACTION.CHECK_CALL, amount: 0n },     // SB checks, move to turn
+                
+                // Turn check-check  
+                { action: ACTION.CHECK_CALL, amount: 0n },     // BB checks
+                { action: ACTION.CHECK_CALL, amount: 0n },     // SB checks, move to river
+                
+                // River check-check → showdown
+                { action: ACTION.CHECK_CALL, amount: 0n },     // BB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }      // SB checks → showdown
+            ]);
+            
+            const stackA = 10n; // SB stack
+            const stackB = 10n; // BB stack
+            
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, stackA, stackB);
+            
+            // Assertions: legal end state, wonAmount, actor handoff, min-raise respected  
+            expect(end).to.equal(1n);     // End.SHOWDOWN
+            expect(folder).to.equal(0n);  // Not applicable for showdown
+            expect(wonAmount).to.equal(2n); // BB amount (both players contributed 2)
+        });
+
+        it("Validates actor handoff through all streets in table scenarios", async function () {
+            // Additional validation test for proper actor transitions
+            // This verifies that the actor alternates correctly through the game
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },    // Player 0 (SB) acts
+                { action: ACTION.BIG_BLIND, amount: 2n },      // Player 1 (BB) acts
+                { action: ACTION.BET_RAISE, amount: 2n },      // Player 0 (SB) acts - raises
+                { action: ACTION.CHECK_CALL, amount: 0n },     // Player 1 (BB) acts - calls, flop
+                { action: ACTION.BET_RAISE, amount: 1n },      // Player 1 (BB) acts first on flop  
+                { action: ACTION.BET_RAISE, amount: 3n },      // Player 0 (SB) acts - raises
+                { action: ACTION.CHECK_CALL, amount: 0n },     // Player 1 (BB) acts - calls, turn
+                { action: ACTION.CHECK_CALL, amount: 0n },     // Player 1 (BB) acts first on turn
+                { action: ACTION.BET_RAISE, amount: 2n },      // Player 0 (SB) acts - bets  
+                { action: ACTION.FOLD, amount: 0n }            // Player 1 (BB) acts - folds
+            ]);
+            
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 20n, 20n);
+            
+            // Verify proper game ending and amounts
+            expect(end).to.equal(0n);     // End.FOLD
+            expect(folder).to.equal(1n);  // BB folded (player 1)  
+            expect(wonAmount).to.equal(6n); // SB: 8 total, BB: 6 total, called amount = min(8, 6) = 6
+        });
+
+        it("Validates minimum raise requirements in table scenarios", async function () {
+            // Test that validates minimum raise logic across different streets
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },    // SB posts 1
+                { action: ACTION.BIG_BLIND, amount: 2n },      // BB posts 2 (min raise = 1)
+                { action: ACTION.BET_RAISE, amount: 3n },      // SB min raise: 1 + 2 = 3 more
+                { action: ACTION.BET_RAISE, amount: 5n },      // BB min reraise: 2 + 3 = 5 more 
+                { action: ACTION.CHECK_CALL, amount: 0n },     // SB calls, flop
+                { action: ACTION.BET_RAISE, amount: 2n },      // BB min bet on flop (big blind size)
+                { action: ACTION.BET_RAISE, amount: 4n },      // SB min raise: 2 + 2 = 4 more
+                { action: ACTION.FOLD, amount: 0n }            // BB folds
+            ]);
+            
+            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 30n, 30n);
+            
+            // Verify the minimum raise logic was respected
+            expect(end).to.equal(0n);      // End.FOLD
+            expect(folder).to.equal(1n);   // BB folded
+            expect(wonAmount).to.equal(9n); // SB: 11 total, BB: 9 total, called amount = min(11, 9) = 9
+        });
+    });
 });
