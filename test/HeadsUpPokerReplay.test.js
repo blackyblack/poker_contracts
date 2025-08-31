@@ -1181,4 +1181,148 @@ describe("HeadsUpPokerReplay", function () {
                 .to.be.revertedWithCustomError(replay, "BigBlindStackInvalid");
         });
     });
+
+    describe("Min-Raise and Short All-In Stress Tests", function () {
+        describe("Short All-In No Reopen Scenarios", function () {
+            it("short all-in closes betting, opponent re-raise attempt should revert", async function () {
+                const actions = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 4n }, // SB raises to 5 total (min raise is 2)
+                    { action: ACTION.BET_RAISE, amount: 1n }, // BB short all-in to 6 total (< min raise of 4, closes betting)
+                    { action: ACTION.BET_RAISE, amount: 5n } // SB attempts re-raise (should fail)
+                ]);
+                await expect(replay.replayAndGetEndState(actions, 20n, 4n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
+            });
+
+            it("TAG_expected_fail multiple short all-ins close betting permanently", async function () {
+                const actions = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 2n }, // SB short all-in to 3 total (closes betting)
+                    { action: ACTION.BET_RAISE, amount: 1n }, // BB short all-in to 4 total (should still close)
+                    { action: ACTION.BET_RAISE, amount: 1n } // SB attempts raise with remaining (should fail)
+                ]);
+                await expect(replay.replayAndGetEndState(actions, 3n, 3n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
+            });
+        });
+
+        describe("Boundary Value Tests", function () {
+            it("TAG_expected_fail 1 wei raise from 0 baseline", async function () {
+                const actions = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 1n } // Minimum possible non-zero raise
+                ]);
+                const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 10n);
+                expect(end).to.equal(0n); // Should work if properly implemented
+            });
+
+            it("TAG_expected_fail 0 wei raise should revert", async function () {
+                const actions = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 0n } // Zero raise should fail
+                ]);
+                await expect(replay.replayAndGetEndState(actions, 10n, 10n)).to.be.revertedWithCustomError(replay, "RaiseAmountZero");
+            });
+
+            it("TAG_expected_fail max uint128 amount handling", async function () {
+                const maxUint128 = (2n ** 128n) - 1n;
+                const actions = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: maxUint128 } // Max possible amount
+                ]);
+                await expect(replay.replayAndGetEndState(actions, maxUint128 + 1n, maxUint128 + 1n)).to.be.revertedWithCustomError(replay, "RaiseStackInvalid");
+            });
+
+            it("TAG_expected_fail underflow protection near max uint128", async function () {
+                const nearMax = (2n ** 128n) - 3n;
+                const actions = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: nearMax - 2n }, // Raise amount that would underflow in calculations
+                    { action: ACTION.BET_RAISE, amount: 1n } // This might cause underflow in raise increment calculation
+                ]);
+                await expect(replay.replayAndGetEndState(actions, nearMax, nearMax)).to.be.revertedWithCustomError(replay, "MinimumRaiseNotMet");
+            });
+        });
+
+        describe("Exact Stack Call Edge Cases", function () {
+            it("exact stack all-in call (no raise)", async function () {
+                const actions = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 7n }, // SB raises to 8 total
+                    { action: ACTION.CHECK_CALL, amount: 0n } // BB calls all-in with exactly 2 remaining
+                ]);
+                const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 4n); // BB has only 4 total, 2 left after big blind
+                expect(end).to.equal(1n); // Should reach showdown
+            });
+
+            it("TAG_expected_fail exact stack raise that equals minimum", async function () {
+                const actions = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 3n }, // SB raises min (to 4 total)
+                    { action: ACTION.BET_RAISE, amount: 2n } // BB raises exactly min raise amount with remaining stack
+                ]);
+                const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 5n); // BB has exactly enough for min raise
+                expect(end).to.equal(0n); // Should not revert if exact minimum
+            });
+
+            it("TAG_expected_fail exact stack raise below minimum closes betting", async function () {
+                const actions = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 5n }, // SB raises to 6 total (min raise is 4)
+                    { action: ACTION.BET_RAISE, amount: 1n }, // BB has only 1 left, short all-in closes betting
+                    { action: ACTION.BET_RAISE, amount: 1n } // SB cannot re-raise
+                ]);
+                await expect(replay.replayAndGetEndState(actions, 10n, 4n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
+            });
+        });
+
+        describe("Compound Edge Cases", function () {
+            it("TAG_expected_fail 1 wei short all-in after large raise", async function () {
+                const actions = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 98n }, // SB raises big (min raise becomes 96)
+                    { action: ACTION.BET_RAISE, amount: 1n }, // BB short all-in with 1 wei (way below min)
+                    { action: ACTION.BET_RAISE, amount: 1n } // SB cannot re-raise
+                ]);
+                await expect(replay.replayAndGetEndState(actions, 100n, 4n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
+            });
+
+            it("TAG_expected_fail exact boundary between short all-in and min raise", async function () {
+                const actions = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 4n }, // SB raises to 5 total (min raise is 3)
+                    { action: ACTION.BET_RAISE, amount: 2n } // BB has exactly 2 left - exactly 1 below min raise
+                ]);
+                // This should close betting since raise increment (2) < min raise (3)
+                const actions2 = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 4n }, // SB raises to 5 total 
+                    { action: ACTION.BET_RAISE, amount: 2n }, // BB short all-in (closes betting)
+                    { action: ACTION.BET_RAISE, amount: 1n } // SB tries to raise
+                ]);
+                await expect(replay.replayAndGetEndState(actions2, 10n, 5n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
+            });
+
+            it("TAG_expected_fail very small stacks with min raise logic", async function () {
+                const actions = buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 1n }, // SB all-in with 1 remaining (short all-in)
+                    { action: ACTION.BET_RAISE, amount: 1n } // BB tries to raise with 1 remaining
+                ]);
+                await expect(replay.replayAndGetEndState(actions, 2n, 3n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
+            });
+        });
+    });
 });
