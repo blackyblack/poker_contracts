@@ -1432,4 +1432,102 @@ describe("HeadsUpPokerReplay", function () {
             expect(wonAmount).to.equal(6n);
         });
     });
+
+    describe("Guard Rails Tests", function () {
+        it("allows fold when toCall is 0", async function () {
+            // Folding when toCall == 0 should be allowed (player chooses to fold rather than check for free)
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, toCall becomes 0
+                { action: ACTION.FOLD, amount: 0n } // BB folds when toCall == 0 (should be allowed)
+            ]);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // BB folded
+        });
+
+        it("allows check when toCall is 0", async function () {
+            // When toCall == 0, player should be able to check
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, toCall becomes 0
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (should work)
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks turn
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks turn
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks river
+                { action: ACTION.CHECK_CALL, amount: 0n }  // BB checks river (goes to showdown)
+            ]);
+            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            expect(wonAmount).to.equal(2n); // Both players put in 2
+        });
+
+        it("prevents raise below min-raise when not all-in", async function () {
+            // This should already work based on existing logic
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises to 3 (min raise is 2, so raise by 1)
+                { action: ACTION.BET_RAISE, amount: 3n } // BB tries to raise by only 1 (below min raise of 2)
+            ]);
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n))
+                .to.be.revertedWithCustomError(replay, "MinimumRaiseNotMet");
+        });
+
+        it("prevents reopen after short all-in", async function () {
+            // This should already work based on existing logic
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 5n }, // SB raises to 5 (full raise)
+                { action: ACTION.BET_RAISE, amount: 5n }, // BB short all-in (only 1 above toCall, below min raise)
+                { action: ACTION.BET_RAISE, amount: 8n } // SB tries to raise again (should not reopen)
+            ]);
+            await expect(replay.replayAndGetEndState(actions, 20n, 7n))
+                .to.be.revertedWithCustomError(replay, "NoReopenAllowed");
+        });
+
+        it("prevents overbet exceeding available stack", async function () {
+            // This should already work - trying to bet more than available stack
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 4n }, // SB raises to 4, toCall = 2 for BB
+                { action: ACTION.BET_RAISE, amount: 12n } // BB tries to raise to 12 (only has 8 left)
+            ]);
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n))
+                .to.be.revertedWithCustomError(replay, "RaiseStackInvalid");
+        });
+
+        it("allows all-in raise below min-raise", async function () {
+            // This should already work - all-in below min raise is allowed
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 5n }, // SB raises to 5 (full raise)
+                { action: ACTION.BET_RAISE, amount: 5n }, // BB all-in with remaining stack (below min raise but all-in)
+                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls
+            ]);
+            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 7n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            expect(wonAmount).to.equal(7n); // All of BB's stack
+        });
+
+        it("allows overbet when going all-in", async function () {
+            // This should already work - all-in is allowed
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 9n }, // SB goes all-in
+                { action: ACTION.CHECK_CALL, amount: 0n } // BB calls
+            ]);
+            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            expect(wonAmount).to.equal(10n); // Full stack
+        });
+    });
 });
