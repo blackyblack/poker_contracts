@@ -85,7 +85,8 @@ contract HeadsUpPokerReplay {
     function replayAndGetEndState(
         Action[] calldata actions,
         uint256 stackA,
-        uint256 stackB
+        uint256 stackB,
+        uint256 minSmallBlind
     ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
         if (actions.length < 2) revert NoBlinds();
 
@@ -104,12 +105,12 @@ contract HeadsUpPokerReplay {
         uint8 smallBlindPlayer = getSmallBlindPlayer(sb.handId);
         uint8 bigBlindPlayer = 1 - smallBlindPlayer;
 
-        // Validate amounts against correct stacks
+        // Validate amounts against correct stacks and minimum blind
         if (smallBlindPlayer == 0) {
-            if (sb.amount == 0 || sb.amount > stackA) revert SmallBlindAmountInvalid();
+            if (sb.amount == 0 || sb.amount < minSmallBlind || sb.amount > stackA) revert SmallBlindAmountInvalid();
             if (bb.amount > stackB) revert BigBlindStackInvalid();
         } else {
-            if (sb.amount == 0 || sb.amount > stackB) revert SmallBlindAmountInvalid();
+            if (sb.amount == 0 || sb.amount < minSmallBlind || sb.amount > stackB) revert SmallBlindAmountInvalid();
             if (bb.amount > stackA) revert BigBlindStackInvalid();
         }
 

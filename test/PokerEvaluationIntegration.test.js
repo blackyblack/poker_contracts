@@ -15,7 +15,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
         escrow = await HeadsUpPokerEscrow.deploy();
 
         // Setup channel
-        await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+        await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
         await escrow.connect(player2).join(channelId, { value: deposit });
     });
 
