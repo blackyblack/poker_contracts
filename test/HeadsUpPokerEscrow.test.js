@@ -180,6 +180,67 @@ describe("HeadsUpPokerEscrow", function () {
         });
     });
 
+    describe("MinBet Functionality", function () {
+        const channelId = 50n;
+        const deposit = ethers.parseEther("1.0");
+
+        it("should store and retrieve different minBet values", async function () {
+            const minBet1 = ethers.parseEther("0.001"); // 0.001 ETH
+            const minBet2 = ethers.parseEther("0.1");   // 0.1 ETH
+            const minBet3 = 1n; // 1 wei
+
+            // Test small minBet
+            await escrow.connect(player1).open(channelId, player2.address, minBet1, { value: deposit });
+            let storedMinBet = await escrow.getMinBet(channelId);
+            expect(storedMinBet).to.equal(minBet1);
+
+            // Finalize channel and open with different minBet
+            await escrow.connect(player2).join(channelId, { value: deposit });
+            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+            await escrow.connect(player1).withdraw(channelId);
+
+            // Test larger minBet
+            await escrow.connect(player1).open(channelId + 1n, player2.address, minBet2, { value: deposit });
+            storedMinBet = await escrow.getMinBet(channelId + 1n);
+            expect(storedMinBet).to.equal(minBet2);
+
+            // Test minimal minBet (1 wei)
+            await escrow.connect(player1).open(channelId + 2n, player2.address, minBet3, { value: deposit });
+            storedMinBet = await escrow.getMinBet(channelId + 2n);
+            expect(storedMinBet).to.equal(minBet3);
+        });
+
+        it("should preserve minBet when reusing channel", async function () {
+            const originalMinBet = ethers.parseEther("0.05");
+            
+            // First game
+            await escrow.connect(player1).open(channelId + 10n, player2.address, originalMinBet, { value: deposit });
+            await escrow.connect(player2).join(channelId + 10n, { value: deposit });
+            
+            let storedMinBet = await escrow.getMinBet(channelId + 10n);
+            expect(storedMinBet).to.equal(originalMinBet);
+
+            // End first game
+            await settleFoldLegacy(escrow, channelId + 10n, player1.address, wallet1, wallet2, chainId);
+            await escrow.connect(player1).withdraw(channelId + 10n);
+
+            // Start second game with different minBet - should update the stored value
+            const newMinBet = ethers.parseEther("0.02");
+            await escrow.connect(player1).open(channelId + 10n, player2.address, newMinBet, { value: deposit });
+            
+            storedMinBet = await escrow.getMinBet(channelId + 10n);
+            expect(storedMinBet).to.equal(newMinBet);
+        });
+
+        it("should include minBet in ChannelOpened event", async function () {
+            const testMinBet = ethers.parseEther("0.123");
+            
+            await expect(escrow.connect(player1).open(channelId + 20n, player2.address, testMinBet, { value: deposit }))
+                .to.emit(escrow, "ChannelOpened")
+                .withArgs(channelId + 20n, player1.address, player2.address, deposit, 1n, testMinBet);
+        });
+    });
+
     describe("Channel Joining", function () {
         const channelId = 2n;
         const deposit = ethers.parseEther("1.0");
