@@ -670,6 +670,20 @@ describe("HeadsUpPokerReplay", function () {
             await expect(replay.replayAndGetEndState(actions, 10n, 5n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
         });
 
+        it("validates proper minimum raise calculation with exact amounts", async function () {
+            // Test that minimum raise calculations work correctly in the fixed scenario
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 2n },
+                { action: ACTION.BIG_BLIND, amount: 4n },
+                { action: ACTION.BET_RAISE, amount: 3n }, // SB short all-in (5 total, needs 2 to call, raising by 1 < 4)
+                { action: ACTION.BET_RAISE, amount: 5n }, // BB raises by exactly minimum (1 to call + 4 to raise = 5 more)
+                { action: ACTION.FOLD, amount: 0n } // SB can't act (all-in) 
+            ]);
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 5n, 20n);
+            expect(end).to.equal(0n); // End.FOLD  
+            expect(folder).to.equal(0n); // SB folded
+        });
+
         it("handles minimum bet on each street", async function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
