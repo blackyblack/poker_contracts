@@ -99,11 +99,12 @@ describe("HeadsUpPokerEscrow", function () {
     describe("Channel Creation", function () {
         const channelId = 1n;
         const deposit = ethers.parseEther("1.0");
+        const minBet = ethers.parseEther("0.01");
 
         it("should allow player1 to open a channel", async function () {
-            await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
+            await expect(escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit }))
                 .to.emit(escrow, "ChannelOpened")
-                .withArgs(channelId, player1.address, player2.address, deposit, 1n); // Added handId as 5th argument
+                .withArgs(channelId, player1.address, player2.address, deposit, 1n, minBet); // Added minBet as 6th argument
 
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
             expect(p1Stack).to.equal(deposit);
@@ -112,25 +113,34 @@ describe("HeadsUpPokerEscrow", function () {
             // Verify handId is set correctly
             const handId = await escrow.getHandId(channelId);
             expect(handId).to.equal(1n);
+
+            // Verify minBet is set correctly
+            const actualMinBet = await escrow.getMinBet(channelId);
+            expect(actualMinBet).to.equal(minBet);
         });
 
         it("should reject opening channel with zero deposit", async function () {
-            await expect(escrow.connect(player1).open(channelId, player2.address, { value: 0 }))
+            await expect(escrow.connect(player1).open(channelId, player2.address, minBet, { value: 0 }))
                 .to.be.revertedWithCustomError(escrow, "NoDeposit");
         });
 
+        it("should reject opening channel with zero minBet", async function () {
+            await expect(escrow.connect(player1).open(channelId, player2.address, 0, { value: deposit }))
+                .to.be.revertedWithCustomError(escrow, "InvalidMinBet");
+        });
+
         it("should reject opening channel with invalid opponent", async function () {
-            await expect(escrow.connect(player1).open(channelId, ethers.ZeroAddress, { value: deposit }))
+            await expect(escrow.connect(player1).open(channelId, ethers.ZeroAddress, minBet, { value: deposit }))
                 .to.be.revertedWithCustomError(escrow, "BadOpponent");
 
-            await expect(escrow.connect(player1).open(channelId, player1.address, { value: deposit }))
+            await expect(escrow.connect(player1).open(channelId, player1.address, minBet, { value: deposit }))
                 .to.be.revertedWithCustomError(escrow, "BadOpponent");
         });
 
         it("should reject opening duplicate channel", async function () {
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
 
-            await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
+            await expect(escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit }))
                 .to.be.revertedWithCustomError(escrow, "ChannelExists");
         });
 
@@ -138,10 +148,10 @@ describe("HeadsUpPokerEscrow", function () {
             const channelId1 = 100n;
             const channelId2 = 101n;
 
-            await escrow.connect(player1).open(channelId1, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId1, player2.address, minBet, { value: deposit });
             const handId1 = await escrow.getHandId(channelId1);
 
-            await escrow.connect(player1).open(channelId2, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId2, player2.address, minBet, { value: deposit });
             const handId2 = await escrow.getHandId(channelId2);
 
             // Both channels should start with handId = 1 (local to each channel)
@@ -153,7 +163,7 @@ describe("HeadsUpPokerEscrow", function () {
             const channelId = 200n;
 
             // First hand in the channel
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
 
             const handId1 = await escrow.getHandId(channelId);
@@ -164,7 +174,7 @@ describe("HeadsUpPokerEscrow", function () {
             await settleFoldLegacy(escrow, channelId, player2.address, wallet1, wallet2, chainId);
 
             // Second hand in the same channel - should get handId = 2
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             const handId2 = await escrow.getHandId(channelId);
             expect(handId2).to.equal(2n);
         });
@@ -173,9 +183,10 @@ describe("HeadsUpPokerEscrow", function () {
     describe("Channel Joining", function () {
         const channelId = 2n;
         const deposit = ethers.parseEther("1.0");
+        const minBet = ethers.parseEther("0.01");
 
         beforeEach(async function () {
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
         });
 
         it("should allow player2 to join the channel", async function () {
@@ -217,9 +228,10 @@ describe("HeadsUpPokerEscrow", function () {
         const channelId = 3n;
         const handId = 1n; // Use the handId from the channel
         const deposit = ethers.parseEther("1.0");
+        const minBet = ethers.parseEther("0.01");
 
         beforeEach(async function () {
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
         });
 
@@ -443,6 +455,7 @@ describe("HeadsUpPokerEscrow", function () {
         const channelId = 10n;
         const deposit1 = ethers.parseEther("1.0");
         const deposit2 = ethers.parseEther("2.0");
+        const minBet = ethers.parseEther("0.01");
 
         it("should return correct stacks for empty channel", async function () {
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
@@ -451,7 +464,7 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should return correct stacks after opening", async function () {
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit1 });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit1 });
 
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
             expect(p1Stack).to.equal(deposit1);
@@ -459,7 +472,7 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should return correct stacks after joining", async function () {
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit1 });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit1 });
             await escrow.connect(player2).join(channelId, { value: deposit2 });
 
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
@@ -471,10 +484,11 @@ describe("HeadsUpPokerEscrow", function () {
     describe("Channel Reuse", function () {
         const channelId = 11n;
         const deposit = ethers.parseEther("1.0");
+        const minBet = ethers.parseEther("0.01");
 
         it("should allow reusing channel after fold settlement and withdrawal", async function () {
             // First game
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
 
             // Player1 wins by fold
@@ -484,7 +498,7 @@ describe("HeadsUpPokerEscrow", function () {
             await escrow.connect(player1).withdraw(channelId);
 
             // Second game - should be able to reuse the same channel
-            await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
+            await expect(escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit }))
                 .to.emit(escrow, "ChannelOpened")
                 .withArgs(channelId, player1.address, player2.address, deposit, 2n);
 
@@ -494,29 +508,29 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should reject opening channel that is not finalized", async function () {
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
 
             // Try to open again without finalizing first game
-            await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
+            await expect(escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit }))
                 .to.be.revertedWithCustomError(escrow, "ChannelExists");
         });
 
         it("should allow reopening channel with remaining deposits", async function () {
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
 
             // Settle fold but don't withdraw
             await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
             // Should now allow reopening while player1 still has winnings in deposit
-            await expect(escrow.connect(player1).open(channelId, player2.address, { value: deposit }))
+            await expect(escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit }))
                 .to.emit(escrow, "ChannelOpened")
                 .withArgs(channelId, player1.address, player2.address, deposit, 2n);
         });
 
         it("should allow accumulating winnings without withdrawal", async function () {
             // First game
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
             await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
@@ -526,7 +540,7 @@ describe("HeadsUpPokerEscrow", function () {
             expect(p2Stack).to.equal(deposit - 2n);
 
             // Second game without withdrawing - should be allowed now
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
             await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
@@ -538,7 +552,7 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should allow winner to accumulate winnings over multiple games", async function () {
             // First game
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
             await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
@@ -552,7 +566,7 @@ describe("HeadsUpPokerEscrow", function () {
 
             // Second game with different stakes
             const deposit2 = ethers.parseEther("2.0");
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit2 });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit2 });
             await escrow.connect(player2).join(channelId, { value: deposit2 });
             await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
@@ -564,7 +578,7 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should allow opening with zero ETH using existing deposits", async function () {
             // First game
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
             await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
@@ -574,7 +588,7 @@ describe("HeadsUpPokerEscrow", function () {
             expect(p2Stack).to.equal(deposit - 2n);
 
             // Second game using existing winnings (0 ETH)
-            await expect(escrow.connect(player1).open(channelId, player2.address, { value: 0 }))
+            await expect(escrow.connect(player1).open(channelId, player2.address, minBet, { value: 0 }))
                 .to.emit(escrow, "ChannelOpened")
                 .withArgs(channelId, player1.address, player2.address, 0, 2n);
 
@@ -594,7 +608,7 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should allow both players to use existing deposits with zero ETH", async function () {
             // First game - player2 wins
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
             await settleFoldLegacy(escrow, channelId, player2.address, wallet1, wallet2, chainId);
 
@@ -604,7 +618,7 @@ describe("HeadsUpPokerEscrow", function () {
             expect(p2Stack).to.equal(deposit + 1n);
 
             // Second game - both use existing winnings (player1 has none, player2 has winnings)
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit }); // Player1 adds new money
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit }); // Player1 adds new money
 
             // Player2 joins with zero ETH using existing winnings
             await expect(escrow.connect(player2).join(channelId, { value: 0 }))
@@ -619,7 +633,7 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should accumulate deposits correctly (critical bug fix test)", async function () {
             // First game - player1 wins
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
             await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
@@ -629,7 +643,7 @@ describe("HeadsUpPokerEscrow", function () {
 
             // Second game - player1 adds more money (testing critical bug fix)
             const additionalDeposit = ethers.parseEther("0.5");
-            await escrow.connect(player1).open(channelId, player2.address, { value: additionalDeposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: additionalDeposit });
 
             // CRITICAL: Check that previous winnings are NOT lost (bug was: deposit1 = msg.value instead of +=)
             [p1Stack, p2Stack] = await escrow.stacks(channelId);
@@ -647,7 +661,7 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should reject joining after withdrawal (channel must be reopened)", async function () {
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
             await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
             await escrow.connect(player1).withdraw(channelId);
@@ -661,9 +675,10 @@ describe("HeadsUpPokerEscrow", function () {
     describe("Pot to Deposit", function () {
         const channelId = 12n;
         const deposit = ethers.parseEther("1.0");
+        const minBet = ethers.parseEther("0.01");
 
         beforeEach(async function () {
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
         });
 
@@ -692,9 +707,10 @@ describe("HeadsUpPokerEscrow", function () {
         const channelId = 13n;
         const handId = 1n;
         const deposit = ethers.parseEther("1.0");
+        const minBet = ethers.parseEther("0.01");
 
         beforeEach(async function () {
-            await escrow.connect(player1).open(channelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, minBet, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
         });
 
@@ -735,7 +751,7 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should reject withdrawal from non-finalized channel", async function () {
             const newChannelId = 14n;
-            await escrow.connect(player1).open(newChannelId, player2.address, { value: deposit });
+            await escrow.connect(player1).open(newChannelId, player2.address, minBet, { value: deposit });
 
             await expect(escrow.connect(player1).withdraw(newChannelId))
                 .to.be.revertedWithCustomError(escrow, "NotFinalized");

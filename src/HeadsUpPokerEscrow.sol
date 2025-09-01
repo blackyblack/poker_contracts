@@ -38,6 +38,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error ChannelExists();
     error BadOpponent();
     error NoDeposit();
+    error InvalidMinBet();
     error NoChannel();
     error NotOpponent();
     error AlreadyJoined();
@@ -94,6 +95,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 handId;
         uint256 nextHandId; // Local counter for this channel
         uint256 lastJoinedHandId; // Track when player2 last joined
+        uint256 minBet; // Minimum bet for this channel
     }
 
     mapping(uint256 => Channel) private channels;
@@ -110,7 +112,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address indexed player1,
         address indexed player2,
         uint256 amount,
-        uint256 handId
+        uint256 handId,
+        uint256 minBet
     );
     event ChannelJoined(
         uint256 indexed channelId,
@@ -154,6 +157,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return channels[channelId].handId;
     }
 
+    /// @notice Get the minimum bet for a channel
+    function getMinBet(uint256 channelId) external view returns (uint256) {
+        return channels[channelId].minBet;
+    }
+
     /// @notice Player withdraws their deposit from a finalized channel
     function withdraw(uint256 channelId) external nonReentrant {
         Channel storage ch = channels[channelId];
@@ -183,11 +191,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     /// @notice Player1 opens a channel with an opponent by depositing ETH
     function open(
         uint256 channelId,
-        address opponent
+        address opponent,
+        uint256 minBet
     ) external payable nonReentrant returns (uint256 handId) {
         Channel storage ch = channels[channelId];
         if (ch.player1 != address(0) && !ch.finalized) revert ChannelExists();
         if (opponent == address(0) || opponent == msg.sender) revert BadOpponent();
+        if (minBet == 0) revert InvalidMinBet();
         
         // Allow zero deposit only if there's existing deposit from previous games
         if (msg.value == 0 && ch.deposit1 == 0) revert NoDeposit();
@@ -208,6 +218,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         // Note: Do not reset deposit2 to allow player2 to accumulate winnings
         ch.finalized = false;
         ch.handId = handId;
+        ch.minBet = minBet; // Store the minimal bet for this channel
 
         // Reset showdown state when reusing channel
         ShowdownState storage sd = showdowns[channelId];
@@ -219,7 +230,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             sd.lockedCommitMask = 0;
         }
 
-        emit ChannelOpened(channelId, msg.sender, opponent, msg.value, handId);
+        emit ChannelOpened(channelId, msg.sender, opponent, msg.value, handId, minBet);
     }
 
     /// @notice Opponent joins an open channel by matching deposit
