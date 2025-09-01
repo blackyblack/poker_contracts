@@ -257,7 +257,10 @@ contract HeadsUpPokerReplay {
                         g.reopen = false;
                     } else {
                         // full raise
-                        if (!g.reopen) revert NoReopenAllowed();
+                        // Allow big blind player to raise on their first action even if reopen is false
+                        // On preflop, if raiseCount is 2, it means only SB has acted (beyond blinds)
+                        bool isInitialBBAction = (g.street == 0 && g.raiseCount == 2 && uint8(p) == bigBlindPlayer);
+                        if (!g.reopen && !isInitialBBAction) revert NoReopenAllowed();
                         g.reopen = true;
                         g.lastRaise = raiseInc;
                     }

@@ -645,14 +645,29 @@ describe("HeadsUpPokerReplay", function () {
             expect(folder).to.equal(0n); // SB folded
         });
 
-        it("prevents re-raise after short all-in", async function () {
+        it("allows BB to raise after SB short all-in on initial action", async function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.BET_RAISE, amount: 2n }, // SB short all-in to 3
-                { action: ACTION.BET_RAISE, amount: 3n } // BB attempts re-raise
+                { action: ACTION.BET_RAISE, amount: 3n }, // BB raises (now allowed on initial action)
+                { action: ACTION.FOLD, amount: 0n } // SB folds
             ]);
-            await expect(replay.replayAndGetEndState(actions, 3n, 10n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
+            const [end, folder,] = await replay.replayAndGetEndState(actions, 3n, 10n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(0n); // SB folded
+        });
+
+        it("still prevents re-raise after player has already acted", async function () {
+            // This ensures the fix doesn't break the legitimate cases where reopen should be blocked
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises (reopens betting)
+                { action: ACTION.BET_RAISE, amount: 3n }, // BB short all-in (closes reopening)
+                { action: ACTION.BET_RAISE, amount: 5n } // SB tries to raise again (should still fail)
+            ]);
+            await expect(replay.replayAndGetEndState(actions, 10n, 5n)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
         });
 
         it("handles minimum bet on each street", async function () {
