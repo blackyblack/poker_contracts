@@ -1,8 +1,8 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { ZERO32, domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("../helpers/hashes");
+const { ZERO32, domainSeparator, cardCommitDigest } = require("../helpers/hashes");
 const { SLOT } = require("../helpers/slots");
-const { buildCommit, signCommit, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
+const { buildCardCommit, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
 
 describe("verifyCoSignedCommits & startShowdown", function () {
     let escrow;
@@ -44,7 +44,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
 
         for (let i = 0; i < parts.length; i++) {
             const [slot, card] = parts[i];
-            const obj = await buildCommit(
+            const obj = await buildCardCommit(
                 wallet1,
                 wallet2,
                 dom,
@@ -69,45 +69,54 @@ describe("verifyCoSignedCommits & startShowdown", function () {
         return { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom };
     }
 
-    it("reverts on duplicate slot commit", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts, objs } = await setup();
-        commits[3] = objs[2].cc;
-        sigs[6] = objs[2].sigA;
-        sigs[7] = objs[2].sigB;
+    // Table-driven tests for commit validation errors
+    const commitValidationTests = [
+        {
+            name: "duplicate slot commit",
+            setup: async ({ commits, sigs, board, boardSalts, myHole, mySalts, objs }) => {
+                commits[3] = objs[2].cc;
+                sigs[6] = objs[2].sigA;
+                sigs[7] = objs[2].sigB;
+                return { commits, sigs, board, boardSalts, myHole, mySalts };
+            },
+            error: "CommitDuplicate",
+            errorArgs: [2]
+        },
+        {
+            name: "wrong channelId",
+            setup: async ({ commits, sigs, board, boardSalts, myHole, mySalts }) => {
+                commits[0].channelId = channelId + 1n;
+                return { commits, sigs, board, boardSalts, myHole, mySalts };
+            },
+            error: "CommitWrongChannel",
+            errorArgs: [0]
+        },
+        {
+            name: "bad B signature",
+            setup: async ({ commits, sigs, board, boardSalts, myHole, mySalts, objs, dom }) => {
+                const digest = cardCommitDigest(dom, objs[2].cc);
+                const badSig = wallet3.signingKey.sign(digest).serialized;
+                sigs[5] = badSig; // B signature for commit index2
+                return { commits, sigs, board, boardSalts, myHole, mySalts };
+            },
+            error: "CommitWrongSignerB",
+            errorArgs: [2]
+        }
+    ];
 
-        await expect(
-            escrow
-                .connect(player1)
-                .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts)
-        )
-            .to.be.revertedWithCustomError(escrow, "CommitDuplicate")
-            .withArgs(2);
-    });
+    commitValidationTests.forEach(test => {
+        it(`reverts on ${test.name}`, async () => {
+            const setupData = await setup();
+            const { commits, sigs, board, boardSalts, myHole, mySalts } = await test.setup(setupData);
 
-    it("reverts on wrong channelId", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
-        commits[0].channelId = channelId + 1n;
+            const expectation = expect(
+                escrow.connect(player1).startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts)
+            ).to.be.revertedWithCustomError(escrow, test.error);
 
-        await expect(
-            escrow
-                .connect(player1)
-                .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts)
-        )
-            .to.be.revertedWithCustomError(escrow, "CommitWrongChannel")
-            .withArgs(0);
-    });
-
-    it("reverts on bad B signature", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts, objs, dom } = await setup();
-        const digest = cardCommitDigest(dom, objs[2].cc);
-        const badSig = wallet3.signingKey.sign(digest).serialized;
-        sigs[5] = badSig; // B signature for commit index2
-
-        await expect(
-            escrow
-                .connect(player1)
-                .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts)
-        ).to.be.revertedWithCustomError(escrow, "CommitWrongSignerB").withArgs(2);
+            if (test.errorArgs) {
+                expectation.withArgs(...test.errorArgs);
+            }
+        });
     });
 
     it("allows partial commit sets", async () => {
@@ -343,7 +352,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts);
 
         // Create a new commit for slot 0 (player A, hole card 1) 
-        const newCommit = await buildCommit(
+        const newCommit = await buildCardCommit(
             wallet1,
             wallet2,
             dom,
@@ -397,49 +406,51 @@ describe("verifyCoSignedCommits & startShowdown", function () {
         expect(Number(sd.lockedCommitMask)).to.equal(0x1FF); // All slots still committed
     });
 
-    it("reverts when initiator does not provide both hole cards", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
+    // Table-driven tests for initiator hole card validation
+    const initiatorValidationTests = [
+        {
+            name: "initiator does not provide both hole cards",
+            player: "player1",
+            setup: ({ commits, sigs }) => ({
+                commits: commits.slice(2), // Skip player1's holes (commits[0], commits[1])
+                sigs: sigs.slice(4) // Skip corresponding signatures
+            })
+        },
+        {
+            name: "initiator provides only one hole card", 
+            player: "player1",
+            setup: ({ commits, sigs }) => ({
+                commits: [commits[0]].concat(commits.slice(2)), // Include only first hole card
+                sigs: [sigs[0], sigs[1]].concat(sigs.slice(4)) // Include corresponding sigs
+            })
+        },
+        {
+            name: "player2 initiator does not provide both hole cards",
+            player: "player2",
+            setup: ({ commits, sigs, objs }) => ({
+                commits: commits.slice(0, 2).concat(commits.slice(4)), // Skip player2's holes
+                sigs: sigs.slice(0, 4).concat(sigs.slice(8)), // Skip corresponding signatures
+                hole: [objs[2].card, objs[3].card],
+                salts: [objs[2].salt, objs[3].salt]
+            })
+        }
+    ];
 
-        // Create commits without initiator's hole cards (player1's holes are slots 0,1)
-        const partialCommits = commits.slice(2); // Skip player1's holes (commits[0], commits[1])
-        const partialSigs = sigs.slice(4); // Skip corresponding signatures
+    initiatorValidationTests.forEach(test => {
+        it(`reverts when ${test.name}`, async () => {
+            const { commits, sigs, board, boardSalts, myHole, mySalts, objs } = await setup();
+            const setup_result = test.setup({ commits, sigs, objs });
+            
+            const player = test.player === "player1" ? player1 : player2;
+            const hole = setup_result.hole || myHole;
+            const salts = setup_result.salts || mySalts;
 
-        await expect(
-            escrow
-                .connect(player1)
-                .startShowdown(channelId, partialCommits, partialSigs, board, boardSalts, myHole, mySalts)
-        ).to.be.revertedWithCustomError(escrow, "InitiatorHolesRequired");
-    });
-
-    it("reverts when initiator provides only one hole card", async () => {
-        const { commits, sigs, board, boardSalts, myHole, mySalts } = await setup();
-
-        // Create commits with only one of initiator's hole cards
-        const partialCommits = [commits[0]].concat(commits.slice(2)); // Include only first hole card
-        const partialSigs = [sigs[0], sigs[1]].concat(sigs.slice(4)); // Include corresponding sigs
-
-        await expect(
-            escrow
-                .connect(player1)
-                .startShowdown(channelId, partialCommits, partialSigs, board, boardSalts, myHole, mySalts)
-        ).to.be.revertedWithCustomError(escrow, "InitiatorHolesRequired");
-    });
-
-    it("reverts when player2 initiator does not provide both hole cards", async () => {
-        const { commits, sigs, board, boardSalts, objs } = await setup();
-
-        // When player2 initiates, they need to provide their hole cards (commits[2], commits[3])
-        const player2Hole = [objs[2].card, objs[3].card];
-        const player2Salts = [objs[2].salt, objs[3].salt];
-
-        // Create commits without player2's hole cards (slots 2,3)
-        const partialCommits = commits.slice(0, 2).concat(commits.slice(4)); // Skip player2's holes
-        const partialSigs = sigs.slice(0, 4).concat(sigs.slice(8)); // Skip corresponding signatures
-
-        await expect(
-            escrow
-                .connect(player2)
-                .startShowdown(channelId, partialCommits, partialSigs, board, boardSalts, player2Hole, player2Salts)
-        ).to.be.revertedWithCustomError(escrow, "InitiatorHolesRequired");
+            await expect(
+                escrow.connect(player).startShowdown(
+                    channelId, setup_result.commits, setup_result.sigs, 
+                    board, boardSalts, hole, salts
+                )
+            ).to.be.revertedWithCustomError(escrow, "InitiatorHolesRequired");
+        });
     });
 });

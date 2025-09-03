@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("../helpers/actions");
-const { actionHash, handGenesis } = require("../helpers/hashes");
+const { actionHash } = require("../helpers/hashes");
 const { buildActions } = require("../helpers/test-utils");
 
 describe("HeadsUpPokerReplay", function () {
@@ -74,287 +74,139 @@ describe("HeadsUpPokerReplay", function () {
         });
     });
 
-    describe("Validation Tests - Blind Setup", function () {
-        it("reverts when no actions provided", async function () {
-            const actions = [];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "NoBlinds");
+    describe("Blind Setup Validation", function () {
+        // Table-driven test for small blind validation errors
+        const blindValidationTests = [
+            {
+                name: "no actions provided",
+                actions: [],
+                error: "NoBlinds"
+            },
+            {
+                name: "only one action provided", 
+                actions: [{ action: ACTION.SMALL_BLIND, amount: 1n }],
+                error: "NoBlinds"
+            },
+            {
+                name: "small blind amount is zero",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 0n },
+                    { action: ACTION.BIG_BLIND, amount: 0n }
+                ],
+                error: "SmallBlindAmountInvalid"
+            },
+            {
+                name: "big blind amount is incorrect", 
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 3n }
+                ],
+                error: "BigBlindAmountInvalid"
+            }
+        ];
+
+        blindValidationTests.forEach(test => {
+            it(`reverts when ${test.name}`, async function () {
+                const actions = test.actions.length > 0 ? buildActions(test.actions) : [];
+                await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n))
+                    .to.be.revertedWithCustomError(replay, test.error);
+            });
         });
 
-        it("reverts when small blind sequence is wrong", async function () {
-            const actions = [
-                {
-                    channelId: 1n,
-                    handId: 1n,
-                    seq: 2,
-                    action: ACTION.SMALL_BLIND,
-                    amount: 1n,
-                    prevHash: handGenesis(1n, 1n)
-                },
-                {
-                    channelId: 1n,
-                    handId: 1n,
-                    seq: 3,
-                    action: ACTION.BIG_BLIND,
-                    amount: 2n,
-                    prevHash: handGenesis(1n, 1n)
-                }
-            ];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "SmallBlindSequenceInvalid");
-        });
-
-        it("reverts when only one action provided", async function () {
+        it("reverts when small blind amount below minimum", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n }
+                { action: ACTION.SMALL_BLIND, amount: 2n },
+                { action: ACTION.BIG_BLIND, amount: 4n }
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "NoBlinds");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 5n))
+                .to.be.revertedWithCustomError(replay, "SmallBlindAmountInvalid");
         });
 
-        it("reverts when small blind prevHash is incorrect", async function () {
-            const actions = [
-                {
-                    channelId: 1n,
-                    handId: 1n,
-                    seq: 1,
-                    action: ACTION.SMALL_BLIND,
-                    amount: 1n,
-                    prevHash: ethers.keccak256("0x1234") // Should be genesis
-                },
-                {
-                    channelId: 1n,
-                    handId: 1n,
-                    seq: 1,
-                    action: ACTION.BIG_BLIND,
-                    amount: 1n,
-                    prevHash: handGenesis(1n, 1n)
-                }
-            ];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "SmallBlindPrevHashInvalid");
-        });
-
-        it("reverts when small blind action is wrong", async function () {
-            const actions = [
-                {
-                    channelId: 1n,
-                    handId: 1n,
-                    seq: 0,
-                    action: ACTION.BIG_BLIND, // Should be SMALL_BLIND
-                    amount: 1n,
-                    prevHash: handGenesis(1n, 1n)
-                },
-                {
-                    channelId: 1n,
-                    handId: 1n,
-                    seq: 1,
-                    action: ACTION.BIG_BLIND,
-                    amount: 1n,
-                    prevHash: handGenesis(1n, 1n)
-                }
-            ];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "SmallBlindActionInvalid");
-        });
-
-        it("reverts when small blind amount is zero", async function () {
-            const sbAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 0,
-                action: ACTION.SMALL_BLIND,
-                amount: 0n, // Should be > 0
-                prevHash: handGenesis(1n, 1n)
-            };
-            const bbAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 1,
-                action: ACTION.BIG_BLIND,
-                amount: 0n,
-                prevHash: actionHash(sbAction)
-            };
-            const actions = [sbAction, bbAction];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "SmallBlindAmountInvalid");
-        });
-
-        it("reverts when small blind amount is below minimum", async function () {
-            const sbAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 0,
-                action: ACTION.SMALL_BLIND,
-                amount: 2n, // Below minimum of 5
-                prevHash: handGenesis(1n, 1n)
-            };
-            const bbAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 1,
-                action: ACTION.BIG_BLIND,
-                amount: 4n,
-                prevHash: actionHash(sbAction)
-            };
-            const actions = [sbAction, bbAction];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 5n)).to.be.revertedWithCustomError(replay, "SmallBlindAmountInvalid");
-        });
-
-        it("reverts when small blind amount exceeds stack", async function () {
-            const sbAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 0,
-                action: ACTION.SMALL_BLIND,
-                amount: 11n, // Exceeds stack of 10
-                prevHash: handGenesis(1n, 1n)
-            };
-            const bbAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 1,
-                action: ACTION.BIG_BLIND,
-                amount: 22n,
-                prevHash: actionHash(sbAction)
-            };
-            const actions = [sbAction, bbAction];
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "SmallBlindAmountInvalid");
-        });
-
-        it("reverts when big blind sequence is wrong", async function () {
-            const sbAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 0,
-                action: ACTION.SMALL_BLIND,
-                amount: 1n,
-                prevHash: handGenesis(1n, 1n)
-            };
-            const bbAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 0, // Same seq, should be greater
-                action: ACTION.BIG_BLIND,
-                amount: 2n,
-                prevHash: actionHash(sbAction)
-            };
-            await expect(replay.replayAndGetEndState([sbAction, bbAction], 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "BigBlindSequenceInvalid");
-        });
-
-        it("reverts when big blind prevHash is incorrect", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n }
-            ]);
-            const badBB = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 1,
-                action: ACTION.BIG_BLIND,
-                amount: 2n,
-                prevHash: ethers.keccak256("0x1234") // Wrong hash
-            };
-            await expect(replay.replayAndGetEndState([actions[0], badBB], 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "BigBlindPrevHashInvalid");
-        });
-
-        it("reverts when big blind action is wrong", async function () {
-            const sbAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 0,
-                action: ACTION.SMALL_BLIND,
-                amount: 1n,
-                prevHash: handGenesis(1n, 1n)
-            };
-            const bbAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 1,
-                action: ACTION.FOLD, // Should be BIG_BLIND
-                amount: 2n,
-                prevHash: actionHash(sbAction)
-            };
-            await expect(replay.replayAndGetEndState([sbAction, bbAction], 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "BigBlindActionInvalid");
-        });
-
-        it("reverts when big blind amount is incorrect", async function () {
-            // big blind should be exactly twice the small blind
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 3n } // wrong amount
-            ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "BigBlindAmountInvalid");
-        });
-
-        it("reverts when big blind amount exceeds stack", async function () {
+        it("reverts when blind amounts exceed available stacks", async function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n }
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 1n, 1n)).to.be.revertedWithCustomError(replay, "BigBlindStackInvalid");
+            await expect(replay.replayAndGetEndState(actions, 10n, 1n, 1n))
+                .to.be.revertedWithCustomError(replay, "BigBlindStackInvalid");
         });
     });
 
-    describe("Validation Tests - Action Sequence", function () {
-        it("reverts when action sequence number is not increasing", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n }
-            ]);
-            // Manually create third action with wrong seq
-            const badAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 1, // Same as previous, should be 2
-                action: ACTION.FOLD,
-                amount: 0n,
-                prevHash: actionHash(actions[1])
-            };
-            await expect(replay.replayAndGetEndState([...actions, badAction], 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "SequenceInvalid");
-        });
+    describe("Action Sequence Validation", function () {
+        // Table-driven tests for action validation
+        const actionValidationTests = [
+            {
+                name: "sequence number not increasing",
+                setup: () => {
+                    const actions = buildActions([
+                        { action: ACTION.SMALL_BLIND, amount: 1n },
+                        { action: ACTION.BIG_BLIND, amount: 2n }
+                    ]);
+                    const badAction = {
+                        channelId: 1n, handId: 1n, seq: 1, // Same as previous
+                        action: ACTION.FOLD, amount: 0n, prevHash: actionHash(actions[1])
+                    };
+                    return [...actions, badAction];
+                },
+                error: "SequenceInvalid"
+            },
+            {
+                name: "incorrect prevHash",
+                setup: () => {
+                    const actions = buildActions([
+                        { action: ACTION.SMALL_BLIND, amount: 1n },
+                        { action: ACTION.BIG_BLIND, amount: 2n }
+                    ]);
+                    const badAction = {
+                        channelId: 1n, handId: 1n, seq: 3, action: ACTION.FOLD,
+                        amount: 0n, prevHash: ethers.keccak256("0x1234")
+                    };
+                    return [...actions, badAction];
+                },
+                error: "PrevHashInvalid"
+            },
+            {
+                name: "blind actions used after start",
+                setup: () => buildActions([
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.SMALL_BLIND, amount: 1n }
+                ]),
+                error: "BlindOnlyStart"
+            },
+            {
+                name: "unknown action type",
+                setup: () => {
+                    const actions = buildActions([
+                        { action: ACTION.SMALL_BLIND, amount: 1n },
+                        { action: ACTION.BIG_BLIND, amount: 2n }
+                    ]);
+                    const badAction = {
+                        channelId: 1n, handId: 1n, seq: 3, action: 99,
+                        amount: 0n, prevHash: actionHash(actions[1])
+                    };
+                    return [...actions, badAction];
+                },
+                error: "UnknownAction"
+            }
+        ];
 
-        it("reverts when action prevHash is incorrect", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n }
-            ]);
-            const badAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 3,
-                action: ACTION.FOLD,
-                amount: 0n,
-                prevHash: ethers.keccak256("0x1234") // Wrong hash
-            };
-            await expect(replay.replayAndGetEndState([...actions, badAction], 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "PrevHashInvalid");
-        });
-
-        it("reverts when blind actions are used after start", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.SMALL_BLIND, amount: 1n } // Wrong, can't use blind again
-            ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "BlindOnlyStart");
+        actionValidationTests.forEach(test => {
+            it(`reverts when ${test.name}`, async function () {
+                const actions = test.setup();
+                await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n))
+                    .to.be.revertedWithCustomError(replay, test.error);
+            });
         });
 
         it("reverts when all-in player tries to act", async function () {
             const badActions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 5n },
                 { action: ACTION.BIG_BLIND, amount: 10n },
-                { action: ACTION.FOLD, amount: 0n }, // trying to act after all-in
+                { action: ACTION.FOLD, amount: 0n }
             ]);
-            await expect(replay.replayAndGetEndState(badActions, 5n, 11n, 1n)).to.be.revertedWithCustomError(replay, "PlayerAllIn");
-        });
-
-        it("reverts when unknown action type is used", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n }
-            ]);
-            const badAction = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 3,
-                action: 99, // Unknown action
-                amount: 0n,
-                prevHash: actionHash(actions[1])
-            };
-            await expect(replay.replayAndGetEndState([...actions, badAction], 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "UnknownAction");
+            await expect(replay.replayAndGetEndState(badActions, 5n, 11n, 1n))
+                .to.be.revertedWithCustomError(replay, "PlayerAllIn");
         });
     });
 
@@ -363,167 +215,144 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 1n } // Should be 0
+                { action: ACTION.FOLD, amount: 1n }
             ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "FoldAmountInvalid");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n))
+                .to.be.revertedWithCustomError(replay, "FoldAmountInvalid");
         });
 
-        it("handles fold on flop", async function () {
+        // Table-driven test for fold scenarios on different streets
+        const foldTests = [
+            { street: "flop", expectedFolder: 0n, actions: [
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                { action: ACTION.FOLD, amount: 0n } // SB folds
+            ]},
+            { street: "turn", expectedFolder: 1n, actions: [
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to turn
+                { action: ACTION.FOLD, amount: 0n } // BB folds
+            ]},
+            { street: "river", expectedFolder: 1n, actions: [
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to turn
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to river
+                { action: ACTION.FOLD, amount: 0n } // BB folds
+            ]}
+        ];
+
+        foldTests.forEach(test => {
+            it(`handles fold on ${test.street}`, async function () {
+                const actions = buildActions(test.actions);
+                const [end, folder] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
+                expect(end).to.equal(0n); // End.FOLD
+                expect(folder).to.equal(test.expectedFolder);
+            });
+        });
+    });
+
+    describe("Check/Call Action Tests", function () {
+        // Table-driven tests for check/call validation
+        const checkCallValidationTests = [
+            {
+                name: "call amount is incorrect",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.CHECK_CALL, amount: 2n }
+                ],
+                error: "CallAmountInvalid"
+            },
+            {
+                name: "check with amount when no bet to call",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
+                    { action: ACTION.CHECK_CALL, amount: 1n } // BB tries to check with amount
+                ],
+                error: "CheckAmountInvalid"
+            }
+        ];
+
+        checkCallValidationTests.forEach(test => {
+            it(`reverts when ${test.name}`, async function () {
+                const actions = buildActions(test.actions);
+                await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n))
+                    .to.be.revertedWithCustomError(replay, test.error);
+            });
+        });
+
+        // All-in call scenarios
+        const allInCallTests = [
+            {
+                name: "all-in call with correct amount",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 9n }, // SB all-in
+                    { action: ACTION.CHECK_CALL, amount: 0n } // BB calls
+                ],
+                stacks: [10n, 9n], // BB has only 9
+                expectedEnd: 1n // SHOWDOWN
+            },
+            {
+                name: "partial all-in call with insufficient chips",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 8n }, // SB raises big
+                    { action: ACTION.CHECK_CALL, amount: 0n } // BB calls with remaining
+                ],
+                stacks: [10n, 5n], // BB only has 5 total
+                expectedEnd: 1n // SHOWDOWN
+            }
+        ];
+
+        allInCallTests.forEach(test => {
+            it(`handles ${test.name}`, async function () {
+                const actions = buildActions(test.actions);
+                const [end] = await replay.replayAndGetEndState(actions, test.stacks[0], test.stacks[1], 1n);
+                expect(end).to.equal(test.expectedEnd);
+            });
+        });
+
+        it("progresses streets after both players check", async function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
                 { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.FOLD, amount: 0n } // SB folds
-            ]);
-            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(0n); // End.FOLD
-            expect(folder).to.equal(0n); // SB folded
-        });
-
-        it("handles fold on turn", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
                 { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks, move to turn
-                { action: ACTION.FOLD, amount: 0n } // BB folds
+                { action: ACTION.CHECK_CALL, amount: 0n }  // BB checks
             ]);
-            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(0n); // End.FOLD
-            expect(folder).to.equal(1n); // BB folded
-        });
-
-        it("handles fold on river", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks, move to river
-                { action: ACTION.FOLD, amount: 0n } // BB folds
-            ]);
-            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(0n); // End.FOLD
-            expect(folder).to.equal(1n); // BB folded
-        });
-    });
-
-    describe("Check/Call Action Tests", function () {
-        it("reverts when call amount is incorrect", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 2n } // Should be 0 for calls
-            ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "CallAmountInvalid");
-        });
-
-        it("handles all-in call with correct amount", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 9n }, // SB all-in, BB needs to call 8 total
-                { action: ACTION.CHECK_CALL, amount: 0n } // BB calls with amount 0
-            ]);
-            const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 9n, 1n); // BB has only 9
-            expect(end).to.equal(1n); // End.SHOWDOWN (both all-in)
-        });
-
-        it("automatically goes all-in when insufficient chips to call", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 5n },
-                { action: ACTION.BIG_BLIND, amount: 10n },
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB auto all-in with remaining 4 chips
-            ]);
-            const [end, ,] = await replay.replayAndGetEndState(actions, 9n, 11n, 1n); // SB has only 9 total, 4 remaining
-            expect(end).to.equal(1n); // End.SHOWDOWN (SB goes all-in)
-        });
-
-        it("progresses street after both players check", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls with amount 0, move to flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks, move to turn
-                { action: ACTION.CHECK_CALL, amount: 0n } // BB checks
-            ]);
-            // Should be waiting for SB to act on turn
-            const nextAction = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n },
-                { action: ACTION.CHECK_CALL, amount: 0n },
-                { action: ACTION.CHECK_CALL, amount: 0n },
-                { action: ACTION.CHECK_CALL, amount: 0n },
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB checks, move to river
-            ]);
-
-            // Should not reach end yet
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "HandNotDone");
-            // Hand is OK so far, but still not done
-            await expect(replay.replayAndGetEndState(nextAction, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "HandNotDone");
+            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n))
+                .to.be.revertedWithCustomError(replay, "HandNotDone");
         });
 
         it("reaches showdown after river checks", async function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n },
-                { action: ACTION.CHECK_CALL, amount: 0n },
-                { action: ACTION.CHECK_CALL, amount: 0n },
-                { action: ACTION.CHECK_CALL, amount: 0n },
-                { action: ACTION.CHECK_CALL, amount: 0n },
-                { action: ACTION.CHECK_CALL, amount: 0n },
-                { action: ACTION.CHECK_CALL, amount: 0n } // Final check -> showdown
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, turn
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, river
+                { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
             ]);
-            const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(1n); // End.SHOWDOWN
-        });
-
-        it("correctly calculates all-in amount when player has exactly enough", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 5n },
-                { action: ACTION.BIG_BLIND, amount: 10n },
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls with exactly 5 remaining
-            ]);
-            const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n); // SB has exactly 10, 5 remaining after blind
-            expect(end).to.equal(1n); // End.SHOWDOWN
-        });
-
-        it("handles call when player has more than enough chips", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB has plenty of chips to call 1
-            ]);
-            await expect(replay.replayAndGetEndState(actions, 100n, 100n, 1n)).to.be.revertedWithCustomError(replay, "HandNotDone");
-        });
-
-        it("reverts when trying to check with amount when no bet to call", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
-                { action: ACTION.CHECK_CALL, amount: 1n } // BB tries to check with amount - should be 0
-            ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n)).to.be.revertedWithCustomError(replay, "CheckAmountInvalid");
-        });
-
-        it("handles partial all-in call correctly", async function () {
-            // Player has less than the amount to call, should go all-in with remaining chips
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 8n }, // SB raises big, BB needs to call 7 more
-                { action: ACTION.CHECK_CALL, amount: 0n } // BB calls but only has 3 remaining
-            ]);
-            const [end, ,] = await replay.replayAndGetEndState(actions, 10n, 5n, 1n); // BB only has 5 total
-            expect(end).to.equal(1n); // End.SHOWDOWN (BB goes all-in with remaining 3)
+            const [end] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
+            expect(end).to.equal(1n); // SHOWDOWN
         });
     });
 
@@ -1071,445 +900,214 @@ describe("HeadsUpPokerReplay", function () {
     });
 
     describe("Alternating Small Blind", function () {
-        // Helper to build actions with a specific handId
+        // Table-driven tests for small blind alternation
+        const blindAlternationTests = [
+            { handId: 1n, expectedSbFolder: 0n, desc: "Player 0 as small blind for odd handId" },
+            { handId: 2n, expectedSbFolder: 1n, desc: "Player 1 as small blind for even handId" },
+            { handId: 3n, expectedSbFolder: 0n, desc: "alternation continues for handId 3" },
+            { handId: 4n, expectedSbFolder: 1n, desc: "alternation continues for handId 4" }
+        ];
 
-
-        it("should have Player 0 as small blind for odd handId", async function () {
-            // For handId=1 (odd), Player 0 should be small blind
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n } // Small blind folds
-            ], 1n, 1n);
-
-            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(0n); // End.FOLD
-            expect(folder).to.equal(0n); // Player 0 (small blind) folded
-            expect(wonAmount).to.equal(1n); // SB: 1
-        });
-
-        it("should have Player 1 as small blind for even handId", async function () {
-            // For handId=2 (even), Player 1 should be small blind
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n } // Small blind folds
-            ], 1n, 2n);
-
-            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(0n); // End.FOLD
-            expect(folder).to.equal(1n); // Player 1 (small blind) folded
-            expect(wonAmount).to.equal(1n); // SB: 1
-        });
-
-        it("should alternate properly across multiple handIds", async function () {
-            // Test several consecutive handIds
-            const testCases = [
-                { handId: 3n, expectedSbFolder: 0n },
-                { handId: 4n, expectedSbFolder: 1n },
-                { handId: 5n, expectedSbFolder: 0n },
-                { handId: 6n, expectedSbFolder: 1n }
-            ];
-
-            for (const testCase of testCases) {
+        blindAlternationTests.forEach(test => {
+            it(`should have ${test.desc}`, async function () {
                 const actions = buildActions([
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
                     { action: ACTION.FOLD, amount: 0n } // Small blind folds
-                ], 1n, testCase.handId);
+                ], 1n, test.handId);
 
                 const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
                 expect(end).to.equal(0n); // End.FOLD
-                expect(folder).to.equal(testCase.expectedSbFolder); // Check correct player folded
+                expect(folder).to.equal(test.expectedSbFolder);
                 expect(wonAmount).to.equal(1n); // SB: 1
-            }
+            });
         });
 
-        it("should correctly handle stack deductions for alternating small blind", async function () {
-            // Test that stacks are correctly deducted based on who posts which blind
+        it("should correctly handle stack deductions for alternating blind", async function () {
             // For handId=2 (even), Player 1 posts SB, Player 0 posts BB
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 5n },
                 { action: ACTION.BIG_BLIND, amount: 10n }
-                // Both all-in scenario to test stack deductions
             ], 1n, 2n);
 
-            // Player 0 has 10 chips, Player 1 has 5 chips
-            // Player 1 posts SB (5), Player 0 posts BB (10) - should go all-in
             const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 5n, 1n);
             expect(end).to.equal(1n); // End.SHOWDOWN (both all-in)
-            expect(wonAmount).to.equal(5n); // Max win is: min(5, 10) = 5
+            expect(wonAmount).to.equal(5n); // Max win is min(5, 10) = 5
         });
 
-        it("should validate small blind amount against correct player's stack", async function () {
-            // For handId=2 (even), Player 1 is small blind - should validate against stackB
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 15n }, // More than stackB (10)
-                { action: ACTION.BIG_BLIND, amount: 30n }
-            ], 1n, 2n);
+        // Table-driven tests for stack validation with alternating blinds
+        const stackValidationTests = [
+            {
+                name: "small blind amount against correct player's stack",
+                handId: 2n, // Player 1 is SB
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 15n },
+                    { action: ACTION.BIG_BLIND, amount: 30n }
+                ],
+                stacks: [50n, 10n], // Player 1 (SB) has only 10
+                error: "SmallBlindAmountInvalid"
+            },
+            {
+                name: "big blind amount against correct player's stack", 
+                handId: 2n, // Player 0 is BB
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 6n },
+                    { action: ACTION.BIG_BLIND, amount: 12n }
+                ],
+                stacks: [10n, 50n], // Player 0 (BB) has only 10
+                error: "BigBlindStackInvalid"
+            }
+        ];
 
-            await expect(replay.replayAndGetEndState(actions, 50n, 10n, 1n))
-                .to.be.revertedWithCustomError(replay, "SmallBlindAmountInvalid");
-        });
-
-        it("should validate big blind amount against correct player's stack", async function () {
-            // For handId=2 (even), Player 1 is SB, Player 0 is BB - should validate BB against stackA
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 6n },
-                { action: ACTION.BIG_BLIND, amount: 12n } // More than stackA (10)
-            ], 1n, 2n);
-
-            await expect(replay.replayAndGetEndState(actions, 10n, 50n, 1n))
-                .to.be.revertedWithCustomError(replay, "BigBlindStackInvalid");
-        });
-    });
-
-    describe("Happy Path Tables - Full Game Scenarios", function () {
-        // Table-driven tests for complete poker game scenarios
-        // Each test encodes a full happy path from start to finish
-
-        it("Preflop raise → call → flop bet → call → turn check-check → river bet → fold", async function () {
-            // Table: Action sequence encoding the full happy path
-            const actions = buildActions([
-                // Preflop phase
-                { action: ACTION.SMALL_BLIND, amount: 1n },    // SB posts blind
-                { action: ACTION.BIG_BLIND, amount: 2n },      // BB posts blind
-                { action: ACTION.BET_RAISE, amount: 3n },      // SB raises (minimum raise: 1 + 2 = 3 more)
-                { action: ACTION.CHECK_CALL, amount: 0n },     // BB calls, move to flop
-
-                // Flop phase  
-                { action: ACTION.BET_RAISE, amount: 2n },      // BB bets (first to act postflop)
-                { action: ACTION.CHECK_CALL, amount: 0n },     // SB calls, move to turn
-
-                // Turn phase
-                { action: ACTION.CHECK_CALL, amount: 0n },     // BB checks  
-                { action: ACTION.CHECK_CALL, amount: 0n },     // SB checks, move to river
-
-                // River phase
-                { action: ACTION.BET_RAISE, amount: 3n },      // BB bets
-                { action: ACTION.FOLD, amount: 0n }            // SB folds
-            ]);
-
-            const stackA = 50n; // SB stack
-            const stackB = 50n; // BB stack
-
-            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, stackA, stackB, 1n);
-
-            // Assertions: legal end state, wonAmount, actor handoff, min-raise respected
-            expect(end).to.equal(0n);     // End.FOLD
-            expect(folder).to.equal(0n);  // SB folded (player 0)
-            expect(wonAmount).to.equal(6n); // SB: 6 total, BB: 9 total, called amount = min(6, 9) = 6
-        });
-
-        it("Preflop all-in vs call → showdown", async function () {
-            // Table: All-in scenario encoding
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },    // SB posts blind
-                { action: ACTION.BIG_BLIND, amount: 2n },      // BB posts blind  
-                { action: ACTION.BET_RAISE, amount: 19n },     // SB goes all-in (1 + 19 = 20 total)
-                { action: ACTION.CHECK_CALL, amount: 0n }      // BB calls (goes all-in too)
-            ]);
-
-            const stackA = 20n; // SB stack (exact all-in)
-            const stackB = 20n; // BB stack (exact all-in)
-
-            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, stackA, stackB, 1n);
-
-            // Assertions: legal end state, wonAmount, actor handoff, min-raise respected
-            expect(end).to.equal(1n);      // End.SHOWDOWN
-            expect(folder).to.equal(0n);   // Not applicable for showdown
-            expect(wonAmount).to.equal(20n); // Both all-in: min(20, 20) = 20
-        });
-
-        it("Limp pots to showdown", async function () {
-            // Table: Limp (call preflop) and check down to showdown
-            const actions = buildActions([
-                // Preflop limp
-                { action: ACTION.SMALL_BLIND, amount: 1n },    // SB posts blind
-                { action: ACTION.BIG_BLIND, amount: 2n },      // BB posts blind
-                { action: ACTION.CHECK_CALL, amount: 0n },     // SB calls (limp), move to flop
-                { action: ACTION.CHECK_CALL, amount: 0n },     // BB checks
-
-                // Flop check-check
-                { action: ACTION.CHECK_CALL, amount: 0n },     // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n },     // SB checks, move to turn
-
-                // Turn check-check  
-                { action: ACTION.CHECK_CALL, amount: 0n },     // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n },     // SB checks, move to river
-
-                // River check-check → showdown
-                { action: ACTION.CHECK_CALL, amount: 0n },     // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }      // SB checks → showdown
-            ]);
-
-            const stackA = 10n; // SB stack
-            const stackB = 10n; // BB stack
-
-            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, stackA, stackB, 1n);
-
-            // Assertions: legal end state, wonAmount, actor handoff, min-raise respected  
-            expect(end).to.equal(1n);     // End.SHOWDOWN
-            expect(folder).to.equal(0n);  // Not applicable for showdown
-            expect(wonAmount).to.equal(2n); // BB amount (both players contributed 2)
-        });
-
-        it("Validates actor handoff through all streets in table scenarios", async function () {
-            // Additional validation test for proper actor transitions
-            // This verifies that the actor alternates correctly through the game
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },    // Player 0 (SB) acts
-                { action: ACTION.BIG_BLIND, amount: 2n },      // Player 1 (BB) acts
-                { action: ACTION.BET_RAISE, amount: 3n },      // Player 0 (SB) acts - raises
-                { action: ACTION.CHECK_CALL, amount: 0n },     // Player 1 (BB) acts - calls, flop
-                { action: ACTION.BET_RAISE, amount: 2n },      // Player 1 (BB) acts first on flop  
-                { action: ACTION.BET_RAISE, amount: 4n },      // Player 0 (SB) acts - raises
-                { action: ACTION.CHECK_CALL, amount: 0n },     // Player 1 (BB) acts - calls, turn
-                { action: ACTION.CHECK_CALL, amount: 0n },     // Player 1 (BB) acts first on turn
-                { action: ACTION.BET_RAISE, amount: 2n },      // Player 0 (SB) acts - bets  
-                { action: ACTION.FOLD, amount: 0n }            // Player 1 (BB) acts - folds
-            ]);
-
-            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 20n, 20n, 1n);
-
-            // Verify proper game ending and amounts
-            expect(end).to.equal(0n);     // End.FOLD
-            expect(folder).to.equal(1n);  // BB folded (player 1)  
-            expect(wonAmount).to.equal(8n); // SB: 10 total, BB: 8 total, called amount = min(10, 8) = 8
-        });
-
-        it("Validates minimum raise requirements in table scenarios", async function () {
-            // Test that validates minimum raise logic across different streets
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },    // SB posts 1
-                { action: ACTION.BIG_BLIND, amount: 2n },      // BB posts 2 (min raise = 1)
-                { action: ACTION.BET_RAISE, amount: 3n },      // SB min raise: 1 + 2 = 3 more
-                { action: ACTION.BET_RAISE, amount: 5n },      // BB min reraise: 2 + 3 = 5 more 
-                { action: ACTION.CHECK_CALL, amount: 0n },     // SB calls, flop
-                { action: ACTION.BET_RAISE, amount: 2n },      // BB min bet on flop (big blind size)
-                { action: ACTION.BET_RAISE, amount: 4n },      // SB min raise: 2 + 2 = 4 more
-                { action: ACTION.FOLD, amount: 0n }            // BB folds
-            ]);
-
-            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 30n, 30n, 1n);
-
-            // Verify the minimum raise logic was respected
-            expect(end).to.equal(0n);      // End.FOLD
-            expect(folder).to.equal(1n);   // BB folded
-            expect(wonAmount).to.equal(9n); // SB: 11 total, BB: 9 total, called amount = min(11, 9) = 9
+        stackValidationTests.forEach(test => {
+            it(`should validate ${test.name}`, async function () {
+                const actions = buildActions(test.actions, 1n, test.handId);
+                await expect(replay.replayAndGetEndState(actions, test.stacks[0], test.stacks[1], 1n))
+                    .to.be.revertedWithCustomError(replay, test.error);
+            });
         });
     });
 
-    describe("WonAmount Verification Tests - min(total0, total1)", function () {
+    describe("Complete Game Scenarios", function () {
+        // Consolidated happy path scenarios testing complete game flows
+        const gameScenarios = [
+            {
+                name: "preflop raise -> call -> postflop bet -> fold",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 3n }, // SB raises
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB calls, flop
+                    { action: ACTION.BET_RAISE, amount: 2n }, // BB bets
+                    { action: ACTION.FOLD, amount: 0n } // SB folds
+                ],
+                expectedEnd: 0n, expectedFolder: 0n, expectedWon: 4n
+            },
+            {
+                name: "preflop all-in vs call -> showdown",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 19n }, // SB all-in
+                    { action: ACTION.CHECK_CALL, amount: 0n } // BB calls
+                ],
+                expectedEnd: 1n, expectedFolder: 0n, expectedWon: 20n
+            },
+            {
+                name: "limp and check down to showdown",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, flop
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, turn
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, river
+                    { action: ACTION.CHECK_CALL, amount: 0n } // SB checks → showdown
+                ],
+                expectedEnd: 1n, expectedFolder: 0n, expectedWon: 2n
+            }
+        ];
 
-        it("blinds-only fold: SB posts blind then immediately folds", async function () {
-            // Small blind posts 1, big blind posts 2, then small blind folds
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n } // SB folds immediately
-            ]);
-            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(0n); // End.FOLD
-            expect(folder).to.equal(0n); // SB folded
-            // total0 = 1 (SB), total1 = 2 (BB), wonAmount should be min(1, 2) = 1
-            expect(wonAmount).to.equal(1n);
-        });
-
-        it("blinds-only fold: BB folds to SB's blind", async function () {
-            // SB posts 1, BB posts 2, SB raises, BB folds
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises (total contribution = 4)
-                { action: ACTION.FOLD, amount: 0n } // BB folds
-            ]);
-            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(0n); // End.FOLD
-            expect(folder).to.equal(1n); // BB folded
-            // total0 = 4 (SB: 1 + 3), total1 = 2 (BB), wonAmount should be min(4, 2) = 2
-            expect(wonAmount).to.equal(2n);
-        });
-
-        it("bet/fold: one player bets, other folds", async function () {
-            // SB calls BB, then SB bets on flop, BB folds
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls (total = 2)
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.BET_RAISE, amount: 5n }, // SB bets 5 on flop (total = 7)
-                { action: ACTION.FOLD, amount: 0n } // BB folds
-            ]);
-            const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 20n, 20n, 1n);
-            expect(end).to.equal(0n); // End.FOLD
-            expect(folder).to.equal(1n); // BB folded
-            // total0 = 7 (SB: 2 + 5), total1 = 2 (BB), wonAmount should be min(7, 2) = 2
-            expect(wonAmount).to.equal(2n);
-        });
-
-        it("all-in call-for-less: player calls all-in but has less than bet amount", async function () {
-            // SB has 10, BB has 5, SB bets big, BB calls all-in for less
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 8n }, // SB bets 8 (total = 9)
-                { action: ACTION.CHECK_CALL, amount: 0n } // BB calls all-in with only 3 left (total = 5)
-            ]);
-            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 5n, 1n);
-            expect(end).to.equal(1n); // End.SHOWDOWN
-            // total0 = 9 (SB: 1 + 8), total1 = 5 (BB: 2 + 3), wonAmount should be min(9, 5) = 5
-            expect(wonAmount).to.equal(5n);
-        });
-
-        it("equal all-in: both players with exactly same total contribution", async function () {
-            // Test case where both players contribute exactly the same amount
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 2n },
-                { action: ACTION.BIG_BLIND, amount: 4n },
-                { action: ACTION.BET_RAISE, amount: 6n }, // SB adds 6 more (total = 8)
-                { action: ACTION.CHECK_CALL, amount: 0n } // BB calls with 2 more (total = 8)
-            ]);
-            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 8n, 1n);
-            expect(end).to.equal(1n); // End.SHOWDOWN
-            // total0 = 8 (SB: 2 + 6), total1 = 8 (BB: 4 + 4), wonAmount should be min(8, 8) = 8
-            expect(wonAmount).to.equal(8n);
-        });
-
-        it("check-check showdown: players check down to showdown", async function () {
-            // SB calls BB, then both check down to showdown
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls (total = 2)
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to turn
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to river
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB checks -> showdown
-            ]);
-            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(1n); // End.SHOWDOWN
-            // total0 = 2 (SB: 1 + 1), total1 = 2 (BB: 2), wonAmount should be min(2, 2) = 2
-            expect(wonAmount).to.equal(2n);
-        });
-
-        it("check-check showdown with different initial contributions", async function () {
-            // Test showdown where players have different contributions
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 3n },
-                { action: ACTION.BIG_BLIND, amount: 6n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls (total = 6)
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to turn
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to river
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB checks -> showdown
-            ]);
-            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 20n, 20n, 1n);
-            expect(end).to.equal(1n); // End.SHOWDOWN
-            // total0 = 6 (SB: 3 + 3), total1 = 6 (BB: 6), wonAmount should be min(6, 6) = 6
-            expect(wonAmount).to.equal(6n);
+        gameScenarios.forEach(scenario => {
+            it(`handles ${scenario.name}`, async function () {
+                const actions = buildActions(scenario.actions);
+                const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 20n, 20n, 1n);
+                expect(end).to.equal(scenario.expectedEnd);
+                if (scenario.expectedEnd === 0n) {
+                    expect(folder).to.equal(scenario.expectedFolder);
+                }
+                expect(wonAmount).to.equal(scenario.expectedWon);
+            });
         });
     });
 
-    describe("Guard Rails Tests", function () {
-        it("allows fold when toCall is 0", async function () {
-            // Folding when toCall == 0 should be allowed (player chooses to fold rather than check for free)
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, toCall becomes 0
-                { action: ACTION.FOLD, amount: 0n } // BB folds when toCall == 0 (should be allowed)
-            ]);
-            const [end, folder,] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(0n); // End.FOLD
-            expect(folder).to.equal(1n); // BB folded
-        });
+    describe("Won Amount Calculation Tests", function () {
+        // Table-driven tests for won amount calculation: min(total0, total1)
+        const wonAmountTests = [
+            {
+                name: "SB folds after blinds only",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.FOLD, amount: 0n }
+                ],
+                expectedEnd: 0n, expectedFolder: 0n, expectedWon: 1n
+            },
+            {
+                name: "BB folds after SB raises",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 3n },
+                    { action: ACTION.FOLD, amount: 0n }
+                ],
+                expectedEnd: 0n, expectedFolder: 1n, expectedWon: 2n
+            },
+            {
+                name: "bet and fold scenario",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // Move to flop
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                    { action: ACTION.BET_RAISE, amount: 5n }, // SB bets
+                    { action: ACTION.FOLD, amount: 0n } // BB folds
+                ],
+                expectedEnd: 0n, expectedFolder: 1n, expectedWon: 2n
+            },
+            {
+                name: "all-in call with unequal stacks",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.BET_RAISE, amount: 8n },
+                    { action: ACTION.CHECK_CALL, amount: 0n }
+                ],
+                stacks: [10n, 5n], expectedEnd: 1n, expectedWon: 5n
+            },
+            {
+                name: "equal all-in contributions",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 2n },
+                    { action: ACTION.BIG_BLIND, amount: 4n },
+                    { action: ACTION.BET_RAISE, amount: 6n },
+                    { action: ACTION.CHECK_CALL, amount: 0n }
+                ],
+                stacks: [10n, 8n], expectedEnd: 1n, expectedWon: 8n
+            },
+            {
+                name: "check down to showdown",
+                actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, flop
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, turn
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, river
+                    { action: ACTION.CHECK_CALL, amount: 0n } // SB checks → showdown
+                ],
+                expectedEnd: 1n, expectedWon: 2n
+            }
+        ];
 
-        it("allows check when toCall is 0", async function () {
-            // When toCall == 0, player should be able to check
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, toCall becomes 0
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (should work)
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks turn
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks turn
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks river
-                { action: ACTION.CHECK_CALL, amount: 0n }  // BB checks river (goes to showdown)
-            ]);
-            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(1n); // End.SHOWDOWN
-            expect(wonAmount).to.equal(2n); // Both players put in 2
-        });
-
-        it("prevents raise below min-raise when not all-in", async function () {
-            // This should already work based on existing logic
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises to 3 (min raise is 2, so raise by 1)
-                { action: ACTION.BET_RAISE, amount: 3n } // BB tries to raise by only 1 (below min raise of 2)
-            ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n))
-                .to.be.revertedWithCustomError(replay, "MinimumRaiseNotMet");
-        });
-
-        it("prevents reopen after short all-in", async function () {
-            // This should already work based on existing logic
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 5n }, // SB raises to 5 (full raise)
-                { action: ACTION.BET_RAISE, amount: 5n }, // BB short all-in (only 1 above toCall, below min raise)
-                { action: ACTION.BET_RAISE, amount: 8n } // SB tries to raise again (should not reopen)
-            ]);
-            await expect(replay.replayAndGetEndState(actions, 20n, 7n, 1n))
-                .to.be.revertedWithCustomError(replay, "NoReopenAllowed");
-        });
-
-        it("prevents overbet exceeding available stack", async function () {
-            // This should already work - trying to bet more than available stack
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 4n }, // SB raises to 4, toCall = 2 for BB
-                { action: ACTION.BET_RAISE, amount: 12n } // BB tries to raise to 12 (only has 8 left)
-            ]);
-            await expect(replay.replayAndGetEndState(actions, 10n, 10n, 1n))
-                .to.be.revertedWithCustomError(replay, "RaiseStackInvalid");
-        });
-
-        it("allows all-in raise below min-raise", async function () {
-            // This should already work - all-in below min raise is allowed
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 5n }, // SB raises to 5 (full raise)
-                { action: ACTION.BET_RAISE, amount: 5n }, // BB all-in with remaining stack (below min raise but all-in)
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls
-            ]);
-            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 7n, 1n);
-            expect(end).to.equal(1n); // End.SHOWDOWN
-            expect(wonAmount).to.equal(7n); // All of BB's stack
-        });
-
-        it("allows overbet when going all-in", async function () {
-            // This should already work - all-in is allowed
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 9n }, // SB goes all-in
-                { action: ACTION.CHECK_CALL, amount: 0n } // BB calls
-            ]);
-            const [end, , wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(1n); // End.SHOWDOWN
-            expect(wonAmount).to.equal(10n); // Full stack
+        wonAmountTests.forEach(test => {
+            it(`calculates correct won amount for ${test.name}`, async function () {
+                const actions = buildActions(test.actions);
+                const stacks = test.stacks || [10n, 10n];
+                const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, stacks[0], stacks[1], 1n);
+                
+                expect(end).to.equal(test.expectedEnd);
+                if (test.expectedEnd === 0n) {
+                    expect(folder).to.equal(test.expectedFolder);
+                }
+                expect(wonAmount).to.equal(test.expectedWon);
+            });
         });
     });
+
+
 });

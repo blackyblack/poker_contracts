@@ -1,9 +1,9 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("../helpers/hashes");
+const { domainSeparator } = require("../helpers/hashes");
 const { SLOT } = require("../helpers/slots");
 const { CARD } = require("../helpers/cards");
-const { buildCommit, signCommit, wallet1, wallet2 } = require("../helpers/test-utils");
+const { buildCardCommit, wallet1, wallet2 } = require("../helpers/test-utils");
 
 describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
     let escrow, player1, player2;
@@ -33,7 +33,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
         const slots = [SLOT.A1, SLOT.A2, SLOT.B1, SLOT.B2, SLOT.FLOP1, SLOT.FLOP2, SLOT.FLOP3, SLOT.TURN, SLOT.RIVER];
 
         for (let i = 0; i < allCards.length; i++) {
-            const obj = await buildCommit(wallet1, wallet2, dom, channelId, slots[i], allCards[i]);
+            const obj = await buildCardCommit(wallet1, wallet2, dom, channelId, slots[i], allCards[i]);
             commits.push(obj.cc);
             sigs.push(obj.sigA, obj.sigB);
             objs.push(obj);
