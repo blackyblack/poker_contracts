@@ -74,10 +74,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address opponent;
         uint256 deadline;
         bool inProgress;
-        bytes32 oppHoleHash1;
-        bytes32 oppHoleHash2;
-        uint8[5] board;
-        uint8[2] initiatorHole;
+        uint8[9] cards;
         uint16 lockedCommitMask;
         bytes32[9] lockedCommitHashes;
     }
@@ -349,61 +346,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
     }
 
-    function verifyCoSignedCommits(
-        uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata commits,
-        bytes[] calldata sigs,
-        uint16 allowedMask,
-        address addrA,
-        address addrB
-    )
-        internal
-        view
-        returns (
-            bytes32[9] memory hashes,
-            uint16 presentMask
-        )
-    {
-        if (commits.length * 2 != sigs.length) revert SignatureLengthMismatch();
-        uint16 seenMask;
-        for (uint256 i = 0; i < commits.length; i++) {
-            HeadsUpPokerEIP712.CardCommit calldata cc = commits[i];
-            // Limit lifetime of locals to this block
-            {
-                uint8 slot = cc.slot;
-                uint16 bit = uint16(1) << slot;
-
-                if ((allowedMask & bit) == 0) revert CommitUnexpected(slot);
-                if ((seenMask & bit) != 0) revert CommitDuplicate(slot);
-                seenMask |= bit;
-
-                if (cc.channelId != channelId) revert CommitWrongChannel(slot);
-
-                bytes32 digest = digestCardCommit(cc);
-                _checkSigners(
-                    slot,
-                    digest,
-                    sigs[i * 2],
-                    sigs[i * 2 + 1],
-                    addrA,
-                    addrB
-                );
-
-                hashes[slot] = cc.commitHash;
-                presentMask |= bit;
-            }
-        }
-    }
-
     // Applies a batch of commits/openings.
     function _applyCommitUpdate(
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[5] calldata boardCodes,
-        bytes32[5] calldata boardSalts,
-        uint8[2] calldata holeCodes,
-        bytes32[2] calldata holeSalts,
+        uint8[9] calldata cardCodes,
+        bytes32[9] calldata cardSalts,
         address submitter,
         bool requireOverlap
     ) internal returns (uint16 finalMask) {
@@ -413,112 +362,143 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address addrA = ch.player1;
         address addrB = ch.player2;
 
-        (
-            bytes32[9] memory newHashes,
-            uint16 newMask
-        ) = verifyCoSignedCommits(
-                channelId,
-                commits,
-                sigs,
-                MASK_ALL,
+        if (commits.length * 2 != sigs.length) revert SignatureLengthMismatch();
+        bytes32[9] memory newHashes;
+        uint16 newMask;
+        uint16 seenMask;
+        for (uint256 i = 0; i < commits.length; i++) {
+            HeadsUpPokerEIP712.CardCommit calldata cc = commits[i];
+            uint8 slot = cc.slot;
+            uint16 bit = uint16(1) << slot;
+
+            if ((MASK_ALL & bit) == 0) revert CommitUnexpected(slot);
+            if ((seenMask & bit) != 0) revert CommitDuplicate(slot);
+            seenMask |= bit;
+
+            if (cc.channelId != channelId) revert CommitWrongChannel(slot);
+
+            bytes32 digest = digestCardCommit(cc);
+            _checkSigners(
+                slot,
+                digest,
+                sigs[i * 2],
+                sigs[i * 2 + 1],
                 addrA,
                 addrB
             );
 
+            newHashes[slot] = cc.commitHash;
+            newMask |= bit;
+        }
+
         uint16 oldMask = sd.lockedCommitMask;
 
         // check for overlap with existing locked set if required
-        if (requireOverlap && oldMask != 0) {
+        if (requireOverlap && oldMask != 0 && newMask != 0) {
             if ((newMask & oldMask) == 0) revert NoOverlap();
-            for (uint8 slot = 0; slot < 9; slot++) {
-                uint16 bit = uint16(1) << slot;
-                if (((newMask & oldMask) & bit) != 0) {
-                    // Require exact match for existing commits (no overrides)
-                    if (newHashes[slot] != sd.lockedCommitHashes[slot]) revert HashMismatch();
+            for (uint8 slot2 = 0; slot2 < 9; slot2++) {
+                uint16 bit2 = uint16(1) << slot2;
+                if (((newMask & oldMask) & bit2) != 0) {
+                    if (newHashes[slot2] != sd.lockedCommitHashes[slot2]) revert HashMismatch();
                 }
             }
         }
 
         // merge new commits into locked set
         uint16 mergedMask = oldMask | newMask;
-        for (uint8 slot2 = 0; slot2 < 9; slot2++) {
-            uint16 bit2 = uint16(1) << slot2;
-            if ((newMask & bit2) != 0) {
-                // Update slot if it's new or if it matches existing hash
-                if ((oldMask & bit2) == 0 || newHashes[slot2] == sd.lockedCommitHashes[slot2]) {
-                    sd.lockedCommitHashes[slot2] = newHashes[slot2];
+        for (uint8 slot3 = 0; slot3 < 9; slot3++) {
+            uint16 bit3 = uint16(1) << slot3;
+            if ((newMask & bit3) != 0) {
+                if ((oldMask & bit3) == 0 || newHashes[slot3] == sd.lockedCommitHashes[slot3]) {
+                    sd.lockedCommitHashes[slot3] = newHashes[slot3];
                 }
             }
         }
         sd.lockedCommitMask = mergedMask;
 
-        uint8 submitterSlot1;
-        uint8 submitterSlot2;
-        uint8 opp1;
-        uint8 opp2;
-        if (submitter == addrA) {
-            submitterSlot1 = SLOT_A1;
-            submitterSlot2 = SLOT_A2;
-            opp1 = SLOT_B1;
-            opp2 = SLOT_B2;
-        } else {
-            submitterSlot1 = SLOT_B1;
-            submitterSlot2 = SLOT_B2;
-            opp1 = SLOT_A1;
-            opp2 = SLOT_A2;
-        }
-
-        if ((newMask & (uint16(1) << opp1)) != 0) {
-            sd.oppHoleHash1 = newHashes[opp1];
-        }
-        if ((newMask & (uint16(1) << opp2)) != 0) {
-            sd.oppHoleHash2 = newHashes[opp2];
-        }
-
         bytes32 domainSeparator = _domainSeparatorV4();
 
-        // Board
-        for (uint256 i = 0; i < 5; i++) {
-            uint8 slot = uint8(SLOT_FLOP1 + i);
-            uint16 bit = uint16(1) << slot;
-            if (((newMask & bit) == 0)) {
-                continue;
-            }
+        for (uint8 slot4 = 0; slot4 < 9; slot4++) {
+            uint8 code = cardCodes[slot4];
+            if (code == 0xFF) continue;
+
             bytes32 h = keccak256(
                 abi.encodePacked(
                     domainSeparator,
                     channelId,
-                    slot,
-                    boardCodes[i],
-                    boardSalts[i]
+                    slot4,
+                    code,
+                    cardSalts[slot4]
                 )
             );
-            if (h != newHashes[slot]) revert BoardOpenFailed();
-            sd.board[i] = boardCodes[i];
+            bytes32 expected = sd.lockedCommitHashes[slot4];
+            if (expected != bytes32(0) && h != expected) {
+                if (slot4 >= SLOT_FLOP1) revert BoardOpenFailed();
+                revert HoleOpenFailed();
+            }
+            sd.cards[slot4] = code;
         }
 
-        for (uint256 i = 0; i < 2; i++) {
-            uint8 slot = i == 0 ? submitterSlot1 : submitterSlot2;
-            uint16 bit = uint16(1) << slot;
-            if (((newMask & bit) == 0)) {
-                continue;
+        // finalize automatically if all cards revealed and commits present
+        bool allRevealed = true;
+        for (uint8 i2 = 0; i2 < 9; i2++) {
+            if (sd.cards[i2] == 0xFF) {
+                allRevealed = false;
+                break;
             }
-            bytes32 h = keccak256(
-                abi.encodePacked(
-                    domainSeparator,
-                    channelId,
-                    slot,
-                    holeCodes[i],
-                    holeSalts[i]
-                )
-            );
-            if (h != newHashes[slot]) revert HoleOpenFailed();
-            if (submitter == sd.initiator) {
-                sd.initiatorHole[i] = holeCodes[i];
-            }
+        }
+
+        if (allRevealed && sd.lockedCommitMask == MASK_ALL) {
+            _finalizeShowdown(channelId);
         }
 
         return sd.lockedCommitMask;
+    }
+
+    function _finalizeShowdown(uint256 channelId) internal {
+        Channel storage ch = channels[channelId];
+        ShowdownState storage sd = showdowns[channelId];
+
+        if (ch.finalized) return;
+
+        uint8[7] memory player1Cards;
+        uint8[7] memory player2Cards;
+
+        player1Cards[0] = sd.cards[SLOT_A1];
+        player1Cards[1] = sd.cards[SLOT_A2];
+        player2Cards[0] = sd.cards[SLOT_B1];
+        player2Cards[1] = sd.cards[SLOT_B2];
+
+        for (uint256 i = 0; i < 5; i++) {
+            uint8 card = sd.cards[uint8(SLOT_FLOP1 + i)];
+            player1Cards[i + 2] = card;
+            player2Cards[i + 2] = card;
+        }
+
+        uint256 player1Rank = PokerEvaluator.evaluateHand(player1Cards);
+        uint256 player2Rank = PokerEvaluator.evaluateHand(player2Cards);
+
+        address winner;
+        if (player1Rank > player2Rank) {
+            winner = ch.player1;
+        } else if (player2Rank > player1Rank) {
+            winner = ch.player2;
+        } else {
+            winner = sd.initiator;
+        }
+
+        ch.finalized = true;
+        sd.inProgress = false;
+        uint256 finalPot = ch.deposit1 + ch.deposit2;
+        if (winner == ch.player1) {
+            ch.deposit1 = finalPot;
+            ch.deposit2 = 0;
+        } else {
+            ch.deposit1 = 0;
+            ch.deposit2 = finalPot;
+        }
+
+        emit ShowdownFinalized(channelId, winner, finalPot);
     }
 
     function _forfeitToInitiator(uint256 channelId) internal {
@@ -527,10 +507,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         if (ch.finalized) return;
         ch.finalized = true;
+        sd.inProgress = false;
 
         uint256 pot = ch.deposit1 + ch.deposit2;
-        
-        // Add pot to initiator's deposit instead of sending to address
+
         if (sd.initiator == ch.player1) {
             ch.deposit1 = pot;
             ch.deposit2 = 0;
@@ -553,12 +533,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[5] calldata boardCodes,
-        bytes32[5] calldata boardSalts,
-        uint8[2] calldata holeCodes,
-        bytes32[2] calldata holeSalts
+        uint8[9] calldata cardCodes,
+        bytes32[9] calldata cardSalts
     ) external nonReentrant {
-        startShowdownInternal(channelId, commits, sigs, boardCodes, boardSalts, holeCodes, holeSalts, msg.sender);
+        startShowdownInternal(channelId, commits, sigs, cardCodes, cardSalts, msg.sender);
     }
 
     /// @notice Player or third party submits commitments and openings to start showdown on behalf of a player
@@ -566,23 +544,19 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[5] calldata boardCodes,
-        bytes32[5] calldata boardSalts,
-        uint8[2] calldata holeCodes,
-        bytes32[2] calldata holeSalts,
+        uint8[9] calldata cardCodes,
+        bytes32[9] calldata cardSalts,
         address onBehalfOf
     ) external nonReentrant {
-        startShowdownInternal(channelId, commits, sigs, boardCodes, boardSalts, holeCodes, holeSalts, onBehalfOf);
+        startShowdownInternal(channelId, commits, sigs, cardCodes, cardSalts, onBehalfOf);
     }
 
     function startShowdownInternal(
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[5] calldata boardCodes,
-        bytes32[5] calldata boardSalts,
-        uint8[2] calldata holeCodes,
-        bytes32[2] calldata holeSalts,
+        uint8[9] calldata cardCodes,
+        bytes32[9] calldata cardSalts,
         address onBehalfOf
     ) internal {
         Channel storage ch = channels[channelId];
@@ -596,24 +570,30 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         sd.opponent = onBehalfOf == ch.player1 ? ch.player2 : ch.player1;
         sd.deadline = block.timestamp + revealWindow;
         sd.inProgress = true;
+        sd.lockedCommitMask = 0;
+        for (uint8 i = 0; i < 9; i++) {
+            sd.cards[i] = 0xFF;
+            sd.lockedCommitHashes[i] = bytes32(0);
+        }
 
         _applyCommitUpdate(
             channelId,
             commits,
             sigs,
-            boardCodes,
-            boardSalts,
-            holeCodes,
-            holeSalts,
+            cardCodes,
+            cardSalts,
             onBehalfOf,
             false
         );
 
-        // Require initiator to open both hole cards
         uint8 initiatorSlot1 = onBehalfOf == ch.player1 ? SLOT_A1 : SLOT_B1;
         uint8 initiatorSlot2 = onBehalfOf == ch.player1 ? SLOT_A2 : SLOT_B2;
-        if ((sd.lockedCommitMask & (uint16(1) << initiatorSlot1)) == 0 ||
-            (sd.lockedCommitMask & (uint16(1) << initiatorSlot2)) == 0) {
+        if (
+            (sd.lockedCommitMask & (uint16(1) << initiatorSlot1)) == 0 ||
+            (sd.lockedCommitMask & (uint16(1) << initiatorSlot2)) == 0 ||
+            sd.cards[initiatorSlot1] == 0xFF ||
+            sd.cards[initiatorSlot2] == 0xFF
+        ) {
             revert InitiatorHolesRequired();
         }
 
@@ -621,41 +601,35 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask);
     }
 
-    /// @notice Submit additional commits during reveal window
-    function submitAdditionalCommits(
+    /// @notice Reveal additional cards and/or commits during reveal window
+    function revealCards(
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[5] calldata boardCodes,
-        bytes32[5] calldata boardSalts,
-        uint8[2] calldata holeCodes,
-        bytes32[2] calldata holeSalts
+        uint8[9] calldata cardCodes,
+        bytes32[9] calldata cardSalts
     ) external nonReentrant {
-        submitAdditionalCommitsInternal(channelId, commits, sigs, boardCodes, boardSalts, holeCodes, holeSalts, msg.sender);
+        revealCardsInternal(channelId, commits, sigs, cardCodes, cardSalts, msg.sender);
     }
 
-    /// @notice Submit additional commits during reveal window on behalf of a player
-    function submitAdditionalCommitsOnBehalfOf(
+    /// @notice Reveal cards on behalf of a player
+    function revealCardsOnBehalfOf(
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[5] calldata boardCodes,
-        bytes32[5] calldata boardSalts,
-        uint8[2] calldata holeCodes,
-        bytes32[2] calldata holeSalts,
+        uint8[9] calldata cardCodes,
+        bytes32[9] calldata cardSalts,
         address onBehalfOf
     ) external nonReentrant {
-        submitAdditionalCommitsInternal(channelId, commits, sigs, boardCodes, boardSalts, holeCodes, holeSalts, onBehalfOf);
+        revealCardsInternal(channelId, commits, sigs, cardCodes, cardSalts, onBehalfOf);
     }
 
-    function submitAdditionalCommitsInternal(
+    function revealCardsInternal(
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[5] calldata boardCodes,
-        bytes32[5] calldata boardSalts,
-        uint8[2] calldata holeCodes,
-        bytes32[2] calldata holeSalts,
+        uint8[9] calldata cardCodes,
+        bytes32[9] calldata cardSalts,
         address onBehalfOf
     ) internal {
         Channel storage ch = channels[channelId];
@@ -663,116 +637,30 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         ShowdownState storage sd = showdowns[channelId];
         if (!sd.inProgress) revert NoShowdownInProgress();
-        if (block.timestamp > sd.deadline) revert Expired();
+
+        if (block.timestamp > sd.deadline) {
+            bool allRevealed = true;
+            for (uint8 i = 0; i < 9; i++) {
+                if (sd.cards[i] == 0xFF) {
+                    allRevealed = false;
+                    break;
+                }
+            }
+            if (!allRevealed) {
+                _forfeitToInitiator(channelId);
+                return;
+            }
+        }
 
         _applyCommitUpdate(
             channelId,
             commits,
             sigs,
-            boardCodes,
-            boardSalts,
-            holeCodes,
-            holeSalts,
+            cardCodes,
+            cardSalts,
             onBehalfOf,
-            // require non-empty overlap with the existing locked set
             true
         );
         emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask);
-    }
-
-    /// @notice Finalize showdown using best commit set locked in dispute
-    function finalizeShowdownWithCommits(
-        uint256 channelId,
-        uint8[2] calldata oppHoleCodes,
-        bytes32[2] calldata oppHoleSalts
-    ) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        if (ch.finalized) revert AlreadyFinalized();
-
-        ShowdownState storage sd = showdowns[channelId];
-        if (!sd.inProgress) revert NoShowdownInProgress();
-        if (block.timestamp <= sd.deadline) revert StillRevealing();
-
-        // TODO: forfeit to last acting player
-        // require full commit set or forfeit to initiator
-        if (sd.lockedCommitMask != MASK_ALL) {
-            _forfeitToInitiator(channelId);
-            return;
-        }
-
-        uint8 opp1 = sd.initiator == ch.player1 ? SLOT_B1 : SLOT_A1;
-        uint8 opp2 = sd.initiator == ch.player1 ? SLOT_B2 : SLOT_A2;
-
-        bytes32 domainSeparator = _domainSeparatorV4();
-
-        for (uint256 i = 0; i < 2; i++) {
-            uint8 slot = i == 0 ? opp1 : opp2;
-            bytes32 expectedHash = i == 0 ? sd.oppHoleHash1 : sd.oppHoleHash2;
-
-            bytes32 h = keccak256(
-                abi.encodePacked(
-                    domainSeparator,
-                    channelId,
-                    slot,
-                    oppHoleCodes[i],
-                    oppHoleSalts[i]
-                )
-            );
-            if (h != expectedHash) revert OpponentHoleOpenFailed();
-        }
-
-        // TODO: Evaluate hands and determine actual winner
-        uint8[7] memory player1Cards;
-        uint8[7] memory player2Cards;
-        
-        // Determine which player is which based on the initiator
-        if (sd.initiator == ch.player1) {
-            // Initiator is player1, opponent is player2
-            player1Cards[0] = sd.initiatorHole[0];
-            player1Cards[1] = sd.initiatorHole[1];
-            player2Cards[0] = oppHoleCodes[0];
-            player2Cards[1] = oppHoleCodes[1];
-        } else {
-            // Initiator is player2, opponent is player1
-            player1Cards[0] = oppHoleCodes[0];
-            player1Cards[1] = oppHoleCodes[1];
-            player2Cards[0] = sd.initiatorHole[0];
-            player2Cards[1] = sd.initiatorHole[1];
-        }
-        
-        // Add community cards to both hands
-        for (uint256 i = 0; i < 5; i++) {
-            player1Cards[i + 2] = sd.board[i];
-            player2Cards[i + 2] = sd.board[i];
-        }
-        
-        // Evaluate both hands
-        uint256 player1Rank = PokerEvaluator.evaluateHand(player1Cards);
-        uint256 player2Rank = PokerEvaluator.evaluateHand(player2Cards);
-        
-        // Determine winner (higher rank wins)
-        address winner;
-        if (player1Rank > player2Rank) {
-            winner = ch.player1;
-        } else if (player2Rank > player1Rank) {
-            winner = ch.player2;
-        } else {
-            // Tie - default to initiator (could be changed to split pot)
-            winner = sd.initiator;
-        }
-
-        ch.finalized = true;
-        uint256 finalPot = ch.deposit1 + ch.deposit2;
-        
-        // Add pot to winner's deposit instead of sending to address
-        if (winner == ch.player1) {
-            ch.deposit1 = finalPot;
-            ch.deposit2 = 0;
-        } else {
-            ch.deposit1 = 0;
-            ch.deposit2 = finalPot;
-        }
-
-        emit ShowdownFinalized(channelId, winner, finalPot);
     }
 }
