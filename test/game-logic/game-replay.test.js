@@ -1,29 +1,8 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { ACTION } = require("./actions");
-const { actionHash, handGenesis } = require("./hashes");
-
-// Helper to build actions with proper hashes and sequence numbers
-function buildActions(specs) {
-    const channelId = 1n;
-    const handId = 1n; // Default handId for tests
-    let seq = 0;
-    let prevHash = handGenesis(channelId, handId);
-    const actions = [];
-    for (const spec of specs) {
-        const act = {
-            channelId,
-            handId,
-            seq: seq++,
-            action: spec.action,
-            amount: spec.amount,
-            prevHash
-        };
-        actions.push(act);
-        prevHash = actionHash(act);
-    }
-    return actions;
-}
+const { ACTION } = require("../helpers/actions");
+const { actionHash, handGenesis } = require("../helpers/hashes");
+const { buildActions } = require("../helpers/test-utils");
 
 describe("HeadsUpPokerReplay", function () {
     let replay;
@@ -1093,33 +1072,15 @@ describe("HeadsUpPokerReplay", function () {
 
     describe("Alternating Small Blind", function () {
         // Helper to build actions with a specific handId
-        function buildActionsWithHandId(specs, handId) {
-            const channelId = 1n;
-            let seq = 0;
-            let prevHash = handGenesis(channelId, handId);
-            const actions = [];
-            for (const spec of specs) {
-                const act = {
-                    channelId,
-                    handId,
-                    seq: seq++,
-                    action: spec.action,
-                    amount: spec.amount,
-                    prevHash
-                };
-                actions.push(act);
-                prevHash = actionHash(act);
-            }
-            return actions;
-        }
+
 
         it("should have Player 0 as small blind for odd handId", async function () {
             // For handId=1 (odd), Player 0 should be small blind
-            const actions = buildActionsWithHandId([
+            const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.FOLD, amount: 0n } // Small blind folds
-            ], 1n);
+            ], 1n, 1n);
 
             const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
             expect(end).to.equal(0n); // End.FOLD
@@ -1129,11 +1090,11 @@ describe("HeadsUpPokerReplay", function () {
 
         it("should have Player 1 as small blind for even handId", async function () {
             // For handId=2 (even), Player 1 should be small blind
-            const actions = buildActionsWithHandId([
+            const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.FOLD, amount: 0n } // Small blind folds
-            ], 2n);
+            ], 1n, 2n);
 
             const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
             expect(end).to.equal(0n); // End.FOLD
@@ -1151,11 +1112,11 @@ describe("HeadsUpPokerReplay", function () {
             ];
 
             for (const testCase of testCases) {
-                const actions = buildActionsWithHandId([
+                const actions = buildActions([
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
                     { action: ACTION.FOLD, amount: 0n } // Small blind folds
-                ], testCase.handId);
+                ], 1n, testCase.handId);
 
                 const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 10n, 10n, 1n);
                 expect(end).to.equal(0n); // End.FOLD
@@ -1167,11 +1128,11 @@ describe("HeadsUpPokerReplay", function () {
         it("should correctly handle stack deductions for alternating small blind", async function () {
             // Test that stacks are correctly deducted based on who posts which blind
             // For handId=2 (even), Player 1 posts SB, Player 0 posts BB
-            const actions = buildActionsWithHandId([
+            const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 5n },
                 { action: ACTION.BIG_BLIND, amount: 10n }
                 // Both all-in scenario to test stack deductions
-            ], 2n);
+            ], 1n, 2n);
 
             // Player 0 has 10 chips, Player 1 has 5 chips
             // Player 1 posts SB (5), Player 0 posts BB (10) - should go all-in
@@ -1182,10 +1143,10 @@ describe("HeadsUpPokerReplay", function () {
 
         it("should validate small blind amount against correct player's stack", async function () {
             // For handId=2 (even), Player 1 is small blind - should validate against stackB
-            const actions = buildActionsWithHandId([
+            const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 15n }, // More than stackB (10)
                 { action: ACTION.BIG_BLIND, amount: 30n }
-            ], 2n);
+            ], 1n, 2n);
 
             await expect(replay.replayAndGetEndState(actions, 50n, 10n, 1n))
                 .to.be.revertedWithCustomError(replay, "SmallBlindAmountInvalid");
@@ -1193,10 +1154,10 @@ describe("HeadsUpPokerReplay", function () {
 
         it("should validate big blind amount against correct player's stack", async function () {
             // For handId=2 (even), Player 1 is SB, Player 0 is BB - should validate BB against stackA
-            const actions = buildActionsWithHandId([
+            const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 6n },
                 { action: ACTION.BIG_BLIND, amount: 12n } // More than stackA (10)
-            ], 2n);
+            ], 1n, 2n);
 
             await expect(replay.replayAndGetEndState(actions, 10n, 50n, 1n))
                 .to.be.revertedWithCustomError(replay, "BigBlindStackInvalid");

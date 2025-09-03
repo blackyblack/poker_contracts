@@ -1,40 +1,8 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { ZERO32, domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("./hashes");
-const { SLOT } = require("./slots");
-
-// Hardhat default account private keys
-const wallet1 = new ethers.Wallet(
-    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-);
-const wallet2 = new ethers.Wallet(
-    "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-);
-const wallet3 = new ethers.Wallet(
-    "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
-);
-
-async function signCommit(a, b, dom, cc) {
-    const digest = cardCommitDigest(dom, cc);
-    const sigA = a.signingKey.sign(digest).serialized;
-    const sigB = b.signingKey.sign(digest).serialized;
-    return [sigA, sigB];
-}
-
-async function buildCommit(a, b, dom, channelId, slot, card, handId = 1n) {
-    const salt = ethers.hexlify(ethers.randomBytes(32));
-    const cHash = commitHash(dom, channelId, slot, card, salt);
-    const cc = {
-        channelId,
-        handId,
-        slot,
-        commitHash: cHash,
-        prevHash: handGenesis(channelId, handId),
-    };
-    // a and b are wallets, not signers
-    const [sigA, sigB] = await signCommit(a, b, dom, cc);
-    return { cc, sigA, sigB, salt, card, slot };
-}
+const { ZERO32, domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("../helpers/hashes");
+const { SLOT } = require("../helpers/slots");
+const { buildCommit, signCommit, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
 
 describe("verifyCoSignedCommits & startShowdown", function () {
     let escrow;

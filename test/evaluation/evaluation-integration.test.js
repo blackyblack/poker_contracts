@@ -1,8 +1,9 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("./hashes");
-const { SLOT } = require("./slots");
-const { CARD } = require("./cards");
+const { domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("../helpers/hashes");
+const { SLOT } = require("../helpers/slots");
+const { CARD } = require("../helpers/cards");
+const { buildCommit, signCommit, wallet1, wallet2 } = require("../helpers/test-utils");
 
 describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
     let escrow, player1, player2;
@@ -18,31 +19,6 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
         await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
         await escrow.connect(player2).join(channelId, { value: deposit });
     });
-
-    // Helper wallets for signing
-    const wallet1 = new ethers.Wallet("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
-    const wallet2 = new ethers.Wallet("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
-
-    async function signCommit(a, b, dom, cc) {
-        const digest = cardCommitDigest(dom, cc);
-        const sigA = a.signingKey.sign(digest).serialized;
-        const sigB = b.signingKey.sign(digest).serialized;
-        return [sigA, sigB];
-    }
-
-    async function buildCommit(a, b, dom, channelId, slot, card, handId = 1n) {
-        const salt = ethers.hexlify(ethers.randomBytes(32));
-        const cHash = commitHash(dom, channelId, slot, card, salt);
-        const cc = {
-            channelId,
-            handId,
-            slot,
-            commitHash: cHash,
-            prevHash: handGenesis(channelId, handId),
-        };
-        const [sigA, sigB] = await signCommit(a, b, dom, cc);
-        return { cc, sigA, sigB, card, salt };
-    }
 
     async function setupShowdownWithCards(player1Cards, player2Cards, boardCards) {
         const chainId = (await ethers.provider.getNetwork()).chainId;

@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { CARD } = require("./cards");
+const { CARD } = require("../helpers/cards");
 
 describe("PokerEvaluator", function () {
     let evaluator;

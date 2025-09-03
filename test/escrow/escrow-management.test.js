@@ -1,52 +1,8 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { ACTION } = require("./actions");
-const { actionHash, actionDigest, handGenesis, domainSeparator } = require("./hashes");
-
-// Hardhat default account private keys
-const wallet1 = new ethers.Wallet(
-    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-);
-const wallet2 = new ethers.Wallet(
-    "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-);
-const wallet3 = new ethers.Wallet(
-    "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
-);
-
-// Helper to build actions with proper hashes and sequence numbers
-function buildActions(specs, channelId = 1n, handId = 1n) {
-    let seq = 0;
-    let prevHash = handGenesis(channelId, handId);
-    const actions = [];
-    for (const spec of specs) {
-        const act = {
-            channelId,
-            handId,
-            seq: seq++,
-            action: spec.action,
-            amount: spec.amount,
-            prevHash
-        };
-        actions.push(act);
-        prevHash = actionHash(act);
-    }
-    return actions;
-}
-
-// Helper to sign actions
-async function signActions(actions, signers, contractAddress, chainId) {
-    const signatures = [];
-    const domain = domainSeparator(contractAddress, chainId);
-
-    for (const action of actions) {
-        const digest = actionDigest(domain, action);
-        const sig1 = signers[0].signingKey.sign(digest).serialized;
-        const sig2 = signers[1].signingKey.sign(digest).serialized;
-        signatures.push(sig1, sig2);
-    }
-    return signatures;
-}
+const { ACTION } = require("../helpers/actions");
+const { actionHash, actionDigest, handGenesis, domainSeparator } = require("../helpers/hashes");
+const { buildActions, signActions, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
 
 // Helper to settle fold with the old test interface  
 async function settleFoldLegacy(escrow, channelId, winner, player1, player2, chainId) {
