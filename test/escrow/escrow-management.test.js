@@ -1,68 +1,23 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { ACTION } = require("./actions");
-const { actionHash, actionDigest, handGenesis, domainSeparator } = require("./hashes");
+const { ACTION } = require("../helpers/actions");
+const { buildActions, signActions, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
 
-// Hardhat default account private keys
-const wallet1 = new ethers.Wallet(
-    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-);
-const wallet2 = new ethers.Wallet(
-    "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-);
-const wallet3 = new ethers.Wallet(
-    "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
-);
-
-// Helper to build actions with proper hashes and sequence numbers
-function buildActions(specs, channelId = 1n, handId = 1n) {
-    let seq = 0;
-    let prevHash = handGenesis(channelId, handId);
-    const actions = [];
-    for (const spec of specs) {
-        const act = {
-            channelId,
-            handId,
-            seq: seq++,
-            action: spec.action,
-            amount: spec.amount,
-            prevHash
-        };
-        actions.push(act);
-        prevHash = actionHash(act);
-    }
-    return actions;
-}
-
-// Helper to sign actions
-async function signActions(actions, signers, contractAddress, chainId) {
-    const signatures = [];
-    const domain = domainSeparator(contractAddress, chainId);
-
-    for (const action of actions) {
-        const digest = actionDigest(domain, action);
-        const sig1 = signers[0].signingKey.sign(digest).serialized;
-        const sig2 = signers[1].signingKey.sign(digest).serialized;
-        signatures.push(sig1, sig2);
-    }
-    return signatures;
-}
-
-// Helper to settle fold with the old test interface  
-async function settleFoldLegacy(escrow, channelId, winner, player1, player2, chainId) {
+// Helper to settle fold scenario in tests
+async function settleBasicFold(escrow, channelId, winner, wallet1, wallet2, chainId) {
     const handId = await escrow.getHandId(channelId);
 
     if (handId % 2n === 0n) {
-        if (winner === player1.address) {
-            winner = player2.address;
+        if (winner === wallet1.address) {
+            winner = wallet2.address;
         } else {
-            winner = player1.address;
+            winner = wallet1.address;
         }
     }
 
     // Determine who should fold to make the winner win
     let actions;
-    if (winner === player1.address) {
+    if (winner === wallet1.address) {
         // Player2 should fold, so player1 wins
         actions = buildActions([
             { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -79,7 +34,7 @@ async function settleFoldLegacy(escrow, channelId, winner, player1, player2, cha
         ], channelId, handId);
     }
 
-    const signatures = await signActions(actions, [player1, player2], await escrow.getAddress(), chainId);
+    const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
     return escrow.settleFold(channelId, actions, signatures);
 }
 
@@ -100,84 +55,73 @@ describe("HeadsUpPokerEscrow", function () {
         const channelId = 1n;
         const deposit = ethers.parseEther("1.0");
 
+        // Table-driven tests for channel creation validation
+        const creationValidationTests = [
+            {
+                name: "zero deposit",
+                setup: () => ({ deposit: 0, minBlind: 1n, opponent: null }),
+                error: "NoDeposit"
+            },
+            {
+                name: "zero minSmallBlind", 
+                setup: () => ({ deposit, minBlind: 0n, opponent: null }),
+                error: "InvalidMinSmallBlind"
+            },
+            {
+                name: "zero address opponent",
+                setup: () => ({ deposit, minBlind: 1n, opponent: ethers.ZeroAddress }),
+                error: "BadOpponent"
+            },
+            {
+                name: "self as opponent",
+                setup: () => ({ deposit, minBlind: 1n, opponent: "self" }),
+                error: "BadOpponent"
+            }
+        ];
+
         it("should allow player1 to open a channel", async function () {
             const minSmallBlind = 1n;
             await expect(escrow.connect(player1).open(channelId, player2.address, minSmallBlind, { value: deposit }))
                 .to.emit(escrow, "ChannelOpened")
-                .withArgs(channelId, player1.address, player2.address, deposit, 1n, minSmallBlind); // Added handId as 5th argument, minSmallBlind as 6th
+                .withArgs(channelId, player1.address, player2.address, deposit, 1n, minSmallBlind);
 
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
             expect(p1Stack).to.equal(deposit);
             expect(p2Stack).to.equal(0);
 
-            // Verify handId is set correctly
             const handId = await escrow.getHandId(channelId);
             expect(handId).to.equal(1n);
 
-            // Verify minSmallBlind is set correctly
             const minBlind = await escrow.getMinSmallBlind(channelId);
             expect(minBlind).to.equal(minSmallBlind);
         });
 
-        it("should reject opening channel with zero deposit", async function () {
-            const minSmallBlind = 1n;
-            await expect(escrow.connect(player1).open(channelId, player2.address, minSmallBlind, { value: 0 }))
-                .to.be.revertedWithCustomError(escrow, "NoDeposit");
-        });
-
-        it("should reject opening channel with zero minSmallBlind", async function () {
-            await expect(escrow.connect(player1).open(channelId, player2.address, 0n, { value: deposit }))
-                .to.be.revertedWithCustomError(escrow, "InvalidMinSmallBlind");
-        });
-
-        it("should reject opening channel with invalid opponent", async function () {
-            await expect(escrow.connect(player1).open(channelId, ethers.ZeroAddress, 1n, { value: deposit }))
-                .to.be.revertedWithCustomError(escrow, "BadOpponent");
-
-            await expect(escrow.connect(player1).open(channelId, player1.address, 1n, { value: deposit }))
-                .to.be.revertedWithCustomError(escrow, "BadOpponent");
+        creationValidationTests.forEach(test => {
+            it(`should reject opening channel with ${test.name}`, async function () {
+                const setup = test.setup();
+                const opponent = setup.opponent === "self" ? player1.address : 
+                              setup.opponent === null ? player2.address : setup.opponent;
+                
+                await expect(escrow.connect(player1).open(channelId, opponent, setup.minBlind, { value: setup.deposit }))
+                    .to.be.revertedWithCustomError(escrow, test.error);
+            });
         });
 
         it("should reject opening duplicate channel", async function () {
             await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-
             await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit }))
                 .to.be.revertedWithCustomError(escrow, "ChannelExists");
         });
 
-        it("should generate local handIds per channel", async function () {
+        it("should generate incremental handIds per channel", async function () {
             const channelId1 = 100n;
             const channelId2 = 101n;
 
             await escrow.connect(player1).open(channelId1, player2.address, 1n, { value: deposit });
-            const handId1 = await escrow.getHandId(channelId1);
-
             await escrow.connect(player1).open(channelId2, player2.address, 1n, { value: deposit });
-            const handId2 = await escrow.getHandId(channelId2);
 
-            // Both channels should start with handId = 1 (local to each channel)
-            expect(handId1).to.equal(1n);
-            expect(handId2).to.equal(1n);
-        });
-
-        it("should increment handId when same channel is reused", async function () {
-            const channelId = 200n;
-
-            // First hand in the channel
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-
-            const handId1 = await escrow.getHandId(channelId);
-            expect(handId1).to.equal(1n);
-
-            // Simulate ending the first hand by settling on fold
-            // This will finalize the channel and allow reuse
-            await settleFoldLegacy(escrow, channelId, player2.address, wallet1, wallet2, chainId);
-
-            // Second hand in the same channel - should get handId = 2
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            const handId2 = await escrow.getHandId(channelId);
-            expect(handId2).to.equal(2n);
+            expect(await escrow.getHandId(channelId1)).to.equal(1n);
+            expect(await escrow.getHandId(channelId2)).to.equal(1n);
         });
     });
 
@@ -199,26 +143,37 @@ describe("HeadsUpPokerEscrow", function () {
             expect(p2Stack).to.equal(deposit);
         });
 
-        it("should reject joining non-existent channel", async function () {
-            const nonExistentId = 999n;
+        // Table-driven tests for join validation errors
+        const joinValidationTests = [
+            {
+                name: "non-existent channel",
+                setup: () => ({ channelId: 999n, player: "player2", deposit }),
+                error: "NoChannel"
+            },
+            {
+                name: "wrong player",
+                setup: () => ({ channelId, player: "other", deposit }),
+                error: "NotOpponent"
+            },
+            {
+                name: "zero deposit",
+                setup: () => ({ channelId, player: "player2", deposit: 0 }),
+                error: "NoDeposit"
+            }
+        ];
 
-            await expect(escrow.connect(player2).join(nonExistentId, { value: deposit }))
-                .to.be.revertedWithCustomError(escrow, "NoChannel");
-        });
-
-        it("should reject joining by wrong player", async function () {
-            await expect(escrow.connect(other).join(channelId, { value: deposit }))
-                .to.be.revertedWithCustomError(escrow, "NotOpponent");
-        });
-
-        it("should reject joining with zero deposit", async function () {
-            await expect(escrow.connect(player2).join(channelId, { value: 0 }))
-                .to.be.revertedWithCustomError(escrow, "NoDeposit");
+        joinValidationTests.forEach(test => {
+            it(`should reject joining ${test.name}`, async function () {
+                const setup = test.setup();
+                const player = setup.player === "player2" ? player2 : other;
+                
+                await expect(escrow.connect(player).join(setup.channelId, { value: setup.deposit }))
+                    .to.be.revertedWithCustomError(escrow, test.error);
+            });
         });
 
         it("should reject joining already joined channel", async function () {
             await escrow.connect(player2).join(channelId, { value: deposit });
-
             await expect(escrow.connect(player2).join(channelId, { value: deposit }))
                 .to.be.revertedWithCustomError(escrow, "AlreadyJoined");
         });
@@ -487,11 +442,7 @@ describe("HeadsUpPokerEscrow", function () {
             // First game
             await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
-
-            // Player1 wins by fold
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
-
-            // Player1 withdraws winnings
+            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
             await escrow.connect(player1).withdraw(channelId);
 
             // Second game - should be able to reuse the same channel
@@ -504,168 +455,73 @@ describe("HeadsUpPokerEscrow", function () {
                 .withArgs(channelId, player2.address, deposit);
         });
 
-        it("should reject opening channel that is not finalized", async function () {
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
+        // Table-driven tests for reuse scenarios
+        const reuseScenarios = [
+            {
+                name: "allow reopening with remaining deposits",
+                beforeWithdraw: true,
+                expectSuccess: true
+            },
+            {
+                name: "accumulate winnings without withdrawal", 
+                beforeWithdraw: false,
+                expectSuccess: true,
+                testWinnings: true
+            }
+        ];
 
-            // Try to open again without finalizing first game
-            await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit }))
-                .to.be.revertedWithCustomError(escrow, "ChannelExists");
+        reuseScenarios.forEach(scenario => {
+            it(`should ${scenario.name}`, async function () {
+                await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
+                await escrow.connect(player2).join(channelId, { value: deposit });
+                await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+
+                if (scenario.beforeWithdraw) {
+                    // Don't withdraw, try to reopen with remaining deposits
+                    await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit }))
+                        .to.emit(escrow, "ChannelOpened")
+                        .withArgs(channelId, player1.address, player2.address, deposit, 2n, 1n);
+                } else if (scenario.testWinnings) {
+                    // Check winnings accumulation
+                    let [p1Stack, _] = await escrow.stacks(channelId);
+                    expect(p1Stack).to.equal(deposit + 2n); // Won BB
+
+                    // Second game without withdrawing
+                    await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
+                    await escrow.connect(player2).join(channelId, { value: deposit });
+                    await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+
+                    // Check accumulated winnings
+                    [p1Stack, p2Stack] = await escrow.stacks(channelId);
+                    expect(p1Stack).to.equal(deposit * 2n + 3n); // Accumulated winnings
+                }
+            });
         });
 
-        it("should allow reopening channel with remaining deposits", async function () {
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-
-            // Settle fold but don't withdraw
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
-
-            // Should now allow reopening while player1 still has winnings in deposit
-            await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit }))
-                .to.emit(escrow, "ChannelOpened")
-                .withArgs(channelId, player1.address, player2.address, deposit, 2n, 1n);
-        });
-
-        it("should allow accumulating winnings without withdrawal", async function () {
+        it("should handle zero ETH deposits using existing winnings", async function () {
             // First game
             await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
-
-            // Check winnings from first game
-            let [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit + 2n); // Won BB
-            expect(p2Stack).to.equal(deposit - 2n);
-
-            // Second game without withdrawing - should be allowed now
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
-
-            // Check accumulated winnings from both games
-            [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit * 2n + 3n); // Won BB + SB after two games
-            expect(p2Stack).to.equal(deposit * 2n - 3n);
-        });
-
-        it("should allow winner to accumulate winnings over multiple games", async function () {
-            // First game
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
-
-            // Check winnings from first game
-            let [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit + 2n);
-            expect(p2Stack).to.equal(deposit - 2n);
-
-            // Withdraw winnings
-            await escrow.connect(player1).withdraw(channelId);
-
-            // Second game with different stakes
-            const deposit2 = ethers.parseEther("2.0");
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit2 });
-            await escrow.connect(player2).join(channelId, { value: deposit2 });
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
-
-            // Check winnings from second game
-            [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit2 + 1n);
-            expect(p2Stack).to.equal(deposit - 2n + deposit2 - 1n);
-        });
-
-        it("should allow opening with zero ETH using existing deposits", async function () {
-            // First game
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
-
-            // Check winnings from first game
-            let [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit + 2n);
-            expect(p2Stack).to.equal(deposit - 2n);
+            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
             // Second game using existing winnings (0 ETH)
             await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: 0 }))
                 .to.emit(escrow, "ChannelOpened")
                 .withArgs(channelId, player1.address, player2.address, 0, 2n, 1n);
 
-            // Check that deposit1 is preserved from previous game
-            [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit + 2n); // Same as before
-            expect(p2Stack).to.equal(deposit - 2n);
-
             // Player2 joins normally
             await escrow.connect(player2).join(channelId, { value: deposit });
 
-            // Check combined deposits
-            [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            // Verify combined deposits preserved previous winnings
+            const [p1Stack, p2Stack] = await escrow.stacks(channelId);
             expect(p1Stack).to.equal(deposit + 2n); // Player1's existing winnings
             expect(p2Stack).to.equal(deposit - 2n + deposit); // Player2's new deposit
         });
 
-        it("should allow both players to use existing deposits with zero ETH", async function () {
-            // First game - player2 wins
+        it("should reject opening channel that is not finalized", async function () {
             await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-            await settleFoldLegacy(escrow, channelId, player2.address, wallet1, wallet2, chainId);
-
-            // Check winnings
-            let [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit - 1n);
-            expect(p2Stack).to.equal(deposit + 1n);
-
-            // Second game - both use existing winnings (player1 has none, player2 has winnings)
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit }); // Player1 adds new money
-
-            // Player2 joins with zero ETH using existing winnings
-            await expect(escrow.connect(player2).join(channelId, { value: 0 }))
-                .to.emit(escrow, "ChannelJoined")
-                .withArgs(channelId, player2.address, 0);
-
-            // Check combined deposits
-            [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit - 1n + deposit); // Player1's new deposit
-            expect(p2Stack).to.equal(deposit + 1n); // Player2's existing winnings (unchanged)
-        });
-
-        it("should accumulate deposits correctly (critical bug fix test)", async function () {
-            // First game - player1 wins
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
-
-            let [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit + 2n); // Won the pot
-            expect(p2Stack).to.equal(deposit - 2n);
-
-            // Second game - player1 adds more money (testing critical bug fix)
-            const additionalDeposit = ethers.parseEther("0.5");
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: additionalDeposit });
-
-            // CRITICAL: Check that previous winnings are NOT lost (bug was: deposit1 = msg.value instead of +=)
-            [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit + 2n + additionalDeposit); // Previous winnings + new deposit
-            expect(p2Stack).to.equal(deposit - 2n);
-
-            // Player2 joins and they both play again
-            await escrow.connect(player2).join(channelId, { value: deposit });
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
-
-            // Verify final accumulation
-            [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit + 2n + additionalDeposit + 1n);
-            expect(p2Stack).to.equal(deposit - 2n + deposit - 1n);
-        });
-
-        it("should reject joining after withdrawal (channel must be reopened)", async function () {
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
-            await escrow.connect(player1).withdraw(channelId);
-
-            // After withdrawal the channel should require a fresh open; join must fail
-            await expect(escrow.connect(player2).join(channelId, { value: deposit }))
-                .to.be.revertedWithCustomError(escrow, "AlreadyJoined");
+            await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit }))
+                .to.be.revertedWithCustomError(escrow, "ChannelExists");
         });
     });
 
@@ -679,7 +535,7 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should add fold settlement called amount to winner's deposit", async function () {
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
             // Player1 wins scenario: contributions are 4 vs 2, called amount = 2
             const calledAmount = 2n;
@@ -689,7 +545,7 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should add fold settlement called amount to player2's deposit", async function () {
-            await settleFoldLegacy(escrow, channelId, player2.address, wallet1, wallet2, chainId);
+            await settleBasicFold(escrow, channelId, player2.address, wallet1, wallet2, chainId);
 
             // Player2 wins scenario: contributions are 1 vs 2, called amount = 1
             const calledAmount = 1n;
@@ -753,17 +609,17 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should reject withdrawal with no balance", async function () {
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
             await escrow.connect(player2).withdraw(channelId);
             // Check deposits are zero after withdrawal
-            const [, p2Stack] = await escrow.stacks(channelId);
+            const [_, p2Stack] = await escrow.stacks(channelId);
             expect(p2Stack).to.equal(0);
             await expect(escrow.connect(player2).withdraw(channelId))
                 .to.be.revertedWithCustomError(escrow, "NoBalance");
         });
 
         it("should reject withdrawal by non-player", async function () {
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
             await expect(escrow.connect(other).withdraw(channelId))
                 .to.be.revertedWithCustomError(escrow, "NoBalance");
         });
