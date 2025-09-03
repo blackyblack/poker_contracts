@@ -37,6 +37,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error NoBalance();
     error ChannelExists();
     error BadOpponent();
+    error InvalidMinSmallBlind();
     error NoDeposit();
     error NoChannel();
     error NotOpponent();
@@ -196,7 +197,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         Channel storage ch = channels[channelId];
         if (ch.player1 != address(0) && !ch.finalized) revert ChannelExists();
         if (opponent == address(0) || opponent == msg.sender) revert BadOpponent();
-        if (minSmallBlind == 0) revert NoDeposit();
+        if (minSmallBlind == 0) revert InvalidMinSmallBlind();
         
         // Allow zero deposit only if there's existing deposit from previous games
         if (msg.value == 0 && ch.deposit1 == 0) revert NoDeposit();

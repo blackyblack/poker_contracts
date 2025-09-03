@@ -127,7 +127,7 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should reject opening channel with zero minSmallBlind", async function () {
             await expect(escrow.connect(player1).open(channelId, player2.address, 0n, { value: deposit }))
-                .to.be.revertedWithCustomError(escrow, "NoDeposit");
+                .to.be.revertedWithCustomError(escrow, "InvalidMinSmallBlind");
         });
 
         it("should reject opening channel with invalid opponent", async function () {
