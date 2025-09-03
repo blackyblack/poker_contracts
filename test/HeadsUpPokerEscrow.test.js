@@ -497,7 +497,7 @@ describe("HeadsUpPokerEscrow", function () {
             // Second game - should be able to reuse the same channel
             await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit }))
                 .to.emit(escrow, "ChannelOpened")
-                .withArgs(channelId, player1.address, player2.address, deposit, 2n);
+                .withArgs(channelId, player1.address, player2.address, deposit, 2n, 1n);
 
             await expect(escrow.connect(player2).join(channelId, { value: deposit }))
                 .to.emit(escrow, "ChannelJoined")
@@ -522,7 +522,7 @@ describe("HeadsUpPokerEscrow", function () {
             // Should now allow reopening while player1 still has winnings in deposit
             await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit }))
                 .to.emit(escrow, "ChannelOpened")
-                .withArgs(channelId, player1.address, player2.address, deposit, 2n);
+                .withArgs(channelId, player1.address, player2.address, deposit, 2n, 1n);
         });
 
         it("should allow accumulating winnings without withdrawal", async function () {
@@ -587,7 +587,7 @@ describe("HeadsUpPokerEscrow", function () {
             // Second game using existing winnings (0 ETH)
             await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: 0 }))
                 .to.emit(escrow, "ChannelOpened")
-                .withArgs(channelId, player1.address, player2.address, 0, 2n);
+                .withArgs(channelId, player1.address, player2.address, 0, 2n, 1n);
 
             // Check that deposit1 is preserved from previous game
             [p1Stack, p2Stack] = await escrow.stacks(channelId);
