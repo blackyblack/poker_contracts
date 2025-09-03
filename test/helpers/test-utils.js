@@ -60,14 +60,14 @@ async function signActions(actions, signers, contractAddress, chainId) {
 }
 
 /**
- * Helper to sign a commit
+ * Helper to sign a commit for a card
  * @param {Object} a - First wallet signer
  * @param {Object} b - Second wallet signer
  * @param {string} dom - Domain separator
  * @param {Object} cc - Card commit object
  * @returns {Array} Array of two signatures [sigA, sigB]
  */
-async function signCommit(a, b, dom, cc) {
+async function signCardCommit(a, b, dom, cc) {
     const digest = cardCommitDigest(dom, cc);
     const sigA = a.signingKey.sign(digest).serialized;
     const sigB = b.signingKey.sign(digest).serialized;
@@ -85,7 +85,7 @@ async function signCommit(a, b, dom, cc) {
  * @param {bigint} handId - Hand ID (default: 1n)
  * @returns {Object} Commit object with signatures and metadata
  */
-async function buildCommit(a, b, dom, channelId, slot, card, handId = 1n) {
+async function buildCardCommit(a, b, dom, channelId, slot, card, handId = 1n) {
     const salt = ethers.hexlify(ethers.randomBytes(32));
     const cHash = commitHash(dom, channelId, slot, card, salt);
     const cc = {
@@ -95,7 +95,7 @@ async function buildCommit(a, b, dom, channelId, slot, card, handId = 1n) {
         commitHash: cHash,
         prevHash: handGenesis(channelId, handId),
     };
-    const [sigA, sigB] = await signCommit(a, b, dom, cc);
+    const [sigA, sigB] = await signCardCommit(a, b, dom, cc);
     return { cc, sigA, sigB, salt, card, slot };
 }
 
@@ -105,6 +105,6 @@ module.exports = {
     wallet3,
     buildActions,
     signActions,
-    signCommit,
-    buildCommit
+    signCardCommit,
+    buildCardCommit
 };

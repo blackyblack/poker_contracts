@@ -1,8 +1,8 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { ZERO32, domainSeparator, commitHash, cardCommitDigest, handGenesis } = require("../helpers/hashes");
+const { ZERO32, domainSeparator, cardCommitDigest } = require("../helpers/hashes");
 const { SLOT } = require("../helpers/slots");
-const { buildCommit, signCommit, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
+const { buildCardCommit, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
 
 describe("verifyCoSignedCommits & startShowdown", function () {
     let escrow;
@@ -44,7 +44,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
 
         for (let i = 0; i < parts.length; i++) {
             const [slot, card] = parts[i];
-            const obj = await buildCommit(
+            const obj = await buildCardCommit(
                 wallet1,
                 wallet2,
                 dom,
@@ -352,7 +352,7 @@ describe("verifyCoSignedCommits & startShowdown", function () {
             .startShowdown(channelId, commits, sigs, board, boardSalts, myHole, mySalts);
 
         // Create a new commit for slot 0 (player A, hole card 1) 
-        const newCommit = await buildCommit(
+        const newCommit = await buildCardCommit(
             wallet1,
             wallet2,
             dom,

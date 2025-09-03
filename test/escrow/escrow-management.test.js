@@ -1,24 +1,23 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("../helpers/actions");
-const { actionHash, actionDigest, handGenesis, domainSeparator } = require("../helpers/hashes");
 const { buildActions, signActions, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
 
-// Helper to settle fold with the old test interface  
-async function settleFoldLegacy(escrow, channelId, winner, player1, player2, chainId) {
+// Helper to settle fold scenario in tests
+async function settleBasicFold(escrow, channelId, winner, wallet1, wallet2, chainId) {
     const handId = await escrow.getHandId(channelId);
 
     if (handId % 2n === 0n) {
-        if (winner === player1.address) {
-            winner = player2.address;
+        if (winner === wallet1.address) {
+            winner = wallet2.address;
         } else {
-            winner = player1.address;
+            winner = wallet1.address;
         }
     }
 
     // Determine who should fold to make the winner win
     let actions;
-    if (winner === player1.address) {
+    if (winner === wallet1.address) {
         // Player2 should fold, so player1 wins
         actions = buildActions([
             { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -35,7 +34,7 @@ async function settleFoldLegacy(escrow, channelId, winner, player1, player2, cha
         ], channelId, handId);
     }
 
-    const signatures = await signActions(actions, [player1, player2], await escrow.getAddress(), chainId);
+    const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
     return escrow.settleFold(channelId, actions, signatures);
 }
 
@@ -443,7 +442,7 @@ describe("HeadsUpPokerEscrow", function () {
             // First game
             await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
             await escrow.connect(player1).withdraw(channelId);
 
             // Second game - should be able to reuse the same channel
@@ -475,7 +474,7 @@ describe("HeadsUpPokerEscrow", function () {
             it(`should ${scenario.name}`, async function () {
                 await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
                 await escrow.connect(player2).join(channelId, { value: deposit });
-                await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+                await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
                 if (scenario.beforeWithdraw) {
                     // Don't withdraw, try to reopen with remaining deposits
@@ -484,13 +483,13 @@ describe("HeadsUpPokerEscrow", function () {
                         .withArgs(channelId, player1.address, player2.address, deposit, 2n, 1n);
                 } else if (scenario.testWinnings) {
                     // Check winnings accumulation
-                    let [p1Stack, p2Stack] = await escrow.stacks(channelId);
+                    let [p1Stack, _] = await escrow.stacks(channelId);
                     expect(p1Stack).to.equal(deposit + 2n); // Won BB
 
                     // Second game without withdrawing
                     await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
                     await escrow.connect(player2).join(channelId, { value: deposit });
-                    await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+                    await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
                     // Check accumulated winnings
                     [p1Stack, p2Stack] = await escrow.stacks(channelId);
@@ -503,7 +502,7 @@ describe("HeadsUpPokerEscrow", function () {
             // First game
             await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
             await escrow.connect(player2).join(channelId, { value: deposit });
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
             // Second game using existing winnings (0 ETH)
             await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: 0 }))
@@ -536,7 +535,7 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should add fold settlement called amount to winner's deposit", async function () {
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
             // Player1 wins scenario: contributions are 4 vs 2, called amount = 2
             const calledAmount = 2n;
@@ -546,7 +545,7 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should add fold settlement called amount to player2's deposit", async function () {
-            await settleFoldLegacy(escrow, channelId, player2.address, wallet1, wallet2, chainId);
+            await settleBasicFold(escrow, channelId, player2.address, wallet1, wallet2, chainId);
 
             // Player2 wins scenario: contributions are 1 vs 2, called amount = 1
             const calledAmount = 1n;
@@ -610,17 +609,17 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should reject withdrawal with no balance", async function () {
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
             await escrow.connect(player2).withdraw(channelId);
             // Check deposits are zero after withdrawal
-            const [, p2Stack] = await escrow.stacks(channelId);
+            const [_, p2Stack] = await escrow.stacks(channelId);
             expect(p2Stack).to.equal(0);
             await expect(escrow.connect(player2).withdraw(channelId))
                 .to.be.revertedWithCustomError(escrow, "NoBalance");
         });
 
         it("should reject withdrawal by non-player", async function () {
-            await settleFoldLegacy(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
             await expect(escrow.connect(other).withdraw(channelId))
                 .to.be.revertedWithCustomError(escrow, "NoBalance");
         });

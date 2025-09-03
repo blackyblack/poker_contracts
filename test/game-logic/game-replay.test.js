@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("../helpers/actions");
-const { actionHash, handGenesis } = require("../helpers/hashes");
+const { actionHash } = require("../helpers/hashes");
 const { buildActions } = require("../helpers/test-utils");
 
 describe("HeadsUpPokerReplay", function () {
@@ -972,7 +972,7 @@ describe("HeadsUpPokerReplay", function () {
         // Consolidated happy path scenarios testing complete game flows
         const gameScenarios = [
             {
-                name: "preflop raise → call → postflop bet → fold",
+                name: "preflop raise -> call -> postflop bet -> fold",
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
@@ -984,7 +984,7 @@ describe("HeadsUpPokerReplay", function () {
                 expectedEnd: 0n, expectedFolder: 0n, expectedWon: 4n
             },
             {
-                name: "preflop all-in vs call → showdown",
+                name: "preflop all-in vs call -> showdown",
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 2n },
@@ -1013,7 +1013,7 @@ describe("HeadsUpPokerReplay", function () {
         gameScenarios.forEach(scenario => {
             it(`handles ${scenario.name}`, async function () {
                 const actions = buildActions(scenario.actions);
-                const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 50n, 50n, 1n);
+                const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, 20n, 20n, 1n);
                 expect(end).to.equal(scenario.expectedEnd);
                 if (scenario.expectedEnd === 0n) {
                     expect(folder).to.equal(scenario.expectedFolder);
