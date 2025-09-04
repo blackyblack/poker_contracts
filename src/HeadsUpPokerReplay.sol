@@ -302,8 +302,20 @@ contract HeadsUpPokerReplay {
 
     /// @notice Finishes a partial hand deterministically based on current game state
     /// @dev Pure helper function that applies default actions to reach a terminal state
-    /// @param g The current game state
-    /// @param bigBlindPlayer The player who posted the big blind (0 or 1)
+    /// 
+    /// This function implements the deterministic completion rules:
+    /// - If both players are all-in: go to showdown
+    /// - If current actor is all-in: go to showdown  
+    /// - If toCall > 0: current actor folds (timeout scenario)
+    /// - If toCall == 0: current actor checks until terminal state (showdown)
+    /// 
+    /// Use cases:
+    /// - Timeout scenarios where a player doesn't act within time limit
+    /// - Completing partial game states for analysis
+    /// - Determining final outcome when one player disconnects
+    /// 
+    /// @param g The current game state (stacks, contributions, actor, street, etc.)
+    /// @param bigBlindPlayer The player who posted the big blind (0 or 1) - determines who acts first postflop
     /// @return end The terminal state (FOLD or SHOWDOWN)
     /// @return folder The player who folded (0, 1, or meaningless if showdown)
     /// @return calledAmount The amount that should transfer from loser to winner

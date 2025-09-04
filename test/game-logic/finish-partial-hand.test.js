@@ -190,6 +190,51 @@ describe("HeadsUpPokerReplay - finishPartialHand", function () {
             expect(folder).to.equal(1n); // Player 1 folded
             expect(calledAmount).to.equal(7n);
         });
+
+        it("should properly handle checked state transitions", async function () {
+            // Test when one player has already checked and we need to determine next action
+            const gameState = {
+                stacks: [6n, 6n],
+                contrib: [0n, 0n],
+                total: [4n, 4n],
+                allIn: [false, false],
+                actor: 0, // Player 0 to act after player 1 checked
+                street: 2, // Turn
+                toCall: 0n,
+                lastRaise: 2n,
+                checked: true, // Someone already checked
+                reopen: true,
+                raiseCount: 0
+            };
+
+            const [end, folder, calledAmount] = await replay.finishPartialHand(gameState, 1);
+            expect(end).to.equal(1n); // End.SHOWDOWN (will move to river)
+            expect(folder).to.equal(0n);
+            expect(calledAmount).to.equal(4n);
+        });
+
+        it("should handle game state with mismatched allIn flags and stacks", async function () {
+            // Test defensive case where allIn flag doesn't match zero stack
+            const gameState = {
+                stacks: [0n, 5n],
+                contrib: [8n, 5n],
+                total: [10n, 7n],
+                allIn: [false, false], // allIn flag not set despite zero stack
+                actor: 0, // Player with zero stack to act
+                street: 1,
+                toCall: 0n,
+                lastRaise: 2n,
+                checked: false,
+                reopen: true,
+                raiseCount: 1
+            };
+
+            // Function should still work correctly based on the allIn flag
+            const [end, folder, calledAmount] = await replay.finishPartialHand(gameState, 1);
+            expect(end).to.equal(1n); // End.SHOWDOWN (due to toCall == 0)
+            expect(folder).to.equal(0n);
+            expect(calledAmount).to.equal(7n);
+        });
     });
 
     describe("All-in scenarios", function () {
@@ -386,6 +431,96 @@ describe("HeadsUpPokerReplay - finishPartialHand", function () {
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // Player 0 folded
             expect(calledAmount).to.equal(1n); // Min of both totals
+        });
+    });
+
+    describe("Integration with realistic game scenarios", function () {
+        it("should handle timeout after SB calls BB preflop", async function () {
+            // Realistic scenario: SB calls BB, then BB times out (toCall == 0)
+            const gameState = {
+                stacks: [8n, 8n], // Both have equal stacks after calling
+                contrib: [2n, 2n], // Both put in equal amounts
+                total: [2n, 2n],
+                allIn: [false, false],
+                actor: 1, // BB to act after SB called
+                street: 0, // Preflop
+                toCall: 0n, // No amount to call
+                lastRaise: 2n,
+                checked: false, // BB hasn't acted yet
+                reopen: true,
+                raiseCount: 1
+            };
+
+            const [end, folder, calledAmount] = await replay.finishPartialHand(gameState, 1);
+            expect(end).to.equal(1n); // End.SHOWDOWN (checks through all streets)
+            expect(folder).to.equal(0n);
+            expect(calledAmount).to.equal(2n);
+        });
+
+        it("should handle timeout after flop bet", async function () {
+            // Realistic scenario: Went to flop, BB bets, SB times out (toCall > 0)
+            const gameState = {
+                stacks: [6n, 5n], // SB has 6, BB has 5 after bet
+                contrib: [0n, 3n], // BB bet 3 on flop
+                total: [2n, 5n], // Total including preflop
+                allIn: [false, false],
+                actor: 0, // SB to act
+                street: 1, // Flop
+                toCall: 3n, // SB needs to call 3
+                lastRaise: 2n,
+                checked: false,
+                reopen: true,
+                raiseCount: 1
+            };
+
+            const [end, folder, calledAmount] = await replay.finishPartialHand(gameState, 1);
+            expect(end).to.equal(0n); // End.FOLD (SB folds)
+            expect(folder).to.equal(0n); // SB folded
+            expect(calledAmount).to.equal(2n); // Min total before fold
+        });
+
+        it("should handle river all-in timeout", async function () {
+            // Realistic scenario: River, one player goes all-in, other times out
+            const gameState = {
+                stacks: [0n, 3n], // Player 0 went all-in
+                contrib: [7n, 0n], // Player 0 bet all remaining 7
+                total: [9n, 2n], // Previous contributions
+                allIn: [true, false],
+                actor: 1, // Player 1 facing all-in
+                street: 3, // River
+                toCall: 7n, // Needs to call 7
+                lastRaise: 2n,
+                checked: false,
+                reopen: false, // All-in doesn't reopen
+                raiseCount: 1
+            };
+
+            const [end, folder, calledAmount] = await replay.finishPartialHand(gameState, 1);
+            expect(end).to.equal(1n); // End.SHOWDOWN (all-in scenario)
+            expect(folder).to.equal(0n);
+            expect(calledAmount).to.equal(2n); // Min total
+        });
+
+        it("should handle check-check scenario on turn", async function () {
+            // Realistic scenario: Made it to turn, both check through to river
+            const gameState = {
+                stacks: [5n, 5n],
+                contrib: [0n, 0n], // Fresh turn street
+                total: [5n, 5n], // Previous contributions
+                allIn: [false, false],
+                actor: 1, // BB acts first postflop
+                street: 2, // Turn
+                toCall: 0n,
+                lastRaise: 2n,
+                checked: false,
+                reopen: true,
+                raiseCount: 0
+            };
+
+            const [end, folder, calledAmount] = await replay.finishPartialHand(gameState, 1);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            expect(folder).to.equal(0n);
+            expect(calledAmount).to.equal(5n);
         });
     });
 });
