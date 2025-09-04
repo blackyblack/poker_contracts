@@ -90,10 +90,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 deposit2;
         bool finalized;
         uint256 handId;
-        // TODO: remove
-        uint256 nextHandId; // Local counter for this channel
-        // TODO: use bool flag instead of lastJoinedHandId
-        uint256 lastJoinedHandId; // Track when player2 last joined
+        bool player2Joined; // Track if player2 joined current hand
         uint256 minSmallBlind; // Minimum small blind amount for this channel
     }
 
@@ -201,22 +198,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         // Allow zero deposit only if there's existing deposit from previous games
         if (msg.value == 0 && ch.deposit1 == 0) revert NoDeposit();
 
-        // Initialize nextHandId for new channels
-        bool isNewChannel = (ch.player1 == address(0));
-        if (isNewChannel) {
-            ch.nextHandId = 1; // Start at 1 for new channels
-        }
-        // For reused channels, nextHandId keeps incrementing from previous value
-        
-        // Generate channel-local handId
-        handId = ch.nextHandId++;
+        handId = ++ch.handId;
 
         ch.player1 = msg.sender;
         ch.player2 = opponent;
         ch.deposit1 += msg.value; // Add to existing deposit instead of overwriting
         // Note: Do not reset deposit2 to allow player2 to accumulate winnings
         ch.finalized = false;
-        ch.handId = handId;
+        ch.player2Joined = false;
         ch.minSmallBlind = minSmallBlind;
 
         // Reset showdown state when reusing channel
@@ -237,13 +226,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.player2 != msg.sender) revert NotOpponent();
-        if (ch.lastJoinedHandId == ch.handId) revert AlreadyJoined(); // Check if already joined this hand
+        if (ch.player2Joined) revert AlreadyJoined();
         
         // Allow zero deposit only if there's existing deposit from previous games
         if (msg.value == 0 && ch.deposit2 == 0) revert NoDeposit();
 
         ch.deposit2 += msg.value; // Add to existing deposit instead of overwriting
-        ch.lastJoinedHandId = ch.handId; // Mark as joined for this hand
+        ch.player2Joined = true;
 
         emit ChannelJoined(channelId, msg.sender, msg.value);
     }
