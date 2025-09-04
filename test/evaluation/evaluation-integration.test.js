@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { domainSeparator } = require("../helpers/hashes");
+const { domainSeparator, ZERO32 } = require("../helpers/hashes");
 const { SLOT } = require("../helpers/slots");
 const { CARD } = require("../helpers/cards");
 const { buildCardCommit, wallet1, wallet2 } = require("../helpers/test-utils");
@@ -43,7 +43,44 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
         const player1Salts = player1Cards.map((_, i) => objs[i].salt);
         const player2Salts = player2Cards.map((_, i) => objs[i + 2].salt);
 
-        return { commits, sigs, boardCards, boardSalts, player1Cards, player1Salts, player2Salts, objs, dom, player2Cards };
+        const startCardCodes = [
+            player1Cards[0],
+            player1Cards[1],
+            0xff,
+            0xff,
+            ...boardCards,
+        ];
+        const startCardSalts = [
+            player1Salts[0],
+            player1Salts[1],
+            ZERO32,
+            ZERO32,
+            ...boardSalts,
+        ];
+        const revealCodes = [
+            0xff,
+            0xff,
+            player2Cards[0],
+            player2Cards[1],
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+        ];
+        const revealSalts = [
+            ZERO32,
+            ZERO32,
+            player2Salts[0],
+            player2Salts[1],
+            ZERO32,
+            ZERO32,
+            ZERO32,
+            ZERO32,
+            ZERO32,
+        ];
+
+        return { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts, player2Cards };
     }
 
     describe("Poker Hand Evaluation", function () {
@@ -68,21 +105,19 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
                 CARD.TWO_SPADES,
                 CARD.SEVEN_CLUBS
             ];
-            const { commits, sigs, boardSalts, player1Salts, player2Salts, player2Cards: p2Cards } =
+            const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
 
             // Start showdown
             await escrow
                 .connect(player1)
-                .startShowdown(channelId, commits, sigs, boardCards, boardSalts, player1Cards, player1Salts);
+                .startShowdown(channelId, commits, sigs, startCardCodes, startCardSalts);
 
-            // Fast forward past reveal window
-            await ethers.provider.send("evm_increaseTime", [3600 + 1]);
-            await ethers.provider.send("evm_mine");
+            // Reveal opponent cards to finalize
+            const tx = await escrow
+                .connect(player2)
+                .revealCards(channelId, commits, sigs, revealCodes, revealSalts);
 
-            // Finalize with player2's hole cards
-            const tx = await escrow.finalizeShowdownWithCommits(channelId, p2Cards, player2Salts);
-            
             await expect(tx)
                 .to.emit(escrow, "ShowdownFinalized")
                 .withArgs(channelId, player1.address, deposit * 2n);
@@ -115,19 +150,16 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
                 CARD.EIGHT_CLUBS
             ];
 
-            const { commits, sigs, boardSalts, player1Salts, player2Salts, player2Cards: p2Cards } =
+            const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
 
-            // Start showdown
             await escrow
                 .connect(player1)
-                .startShowdown(channelId, commits, sigs, boardCards, boardSalts, player1Cards, player1Salts);
+                .startShowdown(channelId, commits, sigs, startCardCodes, startCardSalts);
 
-            // Fast forward past reveal window
-            await ethers.provider.send("evm_increaseTime", [3600 + 1]);
-            await ethers.provider.send("evm_mine");
-
-            const tx = await escrow.finalizeShowdownWithCommits(channelId, p2Cards, player2Salts);
+            const tx = await escrow
+                .connect(player2)
+                .revealCards(channelId, commits, sigs, revealCodes, revealSalts);
             
             await expect(tx)
                 .to.emit(escrow, "ShowdownFinalized")
@@ -160,19 +192,16 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
                 CARD.JACK_CLUBS
             ];
 
-            const { commits, sigs, boardSalts, player1Salts, player2Salts, player2Cards: p2Cards } =
+            const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
 
-            // Start showdown
             await escrow
                 .connect(player1)
-                .startShowdown(channelId, commits, sigs, boardCards, boardSalts, player1Cards, player1Salts);
+                .startShowdown(channelId, commits, sigs, startCardCodes, startCardSalts);
 
-            // Fast forward past reveal window
-            await ethers.provider.send("evm_increaseTime", [3600 + 1]);
-            await ethers.provider.send("evm_mine");
-
-            const tx = await escrow.finalizeShowdownWithCommits(channelId, p2Cards, player2Salts);
+            const tx = await escrow
+                .connect(player2)
+                .revealCards(channelId, commits, sigs, revealCodes, revealSalts);
             
             // In case of tie, initiator (player1) should win
             await expect(tx)
