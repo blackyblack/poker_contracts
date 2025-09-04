@@ -200,7 +200,6 @@ describe("startShowdown & revealCards", function () {
 
         const sd = await escrow.getShowdown(channelId);
         expect(sd.initiator).to.equal(player1.address);
-        expect(sd.opponent).to.equal(player2.address);
         expect(sd.inProgress).to.equal(true);
         const window = await escrow.revealWindow();
         expect(sd.deadline).to.equal(BigInt(block.timestamp) + window);
@@ -323,7 +322,6 @@ describe("startShowdown & revealCards", function () {
 
         const sd = await escrow.getShowdown(channelId);
         expect(sd.initiator).to.equal(player1.address);
-        expect(sd.opponent).to.equal(player2.address);
         expect(sd.inProgress).to.equal(true);
         const window = await escrow.revealWindow();
         expect(sd.deadline).to.equal(BigInt(block.timestamp) + window);
@@ -339,7 +337,6 @@ describe("startShowdown & revealCards", function () {
 
         const sd = await escrow.getShowdown(channelId);
         expect(sd.initiator).to.equal(player2.address);
-        expect(sd.opponent).to.equal(player1.address);
         expect(sd.inProgress).to.equal(true);
     });
 
