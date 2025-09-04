@@ -169,14 +169,16 @@ describe("startShowdown & revealCards", function () {
     });
 
     it("allows partial commit sets", async () => {
-        const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
+        const { commits, sigs, startCodesP1, startSaltsP1, startCodesP2, startSaltsP2 } = await setup();
         // Remove the last commit (river card)
         const partialCommits = commits.slice(0, -1);
         const partialSigs = sigs.slice(0, -2);
-        const partialCodes = [...startCodesP1];
-        partialCodes[8] = 0xff;
-        const partialSalts = [...startSaltsP1];
-        partialSalts[8] = ZERO32;
+        let partialCodes = [...startCodesP1.slice(0, -1)];
+        partialCodes[2] = startCodesP2[2];
+        partialCodes[3] = startCodesP2[3];
+        let partialSalts = [...startSaltsP1.slice(0, -1)];
+        partialSalts[2] = startSaltsP2[2];
+        partialSalts[3] = startSaltsP2[3];
 
         await escrow
             .connect(player1)
@@ -189,7 +191,7 @@ describe("startShowdown & revealCards", function () {
     });
 
     it("happy path stores hashes and cards", async () => {
-        const { commits, sigs, startCodesP1, startSaltsP1, objs } = await setup();
+        const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
         const tx = await escrow
             .connect(player1)
             .startShowdown(channelId, commits, sigs, startCodesP1, startSaltsP1);
@@ -203,20 +205,20 @@ describe("startShowdown & revealCards", function () {
         const window = await escrow.revealWindow();
         expect(sd.deadline).to.equal(BigInt(block.timestamp) + window);
         expect(sd.cards.map(Number)).to.deep.equal(startCodesP1.map(Number));
-        expect(sd.lockedCommitHashes[SLOT.B1]).to.equal(objs[2].cc.commitHash);
-        expect(sd.lockedCommitHashes[SLOT.B2]).to.equal(objs[3].cc.commitHash);
     });
 
     it("allows submitting additional commits during reveal window", async () => {
-        const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
+        const { commits, sigs, startCodesP1, startSaltsP1, startCodesP2, startSaltsP2, board, boardSalts } = await setup();
 
         // Start with partial commits (missing river card)
         const partialCommits = commits.slice(0, -1);
         const partialSigs = sigs.slice(0, -2);
-        const partialCodes = [...startCodesP1];
-        partialCodes[8] = 0xff;
-        const partialSalts = [...startSaltsP1];
-        partialSalts[8] = ZERO32;
+        let partialCodes = [...startCodesP1.slice(0, -1)];
+        partialCodes[2] = startCodesP2[2];
+        partialCodes[3] = startCodesP2[3];
+        let partialSalts = [...startSaltsP1.slice(0, -1)];
+        partialSalts[2] = startSaltsP2[2];
+        partialSalts[3] = startSaltsP2[3];
 
         await escrow
             .connect(player1)
@@ -224,19 +226,16 @@ describe("startShowdown & revealCards", function () {
 
         // Submit additional commit for river card
         const riverCommit = commits[8]; // River card commit
-        // Also submit turn card to pass overlap check
-        const turnCommit = commits[7]; // Turn card commit
         const riverSigs = [sigs[16], sigs[17]]; // River card signatures
-        const turnSigs = [sigs[14], sigs[15]]; // Turn card signatures
 
         await escrow
             .connect(player2)
             .revealCards(
                 channelId,
-                [turnCommit, riverCommit],
-                [...turnSigs, ...riverSigs],
-                [...EMPTY_CODES],
-                [...EMPTY_SALTS]
+                [riverCommit],
+                [...riverSigs],
+                [board[4]],
+                [boardSalts[4]]
             );
 
         const sd = await escrow.getShowdown(channelId);
@@ -255,10 +254,12 @@ describe("startShowdown & revealCards", function () {
         for (let i = 4; i < 9; i++) {
             partialSigs.push(sigs[i * 2], sigs[i * 2 + 1]);
         }
+        const partialCodes = startCodesP1.slice(0, 2).concat(startCodesP1.slice(4));
+        const partialSalts = startSaltsP1.slice(0, 2).concat(startSaltsP1.slice(4));
 
         await escrow
             .connect(player1)
-            .startShowdown(channelId, partialCommits, partialSigs, startCodesP1, startSaltsP1);
+            .startShowdown(channelId, partialCommits, partialSigs, partialCodes, partialSalts);
 
         // Fast forward past reveal window
         await ethers.provider.send("evm_increaseTime", [3601]); // 1 hour + 1 second
@@ -326,10 +327,8 @@ describe("startShowdown & revealCards", function () {
         // Start with partial commits (missing river card)
         const partialCommits = commits.slice(0, -1);
         const partialSigs = sigs.slice(0, -2);
-        const partialCodes = [...startCodesP1];
-        partialCodes[8] = 0xff;
-        const partialSalts = [...startSaltsP1];
-        partialSalts[8] = ZERO32;
+        const partialCodes = [...startCodesP1.slice(0, -1)];
+        const partialSalts = [...startSaltsP1.slice(0, -1)];
 
         await escrow
             .connect(player1)
@@ -337,23 +336,21 @@ describe("startShowdown & revealCards", function () {
 
         // Third party submits additional commit for river card on behalf of player2
         const riverCommit = commits[8]; // River card commit
-        const turnCommit = commits[7]; // Turn card commit
         const riverSigs = [sigs[16], sigs[17]]; // River card signatures
-        const turnSigs = [sigs[14], sigs[15]]; // Turn card signatures
 
         await escrow
             .connect(thirdParty)
             .revealCardsOnBehalfOf(
                 channelId,
-                [turnCommit, riverCommit],
-                [...turnSigs, ...riverSigs],
-                [...EMPTY_CODES],
-                [...EMPTY_SALTS],
+                [riverCommit],
+                [...riverSigs],
+                [startCodesP1[8]],
+                [startSaltsP1[8]],
                 player2.address
             );
 
         const sd = await escrow.getShowdown(channelId);
-        expect(Number(sd.lockedCommitMask)).to.equal(0x1FF); // All slots now committed
+        expect(Number(sd.lockedCommitMask)).to.equal(0x1F3); // All slots now committed
     });
 
     it("reverts when third party tries to submit commits for invalid player", async () => {
@@ -388,6 +385,9 @@ describe("startShowdown & revealCards", function () {
             .connect(player1)
             .startShowdown(channelId, commits, sigs, startCodesP1, startSaltsP1);
 
+        let sd = await escrow.getShowdown(channelId);
+        expect(Number(sd.lockedCommitMask)).to.equal(0x1F3); // Player1 slots + board are committed
+
         // Create a new commit for slot 0 (player A, hole card 1)
         const newCommit = await buildCardCommit(
             wallet1,
@@ -398,30 +398,22 @@ describe("startShowdown & revealCards", function () {
             15 // different card
         );
 
-        const overrideCodes = [15, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
-        const overrideSalts = [
-            newCommit.salt,
-            ZERO32,
-            ZERO32,
-            ZERO32,
-            ZERO32,
-            ZERO32,
-            ZERO32,
-            ZERO32,
-            ZERO32
-        ];
+        const overrideCodes = [15];
+        const overrideSalts = [newCommit.salt];
 
-        await expect(
-            escrow
-                .connect(player1)
-                .revealCards(
-                    channelId,
-                    [newCommit.cc],
-                    [newCommit.sigA, newCommit.sigB],
-                    overrideCodes,
-                    overrideSalts
-                )
-        ).to.be.revertedWithCustomError(escrow, "HashMismatch");
+        await escrow
+            .connect(player1)
+            .revealCards(
+                channelId,
+                [newCommit.cc],
+                [newCommit.sigA, newCommit.sigB],
+                overrideCodes,
+                overrideSalts
+            );
+
+        // ignore override - hash is already locked
+        sd = await escrow.getShowdown(channelId);
+        expect(Number(sd.lockedCommitMask)).to.equal(0x1F3);
     });
 
     it("allows resubmitting identical commit", async () => {
@@ -432,24 +424,27 @@ describe("startShowdown & revealCards", function () {
             .connect(player1)
             .startShowdown(channelId, commits, sigs, startCodesP1, startSaltsP1);
 
+        let sd = await escrow.getShowdown(channelId);
+        expect(Number(sd.lockedCommitMask)).to.equal(0x1F3); // Player1 slots + board are committed
+
         // Resubmit the exact same commit for slot 0
         const originalCommit = commits[0];
         const originalSigs = [sigs[0], sigs[1]];
 
-        // This should succeed because it's identical to the existing commit
+        // This should succeed because locked commits are ignored
         await escrow
             .connect(player1)
             .revealCards(
                 channelId,
                 [originalCommit],
                 originalSigs,
-                [...EMPTY_CODES],
-                [...EMPTY_SALTS]
+                [startCodesP1[0]],
+                [startSaltsP1[0]]
             );
 
         // Verify the state is unchanged
-        const sd = await escrow.getShowdown(channelId);
-        expect(Number(sd.lockedCommitMask)).to.equal(0x1FF); // All slots still committed
+        sd = await escrow.getShowdown(channelId);
+        expect(Number(sd.lockedCommitMask)).to.equal(0x1F3);
     });
 
     // Table-driven tests for initiator hole card validation
@@ -461,15 +456,11 @@ describe("startShowdown & revealCards", function () {
                 commits: commits.slice(2), // Skip player1's holes
                 sigs: sigs.slice(4),
                 codes: (() => {
-                    const arr = [...startCodesP1];
-                    arr[0] = 0xff;
-                    arr[1] = 0xff;
+                    const arr = startCodesP1.slice(2);
                     return arr;
                 })(),
                 salts: (() => {
-                    const arr = [...startSaltsP1];
-                    arr[0] = ZERO32;
-                    arr[1] = ZERO32;
+                    const arr = startSaltsP1.slice(2);
                     return arr;
                 })()
             })
@@ -481,12 +472,11 @@ describe("startShowdown & revealCards", function () {
                 commits: [commits[0]].concat(commits.slice(2)),
                 sigs: [sigs[0], sigs[1]].concat(sigs.slice(4)),
                 codes: (() => {
-                    const arr = [...startCodesP1];
-                    arr[1] = 0xff;
+                    const arr = [startCodesP1[0]].concat(startCodesP1.slice(2));
                     return arr;
                 })(),
                 salts: (() => {
-                    const arr = [...startSaltsP1];
+                    const arr = [startSaltsP1[0]].concat(startSaltsP1.slice(2));
                     arr[1] = ZERO32;
                     return arr;
                 })()
@@ -499,15 +489,11 @@ describe("startShowdown & revealCards", function () {
                 commits: commits.slice(0, 2).concat(commits.slice(4)), // Skip player2's holes
                 sigs: sigs.slice(0, 4).concat(sigs.slice(8)),
                 codes: (() => {
-                    const arr = [...startCodesP2];
-                    arr[2] = 0xff;
-                    arr[3] = 0xff;
+                    const arr = startCodesP2.slice(0, 2).concat(startCodesP2.slice(4));
                     return arr;
                 })(),
                 salts: (() => {
-                    const arr = [...startSaltsP2];
-                    arr[2] = ZERO32;
-                    arr[3] = ZERO32;
+                    const arr = startSaltsP2.slice(0, 2).concat(startSaltsP2.slice(4));
                     return arr;
                 })()
             })

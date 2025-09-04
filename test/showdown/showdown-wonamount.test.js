@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { domainSeparator } = require("../helpers/hashes");
+const { domainSeparator, ZERO32 } = require("../helpers/hashes");
 const { SLOT } = require("../helpers/slots");
 const { CARD } = require("../helpers/cards");
 const { buildCardCommit, wallet1, wallet2 } = require("../helpers/test-utils");
@@ -80,13 +80,13 @@ describe("Showdown pot calculation", function () {
         // Start showdown by player1
         await escrow
             .connect(player1)
-            .startShowdown(channelId, commits, sigs, boardCards, boardSalts, player1Cards, player1Salts);
+            .startShowdown(channelId, commits, sigs, [...player1Cards, 0xFF, 0xFF, ...boardCards], [...player1Salts, ZERO32, ZERO32, ...boardSalts]);
 
         // Move time forward past reveal window
         await ethers.provider.send("evm_increaseTime", [3600 + 1]);
         await ethers.provider.send("evm_mine");
 
-        const tx = await escrow.finalizeShowdownWithCommits(channelId, player2Cards, player2Salts);
+        const tx = await escrow.revealCards(channelId, commits, sigs, [...player1Cards, ...player2Cards, ...boardCards], [...player1Salts, ...player2Salts, ...boardSalts]);
 
         // TODO: The pot should be only the called amount (e.g., 4n) once action replay is implemented
         await expect(tx)

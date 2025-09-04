@@ -46,10 +46,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error ShowdownInProgress();
     error NotPlayer();
     error SignatureLengthMismatch();
+    error CardsLengthMismatch();
+    error CardSaltsLengthMismatch();
     error NoOverlap();
     error HashMismatch();
-    error BoardOpenFailed();
-    error HoleOpenFailed();
     error ChannelNotReady();
     error BadRoleIndex();
     error SequenceTooLow();
@@ -70,13 +70,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     // Showdown state
     // ------------------------------------------------------------------
     struct ShowdownState {
+        // TODO: remove initiator/opponent and detect initiator from commits
         address initiator;
         address opponent;
         uint256 deadline;
         bool inProgress;
         uint8[9] cards;
         uint16 lockedCommitMask;
-        bytes32[9] lockedCommitHashes;
     }
 
     mapping(uint256 => ShowdownState) private showdowns;
@@ -90,7 +90,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 deposit2;
         bool finalized;
         uint256 handId;
+        // TODO: remove
         uint256 nextHandId; // Local counter for this channel
+        // TODO: use bool flag instead of lastJoinedHandId
         uint256 lastJoinedHandId; // Track when player2 last joined
         uint256 minSmallBlind; // Minimum small blind amount for this channel
     }
@@ -262,6 +264,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (actions.length == 0) revert NoActionsProvided();
         if (ch.finalized) revert AlreadyFinalized();
         
+        // TODO: not sure if we need to extract to a separate function
         // Verify signatures for all actions
         _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
         
@@ -351,11 +354,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[9] calldata cardCodes,
-        bytes32[9] calldata cardSalts,
-        address submitter,
-        bool requireOverlap
-    ) internal returns (uint16 finalMask) {
+        uint8[] calldata cardCodes,
+        bytes32[] calldata cardSalts
+    ) internal {
         Channel storage ch = channels[channelId];
         ShowdownState storage sd = showdowns[channelId];
 
@@ -363,8 +364,12 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address addrB = ch.player2;
 
         if (commits.length * 2 != sigs.length) revert SignatureLengthMismatch();
-        bytes32[9] memory newHashes;
-        uint16 newMask;
+        if (commits.length != cardCodes.length) revert CardsLengthMismatch();
+        if (commits.length != cardSalts.length) revert CardSaltsLengthMismatch();
+
+        bytes32 domainSeparator = _domainSeparatorV4();
+
+        uint16 mask = sd.lockedCommitMask;
         uint16 seenMask;
         for (uint256 i = 0; i < commits.length; i++) {
             HeadsUpPokerEIP712.CardCommit calldata cc = commits[i];
@@ -372,8 +377,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             uint16 bit = uint16(1) << slot;
 
             if ((MASK_ALL & bit) == 0) revert CommitUnexpected(slot);
-            if ((seenMask & bit) != 0) revert CommitDuplicate(slot);
+            if ((seenMask & bit) == bit) revert CommitDuplicate(slot);
             seenMask |= bit;
+
+            uint8 code = cardCodes[i];
+            if (code == 0xFF) continue;
+
+            if (mask & bit == bit) continue; // already locked, skip
 
             if (cc.channelId != channelId) revert CommitWrongChannel(slot);
 
@@ -387,72 +397,27 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                 addrB
             );
 
-            newHashes[slot] = cc.commitHash;
-            newMask |= bit;
-        }
-
-        uint16 oldMask = sd.lockedCommitMask;
-
-        // check for overlap with existing locked set if required
-        if (requireOverlap && oldMask != 0 && newMask != 0) {
-            if ((newMask & oldMask) == 0) revert NoOverlap();
-            for (uint8 slot2 = 0; slot2 < 9; slot2++) {
-                uint16 bit2 = uint16(1) << slot2;
-                if (((newMask & oldMask) & bit2) != 0) {
-                    if (newHashes[slot2] != sd.lockedCommitHashes[slot2]) revert HashMismatch();
-                }
-            }
-        }
-
-        // merge new commits into locked set
-        uint16 mergedMask = oldMask | newMask;
-        for (uint8 slot3 = 0; slot3 < 9; slot3++) {
-            uint16 bit3 = uint16(1) << slot3;
-            if ((newMask & bit3) != 0) {
-                if ((oldMask & bit3) == 0 || newHashes[slot3] == sd.lockedCommitHashes[slot3]) {
-                    sd.lockedCommitHashes[slot3] = newHashes[slot3];
-                }
-            }
-        }
-        sd.lockedCommitMask = mergedMask;
-
-        bytes32 domainSeparator = _domainSeparatorV4();
-
-        for (uint8 slot4 = 0; slot4 < 9; slot4++) {
-            uint8 code = cardCodes[slot4];
-            if (code == 0xFF) continue;
-
             bytes32 h = keccak256(
                 abi.encodePacked(
                     domainSeparator,
                     channelId,
-                    slot4,
+                    slot,
                     code,
-                    cardSalts[slot4]
+                    cardSalts[i]
                 )
             );
-            bytes32 expected = sd.lockedCommitHashes[slot4];
-            if (expected != bytes32(0) && h != expected) {
-                if (slot4 >= SLOT_FLOP1) revert BoardOpenFailed();
-                revert HoleOpenFailed();
-            }
-            sd.cards[slot4] = code;
+            if (h != cc.commitHash) revert HashMismatch();
+
+            sd.cards[slot] = code;
+
+            mask = mask | bit;
         }
+        sd.lockedCommitMask = mask;
 
         // finalize automatically if all cards revealed and commits present
-        bool allRevealed = true;
-        for (uint8 i2 = 0; i2 < 9; i2++) {
-            if (sd.cards[i2] == 0xFF) {
-                allRevealed = false;
-                break;
-            }
-        }
-
-        if (allRevealed && sd.lockedCommitMask == MASK_ALL) {
+        if (sd.lockedCommitMask == MASK_ALL) {
             _finalizeShowdown(channelId);
         }
-
-        return sd.lockedCommitMask;
     }
 
     function _finalizeShowdown(uint256 channelId) internal {
@@ -489,6 +454,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         ch.finalized = true;
         sd.inProgress = false;
+
+        // TODO: replay game to determine pot size instead of transferring all chips
         uint256 finalPot = ch.deposit1 + ch.deposit2;
         if (winner == ch.player1) {
             ch.deposit1 = finalPot;
@@ -533,8 +500,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[9] calldata cardCodes,
-        bytes32[9] calldata cardSalts
+        uint8[] calldata cardCodes,
+        bytes32[] calldata cardSalts
     ) external nonReentrant {
         startShowdownInternal(channelId, commits, sigs, cardCodes, cardSalts, msg.sender);
     }
@@ -544,8 +511,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[9] calldata cardCodes,
-        bytes32[9] calldata cardSalts,
+        uint8[] calldata cardCodes,
+        bytes32[] calldata cardSalts,
         address onBehalfOf
     ) external nonReentrant {
         startShowdownInternal(channelId, commits, sigs, cardCodes, cardSalts, onBehalfOf);
@@ -555,8 +522,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[9] calldata cardCodes,
-        bytes32[9] calldata cardSalts,
+        uint8[] calldata cardCodes,
+        bytes32[] calldata cardSalts,
         address onBehalfOf
     ) internal {
         Channel storage ch = channels[channelId];
@@ -573,7 +540,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         sd.lockedCommitMask = 0;
         for (uint8 i = 0; i < 9; i++) {
             sd.cards[i] = 0xFF;
-            sd.lockedCommitHashes[i] = bytes32(0);
         }
 
         _applyCommitUpdate(
@@ -581,9 +547,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             commits,
             sigs,
             cardCodes,
-            cardSalts,
-            onBehalfOf,
-            false
+            cardSalts
         );
 
         uint8 initiatorSlot1 = onBehalfOf == ch.player1 ? SLOT_A1 : SLOT_B1;
@@ -606,8 +570,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[9] calldata cardCodes,
-        bytes32[9] calldata cardSalts
+        uint8[] calldata cardCodes,
+        bytes32[] calldata cardSalts
     ) external nonReentrant {
         revealCardsInternal(channelId, commits, sigs, cardCodes, cardSalts, msg.sender);
     }
@@ -617,8 +581,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[9] calldata cardCodes,
-        bytes32[9] calldata cardSalts,
+        uint8[] calldata cardCodes,
+        bytes32[] calldata cardSalts,
         address onBehalfOf
     ) external nonReentrant {
         revealCardsInternal(channelId, commits, sigs, cardCodes, cardSalts, onBehalfOf);
@@ -628,8 +592,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
-        uint8[9] calldata cardCodes,
-        bytes32[9] calldata cardSalts,
+        uint8[] calldata cardCodes,
+        bytes32[] calldata cardSalts,
         address onBehalfOf
     ) internal {
         Channel storage ch = channels[channelId];
@@ -638,6 +602,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ShowdownState storage sd = showdowns[channelId];
         if (!sd.inProgress) revert NoShowdownInProgress();
 
+        // TODO: remove automatic forfeit and just revert if past deadline
         if (block.timestamp > sd.deadline) {
             bool allRevealed = true;
             for (uint8 i = 0; i < 9; i++) {
@@ -657,9 +622,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             commits,
             sigs,
             cardCodes,
-            cardSalts,
-            onBehalfOf,
-            true
+            cardSalts
         );
         emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask);
     }

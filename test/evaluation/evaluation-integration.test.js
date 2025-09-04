@@ -105,7 +105,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
                 CARD.TWO_SPADES,
                 CARD.SEVEN_CLUBS
             ];
-            const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts, player2Cards: p2Cards } =
+            const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
 
             // Start showdown
@@ -116,7 +116,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
             // Reveal opponent cards to finalize
             const tx = await escrow
                 .connect(player2)
-                .revealCards(channelId, [], [], revealCodes, revealSalts);
+                .revealCards(channelId, commits, sigs, revealCodes, revealSalts);
 
             await expect(tx)
                 .to.emit(escrow, "ShowdownFinalized")
@@ -150,7 +150,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
                 CARD.EIGHT_CLUBS
             ];
 
-            const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts, player2Cards: p2Cards } =
+            const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
 
             await escrow
@@ -159,7 +159,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
 
             const tx = await escrow
                 .connect(player2)
-                .revealCards(channelId, [], [], revealCodes, revealSalts);
+                .revealCards(channelId, commits, sigs, revealCodes, revealSalts);
             
             await expect(tx)
                 .to.emit(escrow, "ShowdownFinalized")
@@ -192,7 +192,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
                 CARD.JACK_CLUBS
             ];
 
-            const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts, player2Cards: p2Cards } =
+            const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
 
             await escrow
@@ -201,7 +201,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
 
             const tx = await escrow
                 .connect(player2)
-                .revealCards(channelId, [], [], revealCodes, revealSalts);
+                .revealCards(channelId, commits, sigs, revealCodes, revealSalts);
             
             // In case of tie, initiator (player1) should win
             await expect(tx)
