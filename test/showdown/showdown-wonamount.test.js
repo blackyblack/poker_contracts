@@ -82,10 +82,6 @@ describe("Showdown pot calculation", function () {
             .connect(player1)
             .startShowdown(channelId, commits, sigs, [...player1Cards, 0xFF, 0xFF, ...boardCards], [...player1Salts, ZERO32, ZERO32, ...boardSalts]);
 
-        // Move time forward past reveal window
-        await ethers.provider.send("evm_increaseTime", [3600 + 1]);
-        await ethers.provider.send("evm_mine");
-
         const tx = await escrow.revealCards(channelId, commits, sigs, [...player1Cards, ...player2Cards, ...boardCards], [...player1Salts, ...player2Salts, ...boardSalts]);
 
         // TODO: The pot should be only the called amount (e.g., 4n) once action replay is implemented

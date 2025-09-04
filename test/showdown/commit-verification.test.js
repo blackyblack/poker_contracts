@@ -242,7 +242,7 @@ describe("startShowdown & revealCards", function () {
         expect(Number(sd.lockedCommitMask)).to.equal(0x1FF); // All slots now committed
     });
 
-    it("allows forfeit finalization when opponent holes not opened", async () => {
+    it("allows finalize after deadline when opponent holes not opened", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
 
         // Start with commits that don't include opponent holes
@@ -261,19 +261,53 @@ describe("startShowdown & revealCards", function () {
             .connect(player1)
             .startShowdown(channelId, partialCommits, partialSigs, partialCodes, partialSalts);
 
+        // finalize before deadline should revert
+        await expect(escrow.finalizeShowdown(channelId)).to.be.revertedWithCustomError(
+            escrow,
+            "StillRevealing"
+        );
+
         // Fast forward past reveal window
         await ethers.provider.send("evm_increaseTime", [3601]); // 1 hour + 1 second
         await ethers.provider.send("evm_mine");
 
         const [initialBalance,] = await escrow.stacks(channelId);
 
+        // reveal after deadline should revert
+        await expect(
+            escrow
+                .connect(player1)
+                .revealCards(channelId, [], [], [...EMPTY_CODES], [...EMPTY_SALTS])
+        ).to.be.revertedWithCustomError(escrow, "Expired");
+
         // Finalize - should forfeit to initiator (player1)
-        await escrow
-            .connect(player1)
-            .revealCards(channelId, [], [], [...EMPTY_CODES], [...EMPTY_SALTS]);
+        await escrow.finalizeShowdown(channelId);
 
         const [finalBalance,] = await escrow.stacks(channelId);
 
+        expect(finalBalance).to.be.greaterThan(initialBalance);
+    });
+
+    it("forfeits to initiator when both players reveal holes but board incomplete", async () => {
+        const { commits, sigs, myHole, mySalts, oppHole, oppSalts } = await setup();
+
+        const holeCommits = commits.slice(0, 4); // only hole cards
+        const holeSigs = sigs.slice(0, 8);
+        const codes = [...myHole, ...oppHole];
+        const salts = [...mySalts, ...oppSalts];
+
+        await escrow
+            .connect(player1)
+            .startShowdown(channelId, holeCommits, holeSigs, codes, salts);
+
+        await ethers.provider.send("evm_increaseTime", [3601]);
+        await ethers.provider.send("evm_mine");
+
+        const [initialBalance,] = await escrow.stacks(channelId);
+
+        await escrow.finalizeShowdown(channelId);
+
+        const [finalBalance,] = await escrow.stacks(channelId);
         expect(finalBalance).to.be.greaterThan(initialBalance);
     });
 

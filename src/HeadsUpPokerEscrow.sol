@@ -468,7 +468,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit ShowdownFinalized(channelId, winner, finalPot);
     }
 
-    function _forfeitToInitiator(uint256 channelId) internal {
+    function _forfeitTo(uint256 channelId, address winner) internal {
         Channel storage ch = channels[channelId];
         ShowdownState storage sd = showdowns[channelId];
 
@@ -478,7 +478,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         uint256 pot = ch.deposit1 + ch.deposit2;
 
-        if (sd.initiator == ch.player1) {
+        if (winner == ch.player1) {
             ch.deposit1 = pot;
             ch.deposit2 = 0;
         } else {
@@ -486,7 +486,12 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             ch.deposit2 = pot;
         }
 
-        emit ShowdownFinalized(channelId, sd.initiator, pot);
+        emit ShowdownFinalized(channelId, winner, pot);
+    }
+
+    function _forfeitToInitiator(uint256 channelId) internal {
+        ShowdownState storage sd = showdowns[channelId];
+        _forfeitTo(channelId, sd.initiator);
     }
 
     function getShowdown(
@@ -602,20 +607,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ShowdownState storage sd = showdowns[channelId];
         if (!sd.inProgress) revert NoShowdownInProgress();
 
-        // TODO: remove automatic forfeit and just revert if past deadline
-        if (block.timestamp > sd.deadline) {
-            bool allRevealed = true;
-            for (uint8 i = 0; i < 9; i++) {
-                if (sd.cards[i] == 0xFF) {
-                    allRevealed = false;
-                    break;
-                }
-            }
-            if (!allRevealed) {
-                _forfeitToInitiator(channelId);
-                return;
-            }
-        }
+        if (block.timestamp > sd.deadline) revert Expired();
 
         _applyCommitUpdate(
             channelId,
@@ -625,5 +617,29 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             cardSalts
         );
         emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask);
+    }
+
+    /// @notice Finalize showdown after reveal window has passed
+    function finalizeShowdown(uint256 channelId) external nonReentrant {
+        Channel storage ch = channels[channelId];
+        ShowdownState storage sd = showdowns[channelId];
+
+        if (ch.finalized) revert AlreadyFinalized();
+        if (!sd.inProgress) revert NoShowdownInProgress();
+        if (block.timestamp <= sd.deadline) revert StillRevealing();
+
+        bool aRevealed = sd.cards[SLOT_A1] != 0xFF && sd.cards[SLOT_A2] != 0xFF;
+        bool bRevealed = sd.cards[SLOT_B1] != 0xFF && sd.cards[SLOT_B2] != 0xFF;
+
+        if (aRevealed && bRevealed) {
+            _forfeitToInitiator(channelId);
+        } else if (aRevealed) {
+            _forfeitTo(channelId, ch.player1);
+        } else if (bRevealed) {
+            _forfeitTo(channelId, ch.player2);
+        } else {
+            // Should not happen as initiator is required to reveal both cards
+            _forfeitToInitiator(channelId);
+        }
     }
 }
