@@ -300,6 +300,78 @@ contract HeadsUpPokerReplay {
         revert HandNotDone();
     }
 
+    /// @notice Finishes a partial hand deterministically based on current game state
+    /// @dev Pure helper function that applies default actions to reach a terminal state
+    /// @param g The current game state
+    /// @param bigBlindPlayer The player who posted the big blind (0 or 1)
+    /// @return end The terminal state (FOLD or SHOWDOWN)
+    /// @return folder The player who folded (0, 1, or meaningless if showdown)
+    /// @return calledAmount The amount that should transfer from loser to winner
+    function finishPartialHand(
+        Game memory g,
+        uint8 bigBlindPlayer
+    ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
+        // If both players are all-in, go to showdown
+        if (g.allIn[0] && g.allIn[1]) {
+            return (End.SHOWDOWN, 0, _calculateCalledAmount(g));
+        }
+
+        // If current actor is all-in, go to showdown
+        if (g.allIn[g.actor]) {
+            return (End.SHOWDOWN, 0, _calculateCalledAmount(g));
+        }
+
+        // If there's an amount to call, current actor defaults to fold
+        if (g.toCall > 0) {
+            return (End.FOLD, g.actor, _calculateCalledAmount(g));
+        }
+
+        // toCall == 0, so current actor checks and continue until terminal state
+        return _checkToTerminal(g, bigBlindPlayer);
+    }
+
+    /// @notice Helper to simulate checking until reaching a terminal state
+    /// @dev Continues checking between players until reaching showdown
+    /// @param g The current game state
+    /// @param bigBlindPlayer The player who posted the big blind (acts first postflop)
+    /// @return end The terminal state (always SHOWDOWN in this path)
+    /// @return folder Always 0 since no one folds in check-down
+    /// @return calledAmount The amount that should transfer
+    function _checkToTerminal(
+        Game memory g,
+        uint8 bigBlindPlayer
+    ) private pure returns (End end, uint8 folder, uint256 calledAmount) {
+        
+        // If already past river, go to showdown
+        if (g.street >= 4) {
+            return (End.SHOWDOWN, 0, _calculateCalledAmount(g));
+        }
+        
+        while (true) {
+            // If current actor checks
+            if (g.checked) {
+                // Both players have checked, move to next street
+                g.street++;
+                if (g.street == 4) {
+                    // Reached river end, showdown
+                    return (End.SHOWDOWN, 0, _calculateCalledAmount(g));
+                }
+                // Reset for next street
+                g.contrib[0] = 0;
+                g.contrib[1] = 0;
+                g.actor = bigBlindPlayer; // Big blind acts first postflop
+                g.checked = false;
+                g.reopen = true;
+                g.lastRaise = 2; // Reset to minimum raise size
+                g.raiseCount = 0;
+            } else {
+                // First check of the street
+                g.checked = true;
+                g.actor = 1 - g.actor; // Switch to other player
+            }
+        }
+    }
+
     /// @notice Calculate the called amount - the minimum contribution between both players
     /// @dev This represents the amount that should transfer from loser to winner
     function _calculateCalledAmount(Game memory g) private pure returns (uint256) {
