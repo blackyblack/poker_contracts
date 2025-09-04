@@ -431,19 +431,24 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 player2Rank = PokerEvaluator.evaluateHand(player2Cards);
 
         address winner;
+        // TODO: replay game to determine pot size
+        uint256 wonAmount;
         if (player1Rank > player2Rank) {
             winner = ch.player1;
+            wonAmount = ch.deposit2;
         } else if (player2Rank > player1Rank) {
             winner = ch.player2;
+            wonAmount = ch.deposit1;
         } else {
-            // TODO: split pot or no reward on tie?
+            // no reward on tie
             winner = sd.initiator;
+            wonAmount = 0;
         }
 
-        _forfeitTo(channelId, winner);
+        _forfeitTo(channelId, winner, wonAmount);
     }
 
-    function _forfeitTo(uint256 channelId, address winner) internal {
+    function _forfeitTo(uint256 channelId, address winner, uint256 wonAmount) internal {
         Channel storage ch = channels[channelId];
         ShowdownState storage sd = showdowns[channelId];
 
@@ -451,17 +456,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ch.finalized = true;
         sd.inProgress = false;
 
-        uint256 pot = ch.deposit1 + ch.deposit2;
-
         if (winner == ch.player1) {
-            ch.deposit1 = pot;
-            ch.deposit2 = 0;
+            ch.deposit1 += wonAmount;
+            ch.deposit2 -= wonAmount;
         } else {
-            ch.deposit1 = 0;
-            ch.deposit2 = pot;
+            ch.deposit1 -= wonAmount;
+            ch.deposit2 += wonAmount;
         }
 
-        emit ShowdownFinalized(channelId, winner, pot);
+        emit ShowdownFinalized(channelId, winner, wonAmount);
     }
 
     function getShowdown(
@@ -601,15 +604,25 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bool aRevealed = sd.cards[SLOT_A1] != 0xFF && sd.cards[SLOT_A2] != 0xFF;
         bool bRevealed = sd.cards[SLOT_B1] != 0xFF && sd.cards[SLOT_B2] != 0xFF;
 
+        // TODO: replay game to determine pot size
+        uint256 wonAmount = 0;
+        address winner = sd.initiator;
         if (aRevealed && bRevealed) {
-            _forfeitTo(channelId, sd.initiator);
+            if (sd.initiator == ch.player1) {
+                winner = ch.player1;
+                wonAmount = ch.deposit2;
+            } else {
+                winner = ch.player2;
+                wonAmount = ch.deposit1;
+            }
         } else if (aRevealed) {
-            _forfeitTo(channelId, ch.player1);
+            winner = ch.player1;
+            wonAmount = ch.deposit2;
         } else if (bRevealed) {
-            _forfeitTo(channelId, ch.player2);
-        } else {
-            // Should not happen as initiator is required to reveal both cards
-            _forfeitTo(channelId, sd.initiator);
+            winner = ch.player2;
+            wonAmount = ch.deposit1;
         }
+
+        _forfeitTo(channelId, winner, wonAmount);
     }
 }

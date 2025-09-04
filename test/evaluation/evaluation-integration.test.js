@@ -120,7 +120,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
 
             await expect(tx)
                 .to.emit(escrow, "ShowdownFinalized")
-                .withArgs(channelId, player1.address, deposit * 2n);
+                .withArgs(channelId, player1.address, deposit);
 
             // Verify player1 won (has the full pot)
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
@@ -163,7 +163,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
             
             await expect(tx)
                 .to.emit(escrow, "ShowdownFinalized")
-                .withArgs(channelId, player1.address, deposit * 2n);
+                .withArgs(channelId, player1.address, deposit);
 
             // Verify player1 won with the straight
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
@@ -203,14 +203,14 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
                 .connect(player2)
                 .revealCards(channelId, commits, sigs, revealCodes, revealSalts);
             
-            // In case of tie, initiator (player1) should win
+            // In case of tie no one wins anything (pot remains the same)
             await expect(tx)
                 .to.emit(escrow, "ShowdownFinalized")
-                .withArgs(channelId, player1.address, deposit * 2n);
+                .withArgs(channelId, player1.address, 0);
 
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit * 2n);
-            expect(p2Stack).to.equal(0);
+            expect(p1Stack).to.equal(deposit);
+            expect(p2Stack).to.equal(deposit);
         });
     });
 });

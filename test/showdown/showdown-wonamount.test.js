@@ -87,7 +87,7 @@ describe("Showdown pot calculation", function () {
         // TODO: The pot should be only the called amount (e.g., 4n) once action replay is implemented
         await expect(tx)
             .to.emit(escrow, "ShowdownFinalized")
-            .withArgs(channelId, player1.address, deposit * 2n); // TODO: fix expectation to called amount
+            .withArgs(channelId, player1.address, deposit); // TODO: fix expectation to called amount
 
         const [p1Stack, p2Stack] = await escrow.stacks(channelId);
         expect(p1Stack).to.equal(deposit * 2n); // TODO: should equal 12n after proper replay
