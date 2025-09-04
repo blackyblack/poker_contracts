@@ -129,7 +129,7 @@ describe("startShowdown & revealCards", function () {
                 return { commits, sigs, codes: startCodesP1, salts: startSaltsP1 };
             },
             error: "CommitDuplicate",
-            errorArgs: [2]
+            errorArgs: [2],
         },
         {
             name: "wrong channelId",
@@ -138,7 +138,7 @@ describe("startShowdown & revealCards", function () {
                 return { commits, sigs, codes: startCodesP1, salts: startSaltsP1 };
             },
             error: "CommitWrongChannel",
-            errorArgs: [0]
+            errorArgs: [0],
         },
         {
             name: "bad B signature",
@@ -149,8 +149,32 @@ describe("startShowdown & revealCards", function () {
                 return { commits, sigs, codes: startCodesP1, salts: startSaltsP1 };
             },
             error: "CommitWrongSignerB",
-            errorArgs: [2]
-        }
+            errorArgs: [2],
+        },
+        {
+            name: "mismatched card codes length",
+            setup: async ({ commits, sigs, startCodesP1, startSaltsP1 }) => {
+                return {
+                    commits,
+                    sigs,
+                    codes: startCodesP1.slice(0, -1),
+                    salts: startSaltsP1,
+                };
+            },
+            error: "CardsLengthMismatch",
+        },
+        {
+            name: "mismatched card salts length",
+            setup: async ({ commits, sigs, startCodesP1, startSaltsP1 }) => {
+                return {
+                    commits,
+                    sigs,
+                    codes: startCodesP1,
+                    salts: startSaltsP1.slice(0, -1),
+                };
+            },
+            error: "CardSaltsLengthMismatch",
+        },
     ];
 
     commitValidationTests.forEach(test => {
