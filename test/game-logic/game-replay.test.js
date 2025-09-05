@@ -1109,5 +1109,133 @@ describe("HeadsUpPokerReplay", function () {
         });
     });
 
+    describe("finalize_prefix Function Tests", function () {
+        it("prefix ends with toCall == 0 -> SHOWDOWN and called unchanged", async function () {
+            // Both players check after blinds (toCall becomes 0)
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls, making toCall = 0
+            ]);
+            
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            expect(folder).to.equal(0n); // No folder for showdown
+            expect(calledAmount).to.equal(2n); // min(2, 2) = 2 (both have same total after call)
+        });
 
+        it("prefix ends with toCall > 0 -> FOLD by actor and called = min(totalA, totalB)", async function () {
+            // SB raises, now BB has to call but prefix ends
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.BET_RAISE, amount: 3n } // SB raises to 4 total (1+3), BB needs to call 2 more
+            ]);
+            
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // BB is the actor who must fold
+            expect(calledAmount).to.equal(2n); // min(4, 2) = 2 (BB total)
+        });
+
+        it("any street all-in -> SHOWDOWN", async function () {
+            // Both players go all-in
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 5n },
+                { action: ACTION.BIG_BLIND, amount: 10n },
+                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls and goes all-in (had only 5)
+            ]);
+            
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 5n, 10n, 1n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            expect(folder).to.equal(0n); // No folder for showdown  
+            expect(calledAmount).to.equal(5n); // min(10, 5) = 5 (SB all-in amount)
+        });
+
+        it("both players all-in after blinds -> SHOWDOWN", async function () {
+            // Both players all-in from blinds
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 5n },
+                { action: ACTION.BIG_BLIND, amount: 10n }
+            ]);
+            
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 5n, 10n, 5n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            expect(folder).to.equal(0n); // No folder for showdown
+            expect(calledAmount).to.equal(5n); // min(5, 10) = 5
+        });
+
+        it("invalid action order -> revert in underlying replay", async function () {
+            // Invalid genesis hash
+            const badActions = [
+                {
+                    channelId: 1n,
+                    handId: 1n,
+                    seq: 0,
+                    action: ACTION.SMALL_BLIND,
+                    amount: 1n,
+                    prevHash: "0x" + "00".repeat(32) // Wrong genesis hash, should be handGenesis(1n, 1n)
+                },
+                {
+                    channelId: 1n,
+                    handId: 1n,
+                    seq: 1,
+                    action: ACTION.BIG_BLIND,
+                    amount: 2n,
+                    prevHash: "0x" + "11".repeat(32) // Wrong prev hash
+                }
+            ];
+            
+            await expect(replay.replayPrefixAndGetEndState(badActions, 10n, 10n, 1n))
+                .to.be.revertedWithCustomError(replay, "SmallBlindPrevHashInvalid");
+        });
+
+        it("invalid action sequence -> revert in underlying replay", async function () {
+            // Invalid sequence progression
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }
+            ]);
+            
+            // Manually break the sequence
+            actions[2].seq = 1; // Same as previous action
+
+            await expect(replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n))
+                .to.be.revertedWithCustomError(replay, "SequenceInvalid");
+        });
+
+        it("toCall > 0 with multiple actions leading to fold", async function () {
+            // Multiple actions but toCall still > 0 at end
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks,
+                { action: ACTION.BET_RAISE, amount: 3n }   // SB bets on flop, BB needs to respond
+            ]);
+            
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
+            expect(end).to.equal(0n); // End.FOLD
+            expect(folder).to.equal(1n); // BB is the actor who must act
+            expect(calledAmount).to.equal(2n); // min(2, 5) = 2
+        });
+
+        it("toCall == 0 after multiple checks leads to showdown", async function () {
+            // Check down scenario
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks on flop
+                { action: ACTION.CHECK_CALL, amount: 0n }  // BB checks on flop, move to turn
+            ]);
+            
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
+            expect(end).to.equal(1n); // End.SHOWDOWN
+            expect(folder).to.equal(0n); // No folder
+            expect(calledAmount).to.equal(2n); // min(2, 2) = 2
+        });
+    });
 });
