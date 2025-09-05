@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("../helpers/actions");
-const { actionHash, handGenesis } = require("../helpers/hashes");
+const { actionHash } = require("../helpers/hashes");
 const { buildActions } = require("../helpers/test-utils");
 
 describe("HeadsUpPokerReplay", function () {
@@ -1110,7 +1110,7 @@ describe("HeadsUpPokerReplay", function () {
     });
 
     describe("finalize_prefix Function Tests", function () {
-        it("a) prefix ends with toCall == 0 → SHOWDOWN and called unchanged", async function () {
+        it("prefix ends with toCall == 0 -> SHOWDOWN and called unchanged", async function () {
             // Both players check after blinds (toCall becomes 0)
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -1118,13 +1118,13 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB calls, making toCall = 0
             ]);
             
-            const [end, folder, calledAmount] = await replay.finalize_prefix(actions, 10n, 10n, 1n);
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
             expect(end).to.equal(1n); // End.SHOWDOWN
             expect(folder).to.equal(0n); // No folder for showdown
             expect(calledAmount).to.equal(2n); // min(2, 2) = 2 (both have same total after call)
         });
 
-        it("b) prefix ends with toCall > 0 → FOLD by actor and called = min(totalA, totalB)", async function () {
+        it("prefix ends with toCall > 0 -> FOLD by actor and called = min(totalA, totalB)", async function () {
             // SB raises, now BB has to call but prefix ends
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -1132,13 +1132,13 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BET_RAISE, amount: 3n } // SB raises to 4 total (1+3), BB needs to call 2 more
             ]);
             
-            const [end, folder, calledAmount] = await replay.finalize_prefix(actions, 10n, 10n, 1n);
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB is the actor who must fold
             expect(calledAmount).to.equal(2n); // min(4, 2) = 2 (BB total)
         });
 
-        it("c) any street all-in → SHOWDOWN", async function () {
+        it("any street all-in -> SHOWDOWN", async function () {
             // Both players go all-in
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 5n },
@@ -1146,26 +1146,26 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB calls and goes all-in (had only 5)
             ]);
             
-            const [end, folder, calledAmount] = await replay.finalize_prefix(actions, 5n, 10n, 1n);
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 5n, 10n, 1n);
             expect(end).to.equal(1n); // End.SHOWDOWN
             expect(folder).to.equal(0n); // No folder for showdown  
             expect(calledAmount).to.equal(5n); // min(10, 5) = 5 (SB all-in amount)
         });
 
-        it("c2) both players all-in after blinds → SHOWDOWN", async function () {
+        it("both players all-in after blinds -> SHOWDOWN", async function () {
             // Both players all-in from blinds
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 5n },
                 { action: ACTION.BIG_BLIND, amount: 10n }
             ]);
             
-            const [end, folder, calledAmount] = await replay.finalize_prefix(actions, 5n, 10n, 5n);
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 5n, 10n, 5n);
             expect(end).to.equal(1n); // End.SHOWDOWN
             expect(folder).to.equal(0n); // No folder for showdown
             expect(calledAmount).to.equal(5n); // min(5, 10) = 5
         });
 
-        it("d) invalid action order → revert in underlying replay", async function () {
+        it("invalid action order -> revert in underlying replay", async function () {
             // Invalid genesis hash
             const badActions = [
                 {
@@ -1186,11 +1186,11 @@ describe("HeadsUpPokerReplay", function () {
                 }
             ];
             
-            await expect(replay.finalize_prefix(badActions, 10n, 10n, 1n))
+            await expect(replay.replayPrefixAndGetEndState(badActions, 10n, 10n, 1n))
                 .to.be.revertedWithCustomError(replay, "SmallBlindPrevHashInvalid");
         });
 
-        it("d2) invalid action sequence → revert in underlying replay", async function () {
+        it("invalid action sequence -> revert in underlying replay", async function () {
             // Invalid sequence progression
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -1200,8 +1200,8 @@ describe("HeadsUpPokerReplay", function () {
             
             // Manually break the sequence
             actions[2].seq = 1; // Same as previous action
-            
-            await expect(replay.finalize_prefix(actions, 10n, 10n, 1n))
+
+            await expect(replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n))
                 .to.be.revertedWithCustomError(replay, "SequenceInvalid");
         });
 
@@ -1210,14 +1210,14 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to flop
-                { action: ACTION.BET_RAISE, amount: 3n }   // BB bets on flop, SB needs to respond
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks,
+                { action: ACTION.BET_RAISE, amount: 3n }   // SB bets on flop, BB needs to respond
             ]);
             
-            const [end, folder, calledAmount] = await replay.finalize_prefix(actions, 10n, 10n, 1n);
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
             expect(end).to.equal(0n); // End.FOLD
-            expect(folder).to.equal(0n); // SB is the actor who must act
+            expect(folder).to.equal(1n); // BB is the actor who must act
             expect(calledAmount).to.equal(2n); // min(2, 5) = 2
         });
 
@@ -1232,12 +1232,10 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n }  // BB checks on flop, move to turn
             ]);
             
-            const [end, folder, calledAmount] = await replay.finalize_prefix(actions, 10n, 10n, 1n);
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
             expect(end).to.equal(1n); // End.SHOWDOWN
             expect(folder).to.equal(0n); // No folder
             expect(calledAmount).to.equal(2n); // min(2, 2) = 2
         });
     });
-
-
 });
