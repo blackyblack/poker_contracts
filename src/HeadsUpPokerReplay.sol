@@ -308,6 +308,248 @@ contract HeadsUpPokerReplay {
         return g.total[0] < g.total[1] ? g.total[0] : g.total[1];
     }
 
+    /// @notice Pure helper that finalizes a non-terminal prefix without reverting
+    /// @dev Uses existing replay to compute actor, toCall, and totals, then applies finalization rules
+    /// @param actions The sequence of actions to replay
+    /// @param stackA Initial stack for player A  
+    /// @param stackB Initial stack for player B
+    /// @param minSmallBlind Minimum small blind amount
+    /// @return end The end state (FOLD or SHOWDOWN)
+    /// @return folder The folding player (0, 1, or meaningless if SHOWDOWN)
+    /// @return calledAmount The amount that changes hands (min of totals)
+    function finalize_prefix(
+        Action[] calldata actions,
+        uint256 stackA,
+        uint256 stackB,
+        uint256 minSmallBlind
+    ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
+        if (actions.length < 2) revert NoBlinds();
+
+        Action calldata sb = actions[0];
+        if (sb.prevHash != handGenesis(sb.channelId, sb.handId)) revert SmallBlindPrevHashInvalid();
+        if (sb.action != ACT_SMALL_BLIND) revert SmallBlindActionInvalid();
+        if (sb.seq != 0) revert SmallBlindSequenceInvalid();
+
+        Action calldata bb = actions[1];
+        if (bb.seq != 1) revert BigBlindSequenceInvalid();
+        if (bb.prevHash != _hashAction(sb)) revert BigBlindPrevHashInvalid();
+        if (bb.action != ACT_BIG_BLIND) revert BigBlindActionInvalid();
+        if (bb.amount != sb.amount * 2) revert BigBlindAmountInvalid();
+
+        // Determine which player should post small blind based on handId
+        uint8 smallBlindPlayer = getSmallBlindPlayer(sb.handId);
+        uint8 bigBlindPlayer = 1 - smallBlindPlayer;
+
+        // Validate amounts against correct stacks and minimum blind
+        if (smallBlindPlayer == 0) {
+            if (sb.amount == 0 || sb.amount < minSmallBlind || sb.amount > stackA) revert SmallBlindAmountInvalid();
+            if (bb.amount > stackB) revert BigBlindStackInvalid();
+        } else {
+            if (sb.amount == 0 || sb.amount < minSmallBlind || sb.amount > stackB) revert SmallBlindAmountInvalid();
+            if (bb.amount > stackA) revert BigBlindStackInvalid();
+        }
+
+        uint256 bigBlind = bb.amount;
+
+        Game memory g;
+        // Set initial stacks based on who posted which blind
+        if (smallBlindPlayer == 0) {
+            g.stacks[0] = stackA - sb.amount;
+            g.stacks[1] = stackB - bb.amount;
+            g.contrib[0] = sb.amount;
+            g.contrib[1] = bb.amount;
+            g.total[0] = sb.amount;
+            g.total[1] = bb.amount;
+        } else {
+            g.stacks[0] = stackA - bb.amount;
+            g.stacks[1] = stackB - sb.amount;
+            g.contrib[0] = bb.amount;
+            g.contrib[1] = sb.amount;
+            g.total[0] = bb.amount;
+            g.total[1] = sb.amount;
+        }
+        
+        if (g.stacks[0] == 0) g.allIn[0] = true;
+        if (g.stacks[1] == 0) g.allIn[1] = true;
+        g.actor = smallBlindPlayer; // small blind acts first preflop
+        g.street = 0;
+        g.toCall = g.contrib[bigBlindPlayer] - g.contrib[smallBlindPlayer];
+        g.lastRaise = bigBlind;
+        g.checked = false;
+        g.reopen = true;
+        g.raiseCount = 1; // Big blind counts as first raise
+
+        uint256[2] memory maxDeposit = [stackA, stackB];
+
+        // Process actions in the prefix
+        for (uint256 i = 2; i < actions.length; i++) {
+            Action calldata act = actions[i];
+            Action calldata prev = actions[i - 1];
+
+            if (act.seq <= prev.seq) revert SequenceInvalid();
+            if (act.prevHash != _hashAction(prev)) revert PrevHashInvalid();
+            if (act.action <= ACT_BIG_BLIND) revert BlindOnlyStart();
+
+            uint256 p = g.actor;
+            uint256 opp = 1 - p;
+
+            // Allow to move to showdown if someone is all-in
+            if (g.allIn[p]) {
+                if (g.allIn[opp]) {
+                    // Both all-in, just continue to end
+                    continue;
+                }
+                if (act.action != ACT_CHECK_CALL || act.amount != 0) revert PlayerAllIn();
+                // All-in player can only check/call with 0 amount, continue to end
+                continue;
+            }
+
+            if (act.action == ACT_FOLD) {
+                if (act.amount != 0) revert FoldAmountInvalid();
+                // Fold found in prefix - this means the hand ends with a fold
+                return (End.FOLD, uint8(p), _calculateCalledAmount(g));
+            }
+
+            if (act.action == ACT_CHECK_CALL) {
+                if (g.toCall > 0) {
+                    if (act.amount != 0) revert CallAmountInvalid();
+                    uint256 callAmt = g.toCall;
+                    if (g.stacks[p] < callAmt) {
+                        callAmt = g.stacks[p];
+                    }
+                    g.contrib[p] += callAmt;
+                    g.total[p] += callAmt;
+                    // DEP_A, DEP_B checks are never reached
+                    // keep for invariant checking
+                    if (g.total[p] > maxDeposit[p]) {
+                        if (p == 0) revert DepositExceededA();
+                        revert DepositExceededB();
+                    }
+                    g.stacks[p] -= callAmt;
+                    if (g.stacks[p] == 0) g.allIn[p] = true;
+                    g.toCall = 0;
+                    g.lastRaise = bigBlind;
+                    g.checked = false;
+                    g.reopen = true;
+                    // if someone has all-in and no bet to call, check if both all-in
+                    if (g.allIn[0] || g.allIn[1]) {
+                        if (g.allIn[0] && g.allIn[1]) {
+                            // Both all-in now, continue to end and apply rules
+                            continue;
+                        }
+                        // Only one all-in, continue to end and apply rules
+                        continue;
+                    }
+                    g.street++;
+                    if (g.street > 3) revert StreetOverflow();
+                    g.contrib[0] = 0;
+                    g.contrib[1] = 0;
+                    g.actor = bigBlindPlayer;
+                    g.raiseCount = 0; // Reset raise counter for new street
+                    continue;
+                }
+                // to call is 0, so this is a check
+                if (act.amount != 0) revert CheckAmountInvalid();
+                if (g.checked) {
+                    g.street++;
+                    if (g.street == 4) {
+                        // Natural showdown reached
+                        return (End.SHOWDOWN, 0, _calculateCalledAmount(g));
+                    }
+                    g.contrib[0] = 0;
+                    g.contrib[1] = 0;
+                    g.actor = bigBlindPlayer;
+                    g.checked = false;
+                    g.reopen = true;
+                    g.lastRaise = bigBlind;
+                    g.raiseCount = 0; // Reset raise counter for new street
+                } else {
+                    g.checked = true;
+                    g.actor = uint8(opp);
+                }
+                continue;
+            }
+
+            if (act.action == ACT_BET_RAISE) {
+                if (act.amount == 0) revert RaiseAmountZero();
+
+                uint256 prevStack = g.stacks[p];
+                if (act.amount > prevStack) revert RaiseStackInvalid();
+
+                // Check reraise limit
+                if (g.raiseCount >= MAX_RAISES_PER_STREET) revert RaiseLimitExceeded();
+
+                uint256 toCallBefore = g.toCall;
+                uint256 minRaise = g.lastRaise;
+
+                if (toCallBefore > 0) {
+                    // check the bet was raised
+                    if (act.amount <= toCallBefore) revert RaiseInsufficientIncrease();
+
+                    uint256 raiseInc = act.amount - toCallBefore;
+
+                    if (raiseInc < minRaise) {
+                        // allow short all-in that does not re-open
+                        if (act.amount != prevStack) revert MinimumRaiseNotMet();
+                        g.reopen = false;
+                    } else {
+                        // full raise
+                        if (!g.reopen) revert NoReopenAllowed();
+                        g.reopen = true;
+                        g.lastRaise = raiseInc;
+                    }
+                } else {
+                    // starting a bet
+                    if (act.amount < minRaise) {
+                        // allow short all-in that does not re-open
+                        if (act.amount != prevStack) revert MinimumRaiseNotMet();
+                        g.reopen = false;
+                    } else {
+                        g.reopen = true;
+                        g.lastRaise = act.amount;
+                    }
+                }
+
+                g.contrib[p] += act.amount;
+                g.total[p] += act.amount;
+                // DEP_A, DEP_B checks are never reached
+                // keep for invariant checking
+                if (g.total[p] > maxDeposit[p]) {
+                    if (p == 0) revert DepositExceededA();
+                    revert DepositExceededB();
+                }
+
+                g.stacks[p] = prevStack - act.amount;
+                if (g.stacks[p] == 0) g.allIn[p] = true;
+
+                uint256 newDiff = g.contrib[p] - g.contrib[opp];
+                g.toCall = newDiff;
+                g.checked = false;
+                g.actor = uint8(opp);
+                g.raiseCount++; // Increment raise counter
+                continue;
+            }
+
+            revert UnknownAction();
+        }
+
+        // Apply finalization rules
+        calledAmount = _calculateCalledAmount(g);
+        
+        // Rule 1: if both players are all-in → return End.SHOWDOWN, folder = none
+        if (g.allIn[0] && g.allIn[1]) {
+            return (End.SHOWDOWN, 0, calledAmount);
+        }
+        
+        // Rule 2: else if toCall > 0 → return End.FOLD, folder = actor  
+        if (g.toCall > 0) {
+            return (End.FOLD, uint8(g.actor), calledAmount);
+        }
+        
+        // Rule 3: else (toCall == 0) → return End.SHOWDOWN, folder = none
+        return (End.SHOWDOWN, 0, calledAmount);
+    }
+
     function _hashAction(Action calldata act) private pure returns (bytes32) {
         return
             keccak256(
