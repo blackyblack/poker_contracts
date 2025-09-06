@@ -336,7 +336,7 @@ describe("startShowdown & revealCards", function () {
         expect(finalBalance).to.be.greaterThan(initialBalance);
     });
 
-    it("tie when both players reveal holes but board incomplete", async () => {
+    it("should result in tie when both players reveal holes but board incomplete", async () => {
         const { commits, sigs, myHole, mySalts, oppHole, oppSalts } = await setup();
 
         const holeCommits = commits.slice(0, 4); // only hole cards

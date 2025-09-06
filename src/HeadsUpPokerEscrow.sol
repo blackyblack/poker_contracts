@@ -318,10 +318,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         
         address winner;
         
-        if (endType == HeadsUpPokerReplay.End.FOLD) {
-            // Winner is the non-folder
-            winner = folder == 0 ? ch.player2 : ch.player1;
-        }
+        // Winner is the non-folder
+        winner = folder == 0 ? ch.player2 : ch.player1;
 
         // Transfer only the called amount from loser to winner
         if (winner == ch.player1) {
