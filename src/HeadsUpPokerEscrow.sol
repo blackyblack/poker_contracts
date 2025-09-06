@@ -322,10 +322,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             // Winner is the non-folder
             winner = folder == 0 ? ch.player2 : ch.player1;
         } else { // SHOWDOWN
-            // For terminal showdown sequences, we still need card reveals
-            // to determine the actual winner. For now, we'll require using
-            // the showdown mechanism for proper card evaluation.
-            revert("Terminal showdown sequences must use showdown mechanism");
+            // Initiate showdown state - players must reveal cards to determine winner
+            _initiateShowdownFromSettle(channelId, msg.sender);
+            return; // Exit early - settlement will happen after card reveals
         }
 
         // Transfer only the called amount from loser to winner
@@ -767,6 +766,28 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         emit ShowdownStarted(channelId);
         emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask);
+    }
+
+    /// @notice Initiates showdown state when settle resolves to showdown
+    /// @dev Unlike startShowdownInternal, this doesn't require initial card commits
+    /// @param channelId The channel identifier
+    /// @param initiator The address that initiated the settle call
+    function _initiateShowdownFromSettle(uint256 channelId, address initiator) internal {
+        Channel storage ch = channels[channelId];
+        ShowdownState storage sd = showdowns[channelId];
+        
+        // Set up showdown state without requiring initial commits
+        sd.initiator = initiator;
+        sd.deadline = block.timestamp + revealWindow;
+        sd.inProgress = true;
+        sd.lockedCommitMask = 0;
+        
+        // Initialize all cards as unrevealed
+        for (uint8 i = 0; i < 9; i++) {
+            sd.cards[i] = 0xFF;
+        }
+        
+        emit ShowdownStarted(channelId);
     }
 
     /// @notice Reveal additional cards and/or commits during reveal window
