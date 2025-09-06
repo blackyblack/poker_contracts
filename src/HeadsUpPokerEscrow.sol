@@ -64,7 +64,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error ActionWrongHand();
     error ActionWrongSignerA();
     error ActionWrongSignerB();
-    error ReplayDidNotEndInFold();
     error NoActionsProvided();
     error DisputeInProgress();
     error NoDisputeInProgress();
@@ -132,11 +131,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     event ChannelJoined(
         uint256 indexed channelId,
         address indexed player,
-        uint256 amount
-    );
-    event FoldSettled(
-        uint256 indexed channelId,
-        address indexed winner,
         uint256 amount
     );
     event ShowdownStarted(uint256 indexed channelId);
@@ -332,59 +326,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         ch.finalized = true;
         emit Settled(channelId, winner, calledAmount);
-    }
-
-    // TODO: remove `settleFold`
-
-    /// @notice Settles fold using co-signed action transcript verification  
-    /// @param channelId The channel identifier
-    /// @param actions Array of co-signed actions representing the poker hand
-    /// @param signatures Array of signatures (2 per action: player1, player2)
-    function settleFold(
-        uint256 channelId,
-        Action[] calldata actions,
-        bytes[] calldata signatures
-    ) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        ShowdownState storage sd = showdowns[channelId];
-        DisputeState storage ds = disputes[channelId];
-        
-        if (sd.inProgress) revert ShowdownInProgress();
-        if (ds.inProgress) revert DisputeInProgress();
-        if (ch.player1 == address(0)) revert NoChannel();
-        if (actions.length == 0) revert NoActionsProvided();
-        if (ch.finalized) revert AlreadyFinalized();
-        
-        // TODO: not sure if we need to extract to a separate function
-        // Verify signatures for all actions
-        _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
-        
-        // Replay actions to verify they end in a fold
-        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayAndGetEndState(
-            actions, 
-            ch.deposit1, 
-            ch.deposit2,
-            ch.minSmallBlind
-        );
-        
-        if (endType != HeadsUpPokerReplay.End.FOLD) revert ReplayDidNotEndInFold();
-        
-        // Winner is the non-folder
-        address winner = folder == 0 ? ch.player2 : ch.player1;
-
-        // Transfer only the called amount from loser to winner
-        // This ensures uncalled chips never change hands
-        if (winner == ch.player1) {
-            ch.deposit1 += calledAmount;
-            ch.deposit2 -= calledAmount;
-        } else {
-            ch.deposit1 -= calledAmount;
-            ch.deposit2 += calledAmount;
-        }
-
-        ch.finalized = true;
-
-        emit FoldSettled(channelId, winner, calledAmount);
     }
 
     /// @notice Start or extend a dispute with a non-terminal action sequence

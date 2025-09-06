@@ -229,7 +229,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
                 .to.emit(escrow, "Settled");
         });
 
-        it("should prevent settleFold during dispute", async function () {
+        it("should prevent settle during dispute", async function () {
             const handId = await escrow.getHandId(channelId);
 
             // Start dispute first
@@ -240,7 +240,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             const disputeSignatures = await signActions(disputeActions, [wallet1, wallet2], await escrow.getAddress(), chainId);
             await escrow.dispute(channelId, disputeActions, disputeSignatures);
 
-            // Try to settleFold - should fail
+            // Try to settle - should fail
             const settleActions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n },
@@ -248,7 +248,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             ], channelId, handId);
             const settleSignatures = await signActions(settleActions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
-            await expect(escrow.settleFold(channelId, settleActions, settleSignatures))
+            await expect(escrow.settle(channelId, settleActions, settleSignatures))
                 .to.be.revertedWithCustomError(escrow, "DisputeInProgress");
         });
 

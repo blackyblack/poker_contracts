@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ZERO32, domainSeparator, cardCommitDigest } = require("../helpers/hashes");
 const { SLOT } = require("../helpers/slots");
-const { buildCardCommit, buildActions, signActions, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
+const { buildCardCommit, buildActions, signActions, wallet1, wallet2, wallet3, playBlindsAndCheckDown } = require("../helpers/test-utils");
 const { ACTION } = require("../helpers/actions");
 
 const EMPTY_CODES = Array(9).fill(0xff);
@@ -14,26 +14,6 @@ describe("startShowdown & revealCards", function () {
     const channelId = 1n;
     const deposit = ethers.parseEther("1");
     let chainId;
-
-    async function playBlindsAndCheckDown() {
-        const actionSpecs = [
-            { action: ACTION.SMALL_BLIND, amount: 1n },
-            { action: ACTION.BIG_BLIND, amount: 2n },
-            { action: ACTION.CHECK_CALL, amount: 0n },
-            { action: ACTION.CHECK_CALL, amount: 0n },
-            { action: ACTION.CHECK_CALL, amount: 0n },
-            { action: ACTION.CHECK_CALL, amount: 0n },
-            { action: ACTION.CHECK_CALL, amount: 0n },
-            { action: ACTION.CHECK_CALL, amount: 0n },
-            { action: ACTION.CHECK_CALL, amount: 0n },
-            { action: ACTION.CHECK_CALL, amount: 0n },
-        ];
-
-        const handId = await escrow.getHandId(channelId);
-        const actions = buildActions(actionSpecs, channelId, handId);
-        const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-        await escrow.connect(player1).settle(channelId, actions, signatures);
-    }
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
@@ -290,7 +270,7 @@ describe("startShowdown & revealCards", function () {
     it("allows finalize after deadline when opponent holes not opened", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
 
-        await playBlindsAndCheckDown();
+        await playBlindsAndCheckDown(escrow, channelId, player1, chainId);
 
         // Start with commits that don't include opponent holes
         const partialCommits = commits.slice(0, 2).concat(commits.slice(4)); // Skip opponent holes
@@ -344,7 +324,7 @@ describe("startShowdown & revealCards", function () {
         const codes = [...myHole, ...oppHole];
         const salts = [...mySalts, ...oppSalts];
 
-        await playBlindsAndCheckDown();
+        await playBlindsAndCheckDown(escrow, channelId, player1, chainId);
 
         await escrow
             .connect(player1)

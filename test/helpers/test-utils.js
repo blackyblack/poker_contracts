@@ -99,6 +99,64 @@ async function buildCardCommit(a, b, dom, channelId, slot, card, handId = 1n) {
     return { cc, sigA, sigB, salt, card, slot };
 }
 
+/**
+ * Helper to play blinds and check down to showdown
+ * @param {Object} escrow - The escrow contract instance
+ * @param {bigint} channelId - Channel ID
+ * @param {Object} player1 - Player 1 signer
+ * @param {bigint} chainId - Chain ID
+ */
+async function playBlindsAndCheckDown(escrow, channelId, player1, chainId) {
+    const { ACTION } = require("./actions");
+    
+    const actionSpecs = [
+        { action: ACTION.SMALL_BLIND, amount: 1n },
+        { action: ACTION.BIG_BLIND, amount: 2n },
+        { action: ACTION.CHECK_CALL, amount: 0n },
+        { action: ACTION.CHECK_CALL, amount: 0n },
+        { action: ACTION.CHECK_CALL, amount: 0n },
+        { action: ACTION.CHECK_CALL, amount: 0n },
+        { action: ACTION.CHECK_CALL, amount: 0n },
+        { action: ACTION.CHECK_CALL, amount: 0n },
+        { action: ACTION.CHECK_CALL, amount: 0n },
+        { action: ACTION.CHECK_CALL, amount: 0n },
+    ];
+
+    const handId = await escrow.getHandId(channelId);
+    const actions = buildActions(actionSpecs, channelId, handId);
+    const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+    await escrow.connect(player1).settle(channelId, actions, signatures);
+}
+
+/**
+ * Helper to play a basic showdown game where player1 wins 2 chips
+ * @param {Object} escrow - The escrow contract instance
+ * @param {bigint} channelId - Channel ID
+ * @param {Object} player1 - Player 1 signer
+ * @param {bigint} chainId - Chain ID
+ */
+async function playPlayer1WinsShowdown(escrow, channelId, player1, chainId) {
+    const { ACTION } = require("./actions");
+    
+    // Simple sequence where both players put in 2 chips (blinds) and check down
+    const actionSpecs = [
+        { action: ACTION.SMALL_BLIND, amount: 1n },
+        { action: ACTION.BIG_BLIND, amount: 2n },
+        { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls to match BB
+        { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (flop)
+        { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+        { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (turn) 
+        { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+        { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (river)
+        { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
+    ];
+
+    const handId = await escrow.getHandId(channelId);
+    const actions = buildActions(actionSpecs, channelId, handId);
+    const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+    await escrow.connect(player1).settle(channelId, actions, signatures);
+}
+
 module.exports = {
     wallet1,
     wallet2,
@@ -106,5 +164,7 @@ module.exports = {
     buildActions,
     signActions,
     signCardCommit,
-    buildCardCommit
+    buildCardCommit,
+    playBlindsAndCheckDown,
+    playPlayer1WinsShowdown
 };
