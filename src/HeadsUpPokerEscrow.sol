@@ -86,8 +86,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     mapping(uint256 => DisputeState) private disputes;
-    mapping(uint256 => Action[]) private disputeActions;
-    mapping(uint256 => bytes[]) private disputeSignatures;
 
     // ------------------------------------------------------------------
     // Showdown state
@@ -265,8 +263,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             ds.submitter = address(0);
             ds.deadline = 0;
             ds.actionCount = 0;
-            delete disputeActions[channelId];
-            delete disputeSignatures[channelId];
         }
 
         emit ChannelOpened(channelId, msg.sender, opponent, msg.value, handId, minSmallBlind);
@@ -289,6 +285,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     /// @notice Settles terminal action sequences (Fold or Showdown)
+    /// @dev Currently only supports Fold endings. Showdown endings redirect to showdown mechanism.
     /// @param channelId The channel identifier
     /// @param actions Array of co-signed actions representing the poker hand
     /// @param signatures Array of signatures (2 per action: player1, player2)
@@ -396,6 +393,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     /// @notice Start or extend a dispute with a non-terminal action sequence
+    /// @dev Verifies signatures and projects end state. Longer sequences reset the timer.
     /// @param channelId The channel identifier
     /// @param actions Array of co-signed actions representing the poker hand
     /// @param signatures Array of signatures (2 per action: player1, player2)
@@ -433,18 +431,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             ch.minSmallBlind
         );
         
-        // Store the action sequence
-        delete disputeActions[channelId];
-        delete disputeSignatures[channelId];
-        
-        for (uint256 i = 0; i < actions.length; i++) {
-            disputeActions[channelId].push(actions[i]);
-        }
-        for (uint256 i = 0; i < signatures.length; i++) {
-            disputeSignatures[channelId].push(signatures[i]);
-        }
-        
-        // Update dispute state
+        // Update dispute state (no need to store actions, just the projected outcome)
         bool wasInProgress = ds.inProgress;
         ds.inProgress = true;
         ds.deadline = block.timestamp + disputeWindow;
@@ -462,6 +449,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     /// @notice Finalize dispute after dispute window has passed
+    /// @dev Applies the projected outcome from the longest submitted sequence.
+    /// For fold outcomes, transfers called amount. For showdown outcomes, awards to submitter.
+    /// @param channelId The channel identifier
     function finalizeDispute(uint256 channelId) external nonReentrant {
         Channel storage ch = channels[channelId];
         DisputeState storage ds = disputes[channelId];
@@ -500,8 +490,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         
         // Clean up dispute state
         ds.inProgress = false;
-        delete disputeActions[channelId];
-        delete disputeSignatures[channelId];
         
         ch.finalized = true;
         emit DisputeFinalized(channelId, winner, transferAmount);
@@ -702,6 +690,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId
     ) external view returns (DisputeState memory) {
         return disputes[channelId];
+    }
+
+    /// @notice Get the dispute window duration
+    function getDisputeWindow() external pure returns (uint256) {
+        return disputeWindow;
     }
 
     /// @notice Player submits commitments and openings to start showdown

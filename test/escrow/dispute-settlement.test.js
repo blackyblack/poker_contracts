@@ -248,5 +248,10 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             await expect(escrow.settleFold(channelId, settleActions, settleSignatures))
                 .to.be.revertedWithCustomError(escrow, "DisputeInProgress");
         });
+
+        it("should return correct dispute window", async function () {
+            const window = await escrow.getDisputeWindow();
+            expect(window).to.equal(3600); // 1 hour in seconds
+        });
     });
 });
