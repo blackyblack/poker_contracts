@@ -51,7 +51,6 @@ describe("Settle to Showdown", function () {
         // Verify showdown state was set up
         const showdownState = await escrow.getShowdown(channelId);
         expect(showdownState.inProgress).to.be.true;
-        expect(showdownState.initiator).to.equal(player1.address);
         
         // Channel should not be finalized yet - requires card reveals
         const [p1Stack, p2Stack] = await escrow.stacks(channelId);
@@ -207,12 +206,12 @@ describe("Settle to Showdown", function () {
         const revealTx = await escrow.connect(player1).revealCards(channelId, commits, sigs, cardCodes, cardSalts);
         
         // Should emit ShowdownFinalized event with player1 as winner (pair beats high card)
-        await expect(revealTx).to.emit(escrow, "ShowdownFinalized").withArgs(channelId, player1.address, deposit);
+        await expect(revealTx).to.emit(escrow, "ShowdownFinalized").withArgs(channelId, player1.address, 2n);
 
         // Verify player1 won
         const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-        expect(p1Stack).to.equal(deposit * 2n);
-        expect(p2Stack).to.equal(0n);
+        expect(p1Stack).to.equal(deposit + 2n);
+        expect(p2Stack).to.equal(deposit - 2n);
     });
 
     it("should handle finalization when only one player reveals cards", async function () {
@@ -260,11 +259,11 @@ describe("Settle to Showdown", function () {
 
         // Finalize showdown - player1 should win since they're the only one who revealed
         const finalizeTx = await escrow.finalizeShowdown(channelId);
-        await expect(finalizeTx).to.emit(escrow, "ShowdownFinalized").withArgs(channelId, player1.address, deposit);
+        await expect(finalizeTx).to.emit(escrow, "ShowdownFinalized").withArgs(channelId, player1.address, 2n);
 
         // Verify player1 won the pot
         const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-        expect(p1Stack).to.equal(deposit * 2n);
-        expect(p2Stack).to.equal(0n);
+        expect(p1Stack).to.equal(deposit + 2n);
+        expect(p2Stack).to.equal(deposit - 2n);
     });
 });

@@ -2,7 +2,8 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ZERO32, domainSeparator, cardCommitDigest } = require("../helpers/hashes");
 const { SLOT } = require("../helpers/slots");
-const { buildCardCommit, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
+const { buildCardCommit, buildActions, signActions, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
+const { ACTION } = require("../helpers/actions");
 
 const EMPTY_CODES = Array(9).fill(0xff);
 const EMPTY_SALTS = Array(9).fill(ZERO32);
@@ -12,11 +13,33 @@ describe("startShowdown & revealCards", function () {
     let player1, player2;
     const channelId = 1n;
     const deposit = ethers.parseEther("1");
+    let chainId;
+
+    async function playBlindsAndCheckDown() {
+        const actionSpecs = [
+            { action: ACTION.SMALL_BLIND, amount: 1n },
+            { action: ACTION.BIG_BLIND, amount: 2n },
+            { action: ACTION.CHECK_CALL, amount: 0n },
+            { action: ACTION.CHECK_CALL, amount: 0n },
+            { action: ACTION.CHECK_CALL, amount: 0n },
+            { action: ACTION.CHECK_CALL, amount: 0n },
+            { action: ACTION.CHECK_CALL, amount: 0n },
+            { action: ACTION.CHECK_CALL, amount: 0n },
+            { action: ACTION.CHECK_CALL, amount: 0n },
+            { action: ACTION.CHECK_CALL, amount: 0n },
+        ];
+
+        const handId = await escrow.getHandId(channelId);
+        const actions = buildActions(actionSpecs, channelId, handId);
+        const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+        await escrow.connect(player1).settle(channelId, actions, signatures);
+    }
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
         const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await Escrow.deploy();
+        chainId = (await ethers.provider.getNetwork()).chainId;
         await escrow.open(channelId, player2.address, 1n, { value: deposit });
         await escrow.connect(player2).join(channelId, { value: deposit });
     });
@@ -223,7 +246,6 @@ describe("startShowdown & revealCards", function () {
         const block = await ethers.provider.getBlock(rcpt.blockNumber);
 
         const sd = await escrow.getShowdown(channelId);
-        expect(sd.initiator).to.equal(player1.address);
         expect(sd.inProgress).to.equal(true);
         const window = await escrow.revealWindow();
         expect(sd.deadline).to.equal(BigInt(block.timestamp) + window);
@@ -268,6 +290,8 @@ describe("startShowdown & revealCards", function () {
     it("allows finalize after deadline when opponent holes not opened", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
 
+        await playBlindsAndCheckDown();
+
         // Start with commits that don't include opponent holes
         const partialCommits = commits.slice(0, 2).concat(commits.slice(4)); // Skip opponent holes
         const partialSigs = [];
@@ -280,9 +304,10 @@ describe("startShowdown & revealCards", function () {
         const partialCodes = startCodesP1.slice(0, 2).concat(startCodesP1.slice(4));
         const partialSalts = startSaltsP1.slice(0, 2).concat(startSaltsP1.slice(4));
 
+        // showdown start by player1
         await escrow
             .connect(player1)
-            .startShowdown(channelId, partialCommits, partialSigs, partialCodes, partialSalts);
+            .revealCards(channelId, partialCommits, partialSigs, partialCodes, partialSalts);
 
         // finalize before deadline should revert
         await expect(escrow.finalizeShowdown(channelId)).to.be.revertedWithCustomError(
@@ -303,7 +328,7 @@ describe("startShowdown & revealCards", function () {
                 .revealCards(channelId, [], [], [...EMPTY_CODES], [...EMPTY_SALTS])
         ).to.be.revertedWithCustomError(escrow, "Expired");
 
-        // Finalize - should forfeit to initiator (player1)
+        // Finalize - should forfeit to initiator (player1) - revealed his cards
         await escrow.finalizeShowdown(channelId);
 
         const [finalBalance,] = await escrow.stacks(channelId);
@@ -311,7 +336,7 @@ describe("startShowdown & revealCards", function () {
         expect(finalBalance).to.be.greaterThan(initialBalance);
     });
 
-    it("forfeits to initiator when both players reveal holes but board incomplete", async () => {
+    it("tie when both players reveal holes but board incomplete", async () => {
         const { commits, sigs, myHole, mySalts, oppHole, oppSalts } = await setup();
 
         const holeCommits = commits.slice(0, 4); // only hole cards
@@ -319,9 +344,11 @@ describe("startShowdown & revealCards", function () {
         const codes = [...myHole, ...oppHole];
         const salts = [...mySalts, ...oppSalts];
 
+        await playBlindsAndCheckDown();
+
         await escrow
             .connect(player1)
-            .startShowdown(channelId, holeCommits, holeSigs, codes, salts);
+            .revealCards(channelId, holeCommits, holeSigs, codes, salts);
 
         await ethers.provider.send("evm_increaseTime", [3601]);
         await ethers.provider.send("evm_mine");
@@ -331,7 +358,7 @@ describe("startShowdown & revealCards", function () {
         await escrow.finalizeShowdown(channelId);
 
         const [finalBalance,] = await escrow.stacks(channelId);
-        expect(finalBalance).to.be.greaterThan(initialBalance);
+        expect(finalBalance).to.be.equal(initialBalance);
     });
 
     it("allows third party to start showdown on behalf of player1", async () => {
@@ -345,7 +372,6 @@ describe("startShowdown & revealCards", function () {
         const block = await ethers.provider.getBlock(rcpt.blockNumber);
 
         const sd = await escrow.getShowdown(channelId);
-        expect(sd.initiator).to.equal(player1.address);
         expect(sd.inProgress).to.equal(true);
         const window = await escrow.revealWindow();
         expect(sd.deadline).to.equal(BigInt(block.timestamp) + window);
@@ -360,7 +386,6 @@ describe("startShowdown & revealCards", function () {
             .startShowdownOnBehalfOf(channelId, commits, sigs, startCodesP2, startSaltsP2, player2.address);
 
         const sd = await escrow.getShowdown(channelId);
-        expect(sd.initiator).to.equal(player2.address);
         expect(sd.inProgress).to.equal(true);
     });
 

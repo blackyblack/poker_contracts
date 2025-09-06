@@ -3,17 +3,20 @@ const { ethers } = require("hardhat");
 const { domainSeparator, ZERO32 } = require("../helpers/hashes");
 const { SLOT } = require("../helpers/slots");
 const { CARD } = require("../helpers/cards");
-const { buildCardCommit, wallet1, wallet2 } = require("../helpers/test-utils");
+const { ACTION } = require("../helpers/actions");
+const { buildActions, signActions, buildCardCommit, wallet1, wallet2 } = require("../helpers/test-utils");
 
 describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
     let escrow, player1, player2;
     const channelId = 1n;
     const deposit = ethers.parseEther("1.0");
+    let chainId;
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
         const HeadsUpPokerEscrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await HeadsUpPokerEscrow.deploy();
+        chainId = (await ethers.provider.getNetwork()).chainId;
 
         // Setup channel
         await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
@@ -84,6 +87,26 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
     }
 
     describe("Poker Hand Evaluation", function () {
+        async function playBlindsAndCheckDown() {
+            const actionSpecs = [
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n },
+                { action: ACTION.CHECK_CALL, amount: 0n },
+                { action: ACTION.CHECK_CALL, amount: 0n },
+                { action: ACTION.CHECK_CALL, amount: 0n },
+                { action: ACTION.CHECK_CALL, amount: 0n },
+                { action: ACTION.CHECK_CALL, amount: 0n },
+                { action: ACTION.CHECK_CALL, amount: 0n },
+                { action: ACTION.CHECK_CALL, amount: 0n },
+            ];
+
+            const handId = await escrow.getHandId(channelId);
+            const actions = buildActions(actionSpecs, channelId, handId);
+            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+            await escrow.connect(player1).settle(channelId, actions, signatures);
+        }
+
         it("should determine winner correctly - pair beats high card", async function () {
             // Player 1: A♠ K♠ with A♣ 5♦ 3♥ 2♠ 7♣ board = Pair of Aces
             const player1Cards = [
@@ -107,25 +130,28 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
             ];
             const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
+            
+            await playBlindsAndCheckDown();
 
-            // Start showdown
+            // showdown start by player1
             await escrow
                 .connect(player1)
-                .startShowdown(channelId, commits, sigs, startCardCodes, startCardSalts);
+                .revealCards(channelId, commits, sigs, startCardCodes, startCardSalts);
 
             // Reveal opponent cards to finalize
             const tx = await escrow
                 .connect(player2)
                 .revealCards(channelId, commits, sigs, revealCodes, revealSalts);
 
+            // big blind won after a showdown
             await expect(tx)
                 .to.emit(escrow, "ShowdownFinalized")
-                .withArgs(channelId, player1.address, deposit);
+                .withArgs(channelId, player1.address, 2n);
 
-            // Verify player1 won (has the full pot)
+            // Verify player1 deposits after winning
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit * 2n);
-            expect(p2Stack).to.equal(0);
+            expect(p1Stack).to.equal(deposit + 2n);
+            expect(p2Stack).to.equal(deposit - 2n);
         });
 
         it("should determine winner correctly - straight beats pair", async function () {
@@ -153,22 +179,26 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
             const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
 
+            await playBlindsAndCheckDown();
+
+            // showdown start by player1
             await escrow
                 .connect(player1)
-                .startShowdown(channelId, commits, sigs, startCardCodes, startCardSalts);
+                .revealCards(channelId, commits, sigs, startCardCodes, startCardSalts);
 
+            // Reveal opponent cards to finalize
             const tx = await escrow
                 .connect(player2)
                 .revealCards(channelId, commits, sigs, revealCodes, revealSalts);
             
             await expect(tx)
                 .to.emit(escrow, "ShowdownFinalized")
-                .withArgs(channelId, player1.address, deposit);
+                .withArgs(channelId, player1.address, 2n);
 
             // Verify player1 won with the straight
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit * 2n);
-            expect(p2Stack).to.equal(0);
+            expect(p1Stack).to.equal(deposit + 2n);
+            expect(p2Stack).to.equal(deposit - 2n);
         });
 
         it("should handle ties correctly", async function () {
@@ -194,11 +224,15 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
 
             const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
+            
+            await playBlindsAndCheckDown();
 
+            // showdown start by player1
             await escrow
                 .connect(player1)
-                .startShowdown(channelId, commits, sigs, startCardCodes, startCardSalts);
+                .revealCards(channelId, commits, sigs, startCardCodes, startCardSalts);
 
+            // Reveal opponent cards to finalize
             const tx = await escrow
                 .connect(player2)
                 .revealCards(channelId, commits, sigs, revealCodes, revealSalts);
