@@ -1109,7 +1109,7 @@ describe("HeadsUpPokerReplay", function () {
         });
     });
 
-    describe("finalize_prefix Function Tests", function () {
+    describe("replayPrefixAndGetEndState Tests", function () {
         it("prefix ends with toCall == 0 -> SHOWDOWN and called unchanged", async function () {
             // Both players check after blinds (toCall becomes 0)
             const actions = buildActions([

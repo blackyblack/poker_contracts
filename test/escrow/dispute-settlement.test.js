@@ -34,7 +34,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             ], channelId, handId);
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-            
+
             const tx = await escrow.settle(channelId, actions, signatures);
             await expect(tx)
                 .to.emit(escrow, "Settled");
@@ -45,19 +45,23 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             expect(p2Stack).to.be.greaterThan(deposit);
         });
 
-        it("should revert for showdown sequences", async function () {
+        it("should initiate showdown for showdown sequences", async function () {
             const handId = await escrow.getHandId(channelId);
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Call
-                { action: ACTION.CHECK_CALL, amount: 0n }  // Check - goes to showdown
+                { action: ACTION.SMALL_BLIND, amount: 1n }, // SB
+                { action: ACTION.BIG_BLIND, amount: 2n }, // BB
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks -> move to street 2
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks -> move to street 3
+                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
             ], channelId, handId);
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-            
-            await expect(escrow.settle(channelId, actions, signatures))
-                .to.be.revertedWith("Terminal showdown sequences must use showdown mechanism");
+
+            await expect(escrow.settle(channelId, actions, signatures)).to.emit(escrow, "ShowdownStarted").withArgs(channelId);
         });
     });
 
@@ -79,7 +83,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             ], channelId, handId);
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-            
+
             const tx = await escrow.dispute(channelId, actions, signatures);
             await expect(tx)
                 .to.emit(escrow, "DisputeStarted")
@@ -88,12 +92,11 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             const dispute = await escrow.getDispute(channelId);
             expect(dispute.inProgress).to.be.true;
             expect(dispute.actionCount).to.equal(3);
-            expect(dispute.submitter).to.equal(player1.address);
         });
 
         it("should extend dispute with longer sequence", async function () {
             const handId = await escrow.getHandId(channelId);
-            
+
             // First dispute with 3 actions
             const actions1 = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -111,7 +114,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n } // Call the raise
             ], channelId, handId);
             const signatures2 = await signActions(actions2, [wallet1, wallet2], await escrow.getAddress(), chainId);
-            
+
             const tx = await escrow.dispute(channelId, actions2, signatures2);
             await expect(tx)
                 .to.emit(escrow, "DisputeExtended")
@@ -123,7 +126,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
 
         it("should reject shorter sequences when extending dispute", async function () {
             const handId = await escrow.getHandId(channelId);
-            
+
             // First dispute with 3 actions
             const actions1 = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -139,7 +142,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n }
             ], channelId, handId);
             const signatures2 = await signActions(actions2, [wallet1, wallet2], await escrow.getAddress(), chainId);
-            
+
             await expect(escrow.dispute(channelId, actions2, signatures2))
                 .to.be.revertedWithCustomError(escrow, "SequenceNotLonger");
         });
@@ -203,9 +206,9 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             await escrow.connect(player2).join(channelId, { value: deposit });
         });
 
-        it("should prevent settle during dispute", async function () {
+        it("should allow settle during dispute", async function () {
             const handId = await escrow.getHandId(channelId);
-            
+
             // Start dispute first
             const disputeActions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -214,21 +217,21 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             const disputeSignatures = await signActions(disputeActions, [wallet1, wallet2], await escrow.getAddress(), chainId);
             await escrow.dispute(channelId, disputeActions, disputeSignatures);
 
-            // Try to settle - should fail
+            // Try to settle - should pass
             const settleActions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.FOLD, amount: 0n }
             ], channelId, handId);
             const settleSignatures = await signActions(settleActions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-            
+
             await expect(escrow.settle(channelId, settleActions, settleSignatures))
-                .to.be.revertedWithCustomError(escrow, "DisputeInProgress");
+                .to.emit(escrow, "Settled");
         });
 
         it("should prevent settleFold during dispute", async function () {
             const handId = await escrow.getHandId(channelId);
-            
+
             // Start dispute first
             const disputeActions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -244,7 +247,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
                 { action: ACTION.FOLD, amount: 0n }
             ], channelId, handId);
             const settleSignatures = await signActions(settleActions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-            
+
             await expect(escrow.settleFold(channelId, settleActions, settleSignatures))
                 .to.be.revertedWithCustomError(escrow, "DisputeInProgress");
         });
