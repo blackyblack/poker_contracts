@@ -403,20 +403,20 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         
         if (sd.inProgress) revert ShowdownInProgress();
         if (ch.player1 == address(0)) revert NoChannel();
-        if (actions.length == 0) revert NoActionsProvided();
         if (ch.finalized) revert AlreadyFinalized();
         
-        // Verify signatures for all actions
-        _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
+        // Verify signatures for all actions (skip if no actions for games without blinds)
+        if (actions.length > 0) {
+            _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
+        }
         
         // Check if this is starting a new dispute or extending an existing one
         if (ds.inProgress) {
             // Must provide a longer sequence to extend dispute
             if (actions.length <= ds.actionCount) revert SequenceNotLonger();
         } else {
-            // TODO: allow shorter sequence; what if there are no actions at all?
-            // Starting new dispute - must be at least 2 actions (blinds) but allow any length
-            if (actions.length < 2) revert SequenceTooShort();
+            // Starting new dispute - allow any length including empty sequences
+            // No minimum length requirement to support games without blinds
         }
         
         // Replay actions to get projected end state (handles both terminal and non-terminal)
@@ -456,6 +456,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.finalized) revert AlreadyFinalized();
         
         // Finalize based on the projected end state
+        
+        if (ds.endType == HeadsUpPokerReplay.End.NO_BLINDS) {
+            // For games without blinds, finalize without transferring any funds
+            ds.inProgress = false;
+            ch.finalized = true;
+            emit DisputeFinalized(channelId, address(0), 0);
+            return;
+        }
 
         if (ds.endType != HeadsUpPokerReplay.End.FOLD) {
             // Initiate showdown state - players must reveal cards to determine winner

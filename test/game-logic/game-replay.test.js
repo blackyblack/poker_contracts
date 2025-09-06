@@ -1237,5 +1237,37 @@ describe("HeadsUpPokerReplay", function () {
             expect(folder).to.equal(0n); // No folder
             expect(calledAmount).to.equal(2n); // min(2, 2) = 2
         });
+
+        it("empty actions array returns NO_BLINDS", async function () {
+            const actions = [];
+            
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
+            expect(end).to.equal(2n); // End.NO_BLINDS
+            expect(folder).to.equal(0n); // No folder
+            expect(calledAmount).to.equal(0n); // No called amount
+        });
+
+        it("single action (no big blind) returns NO_BLINDS", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n }
+            ]);
+            
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
+            expect(end).to.equal(2n); // End.NO_BLINDS
+            expect(folder).to.equal(0n); // No folder
+            expect(calledAmount).to.equal(0n); // No called amount
+        });
+
+        it("invalid action types in first two positions returns NO_BLINDS", async function () {
+            const actions = buildActions([
+                { action: ACTION.FOLD, amount: 0n }, // Not a blind
+                { action: ACTION.CHECK_CALL, amount: 0n } // Not a blind
+            ]);
+            
+            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
+            expect(end).to.equal(2n); // End.NO_BLINDS
+            expect(folder).to.equal(0n); // No folder
+            expect(calledAmount).to.equal(0n); // No called amount
+        });
     });
 });

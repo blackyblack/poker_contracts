@@ -6,7 +6,8 @@ import {Action} from "./HeadsUpPokerActions.sol";
 contract HeadsUpPokerReplay {
     enum End {
         FOLD,
-        SHOWDOWN
+        SHOWDOWN,
+        NO_BLINDS
     }
 
     uint8 private constant ACT_SMALL_BLIND = 0;
@@ -294,10 +295,18 @@ contract HeadsUpPokerReplay {
         uint256 stackB,
         uint256 minSmallBlind
     ) internal pure returns (ReplayResult memory res, Game memory g) {
-        if (actions.length < 2) revert NoBlinds();
+        // Handle sequences without proper blinds
+        if (actions.length < 2) {
+            return (ReplayResult({ended: true, end: End.NO_BLINDS, folder: 0}), g);
+        }
 
         Action calldata sb = actions[0];
         Action calldata bb = actions[1];
+
+        // Check if we have valid blinds, otherwise treat as no blinds game
+        if (sb.action != ACT_SMALL_BLIND || bb.action != ACT_BIG_BLIND) {
+            return (ReplayResult({ended: true, end: End.NO_BLINDS, folder: 0}), g);
+        }
 
         g = _initGame(sb, bb, stackA, stackB, minSmallBlind);
 
@@ -326,6 +335,11 @@ contract HeadsUpPokerReplay {
         (ReplayResult memory res, Game memory g) =
             _replayActions(actions, stackA, stackB, minSmallBlind);
 
+        // For NO_BLINDS games, called amount is always 0 and it's always ended
+        if (res.end == End.NO_BLINDS) {
+            return (res.end, res.folder, 0);
+        }
+
         if (!res.ended) revert HandNotDone();
 
         calledAmount = _calculateCalledAmount(g);
@@ -340,6 +354,11 @@ contract HeadsUpPokerReplay {
     ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
         (ReplayResult memory res, Game memory g) =
             _replayActions(actions, stackA, stackB, minSmallBlind);
+
+        // For NO_BLINDS games, called amount is always 0
+        if (res.end == End.NO_BLINDS) {
+            return (res.end, res.folder, 0);
+        }
 
         calledAmount = _calculateCalledAmount(g);
 

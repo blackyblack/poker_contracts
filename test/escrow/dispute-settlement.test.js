@@ -256,5 +256,52 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             const window = await escrow.getDisputeWindow();
             expect(window).to.equal(3600); // 1 hour in seconds
         });
+
+        it("should allow dispute with empty actions array (no blinds)", async function () {
+            const handId = await escrow.getHandId(channelId);
+            
+            // Dispute with empty actions array - should be allowed
+            await expect(escrow.dispute(channelId, [], []))
+                .to.emit(escrow, "DisputeStarted");
+        });
+
+        it("should allow dispute with single action (missing big blind)", async function () {
+            const handId = await escrow.getHandId(channelId);
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n }
+            ], channelId, handId);
+            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+            
+            await expect(escrow.dispute(channelId, actions, signatures))
+                .to.emit(escrow, "DisputeStarted");
+        });
+
+        it("should finalize dispute without blinds with no fund transfer", async function () {
+            const handId = await escrow.getHandId(channelId);
+            
+            // Get initial balances
+            const [initialP1, initialP2] = await escrow.stacks(channelId);
+            
+            // Start dispute with no actions
+            await escrow.dispute(channelId, [], []);
+            
+            // Fast forward past dispute window
+            await ethers.provider.send("evm_increaseTime", [3601]); // 1 hour + 1 second
+            await ethers.provider.send("evm_mine");
+            
+            // Finalize dispute - should emit with address(0) as winner and 0 transfer amount
+            await expect(escrow.finalizeDispute(channelId))
+                .to.emit(escrow, "DisputeFinalized")
+                .withArgs(channelId, ethers.ZeroAddress, 0);
+            
+            // Check that balances remain unchanged
+            const [finalP1, finalP2] = await escrow.stacks(channelId);
+            expect(finalP1).to.equal(initialP1);
+            expect(finalP2).to.equal(initialP2);
+            
+            // Channel should be finalized
+            const channel = await escrow.channels(channelId);
+            expect(channel.finalized).to.be.true;
+        });
     });
 });
