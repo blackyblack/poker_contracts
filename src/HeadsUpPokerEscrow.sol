@@ -22,6 +22,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     uint16 constant MASK_ALL = 0x01FF; // bits 0..8
 
     uint256 public constant revealWindow = 1 hours;
+    uint256 public constant disputeWindow = 1 hours;
 
     // ------------------------------------------------------------------
     // Errors
@@ -65,6 +66,28 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error ActionWrongSignerB();
     error ReplayDidNotEndInFold();
     error NoActionsProvided();
+    error DisputeInProgress();
+    error NoDisputeInProgress();
+    error DisputeStillActive();
+    error SequenceTooShort();
+    error SequenceNotLonger();
+
+    // ------------------------------------------------------------------
+    // Dispute state  
+    // ------------------------------------------------------------------
+    struct DisputeState {
+        bool inProgress;
+        uint256 deadline;
+        uint256 actionCount;
+        address submitter;
+        HeadsUpPokerReplay.End endType;
+        uint8 folder;
+        uint256 calledAmount;
+    }
+
+    mapping(uint256 => DisputeState) private disputes;
+    mapping(uint256 => Action[]) private disputeActions;
+    mapping(uint256 => bytes[]) private disputeSignatures;
 
     // ------------------------------------------------------------------
     // Showdown state
@@ -133,6 +156,26 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     event Withdrawn(
         uint256 indexed channelId,
         address indexed player,
+        uint256 amount
+    );
+    event DisputeStarted(
+        uint256 indexed channelId,
+        address indexed submitter,
+        uint256 actionCount
+    );
+    event DisputeExtended(
+        uint256 indexed channelId,
+        address indexed submitter,
+        uint256 actionCount
+    );
+    event DisputeFinalized(
+        uint256 indexed channelId,
+        address indexed winner,
+        uint256 amount
+    );
+    event Settled(
+        uint256 indexed channelId,
+        address indexed winner,
         uint256 amount
     );
 
@@ -215,6 +258,17 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             sd.lockedCommitMask = 0;
         }
 
+        // Reset dispute state when reusing channel
+        DisputeState storage ds = disputes[channelId];
+        if (ds.inProgress) {
+            ds.inProgress = false;
+            ds.submitter = address(0);
+            ds.deadline = 0;
+            ds.actionCount = 0;
+            delete disputeActions[channelId];
+            delete disputeSignatures[channelId];
+        }
+
         emit ChannelOpened(channelId, msg.sender, opponent, msg.value, handId, minSmallBlind);
     }
 
@@ -234,6 +288,62 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit ChannelJoined(channelId, msg.sender, msg.value);
     }
 
+    /// @notice Settles terminal action sequences (Fold or Showdown)
+    /// @param channelId The channel identifier
+    /// @param actions Array of co-signed actions representing the poker hand
+    /// @param signatures Array of signatures (2 per action: player1, player2)
+    function settle(
+        uint256 channelId,
+        Action[] calldata actions,
+        bytes[] calldata signatures
+    ) external nonReentrant {
+        Channel storage ch = channels[channelId];
+        ShowdownState storage sd = showdowns[channelId];
+        DisputeState storage ds = disputes[channelId];
+        
+        if (sd.inProgress) revert ShowdownInProgress();
+        if (ds.inProgress) revert DisputeInProgress();
+        if (ch.player1 == address(0)) revert NoChannel();
+        if (actions.length == 0) revert NoActionsProvided();
+        if (ch.finalized) revert AlreadyFinalized();
+        
+        // Verify signatures for all actions
+        _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
+        
+        // Replay actions to verify they are terminal and get end state
+        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayAndGetEndState(
+            actions, 
+            ch.deposit1, 
+            ch.deposit2,
+            ch.minSmallBlind
+        );
+        
+        address winner;
+        uint256 transferAmount = calledAmount;
+        
+        if (endType == HeadsUpPokerReplay.End.FOLD) {
+            // Winner is the non-folder
+            winner = folder == 0 ? ch.player2 : ch.player1;
+        } else { // SHOWDOWN
+            // For terminal showdown sequences, we still need card reveals
+            // to determine the actual winner. For now, we'll require using
+            // the showdown mechanism for proper card evaluation.
+            revert("Terminal showdown sequences must use showdown mechanism");
+        }
+
+        // Transfer only the called amount from loser to winner
+        if (winner == ch.player1) {
+            ch.deposit1 += transferAmount;
+            ch.deposit2 -= transferAmount;
+        } else {
+            ch.deposit1 -= transferAmount;
+            ch.deposit2 += transferAmount;
+        }
+
+        ch.finalized = true;
+        emit Settled(channelId, winner, transferAmount);
+    }
+
     /// @notice Settles fold using co-signed action transcript verification  
     /// @param channelId The channel identifier
     /// @param actions Array of co-signed actions representing the poker hand
@@ -245,7 +355,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         ShowdownState storage sd = showdowns[channelId];
+        DisputeState storage ds = disputes[channelId];
+        
         if (sd.inProgress) revert ShowdownInProgress();
+        if (ds.inProgress) revert DisputeInProgress();
         if (ch.player1 == address(0)) revert NoChannel();
         if (actions.length == 0) revert NoActionsProvided();
         if (ch.finalized) revert AlreadyFinalized();
@@ -280,6 +393,118 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ch.finalized = true;
 
         emit FoldSettled(channelId, winner, calledAmount);
+    }
+
+    /// @notice Start or extend a dispute with a non-terminal action sequence
+    /// @param channelId The channel identifier
+    /// @param actions Array of co-signed actions representing the poker hand
+    /// @param signatures Array of signatures (2 per action: player1, player2)
+    function dispute(
+        uint256 channelId,
+        Action[] calldata actions,
+        bytes[] calldata signatures
+    ) external nonReentrant {
+        Channel storage ch = channels[channelId];
+        ShowdownState storage sd = showdowns[channelId];
+        DisputeState storage ds = disputes[channelId];
+        
+        if (sd.inProgress) revert ShowdownInProgress();
+        if (ch.player1 == address(0)) revert NoChannel();
+        if (actions.length == 0) revert NoActionsProvided();
+        if (ch.finalized) revert AlreadyFinalized();
+        
+        // Verify signatures for all actions
+        _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
+        
+        // Check if this is starting a new dispute or extending an existing one
+        if (ds.inProgress) {
+            // Must provide a longer sequence to extend dispute
+            if (actions.length <= ds.actionCount) revert SequenceNotLonger();
+        } else {
+            // Starting new dispute - must be at least 2 actions (blinds) but allow any length
+            if (actions.length < 2) revert SequenceTooShort();
+        }
+        
+        // Replay actions to get projected end state (handles both terminal and non-terminal)
+        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayPrefixAndGetEndState(
+            actions, 
+            ch.deposit1, 
+            ch.deposit2,
+            ch.minSmallBlind
+        );
+        
+        // Store the action sequence
+        delete disputeActions[channelId];
+        delete disputeSignatures[channelId];
+        
+        for (uint256 i = 0; i < actions.length; i++) {
+            disputeActions[channelId].push(actions[i]);
+        }
+        for (uint256 i = 0; i < signatures.length; i++) {
+            disputeSignatures[channelId].push(signatures[i]);
+        }
+        
+        // Update dispute state
+        bool wasInProgress = ds.inProgress;
+        ds.inProgress = true;
+        ds.deadline = block.timestamp + disputeWindow;
+        ds.actionCount = actions.length;
+        ds.submitter = msg.sender;
+        ds.endType = endType;
+        ds.folder = folder;
+        ds.calledAmount = calledAmount;
+        
+        if (wasInProgress) {
+            emit DisputeExtended(channelId, msg.sender, actions.length);
+        } else {
+            emit DisputeStarted(channelId, msg.sender, actions.length);
+        }
+    }
+
+    /// @notice Finalize dispute after dispute window has passed
+    function finalizeDispute(uint256 channelId) external nonReentrant {
+        Channel storage ch = channels[channelId];
+        DisputeState storage ds = disputes[channelId];
+        
+        if (!ds.inProgress) revert NoDisputeInProgress();
+        if (block.timestamp <= ds.deadline) revert DisputeStillActive();
+        if (ch.finalized) revert AlreadyFinalized();
+        
+        // Finalize based on the projected end state
+        address winner;
+        uint256 transferAmount = ds.calledAmount;
+        
+        if (ds.endType == HeadsUpPokerReplay.End.FOLD) {
+            // Winner is the non-folder
+            winner = ds.folder == 0 ? ch.player2 : ch.player1;
+        } else { // SHOWDOWN
+            // For showdown from dispute, award to the last submitter (incentivizes providing complete sequences)
+            winner = ds.submitter;
+            // In a real showdown we'd need card reveals, but since this is from a dispute,
+            // we award to the submitter who provided the most complete sequence
+            if (ds.submitter == ch.player1) {
+                transferAmount = ch.deposit2;
+            } else {
+                transferAmount = ch.deposit1;
+            }
+        }
+        
+        // Transfer the appropriate amount
+        if (winner == ch.player1) {
+            ch.deposit1 += transferAmount;
+            ch.deposit2 -= transferAmount;
+        } else {
+            ch.deposit1 -= transferAmount;
+            ch.deposit2 += transferAmount;
+        }
+        
+        // Clean up dispute state
+        ds.inProgress = false;
+        delete disputeActions[channelId];
+        delete disputeSignatures[channelId];
+        
+        ch.finalized = true;
+        emit DisputeFinalized(channelId, winner, transferAmount);
     }
 
     // ------------------------------------------------------------------
@@ -473,6 +698,12 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return showdowns[channelId];
     }
 
+    function getDispute(
+        uint256 channelId
+    ) external view returns (DisputeState memory) {
+        return disputes[channelId];
+    }
+
     /// @notice Player submits commitments and openings to start showdown
     function startShowdown(
         uint256 channelId,
@@ -505,7 +736,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address onBehalfOf
     ) internal {
         Channel storage ch = channels[channelId];
+        DisputeState storage ds = disputes[channelId];
+        
         if (ch.deposit1 == 0 || ch.deposit2 == 0) revert ChannelNotReady();
+        if (ds.inProgress) revert DisputeInProgress();
         if (onBehalfOf != ch.player1 && onBehalfOf != ch.player2) revert NotPlayer();
 
         ShowdownState storage sd = showdowns[channelId];
@@ -574,6 +808,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address onBehalfOf
     ) internal {
         Channel storage ch = channels[channelId];
+        DisputeState storage ds = disputes[channelId];
+        
+        if (ds.inProgress) revert DisputeInProgress();
         if (onBehalfOf != ch.player1 && onBehalfOf != ch.player2) revert NotPlayer();
 
         ShowdownState storage sd = showdowns[channelId];
