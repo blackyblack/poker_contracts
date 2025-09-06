@@ -157,6 +157,64 @@ describe("Settle to Showdown", function () {
         expect(showdownState.cards[SLOT.B2]).to.equal(0xFF);
     });
 
+    it("should automatically finalize when both players reveal cards", async function () {
+        const handId = await escrow.getHandId(channelId);
+        
+        // Initiate showdown via settle
+        const actions = buildActions([
+            { action: ACTION.SMALL_BLIND, amount: 1n },
+            { action: ACTION.BIG_BLIND, amount: 2n },
+            { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
+            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (flop)
+            { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (turn)
+            { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks  
+            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (river)
+            { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
+        ], channelId, handId);
+
+        const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+        await escrow.connect(player1).settle(channelId, actions, signatures);
+
+        // Set up cards for both players and board
+        const dom = domainSeparator(escrow.target, chainId);
+        
+        // Player1 gets better hand: Pair of Aces
+        const player1Cards = [CARD.ACE_SPADES, CARD.KING_SPADES];
+        // Player2 gets worse hand: Queen high  
+        const player2Cards = [CARD.QUEEN_HEARTS, CARD.JACK_HEARTS];
+        // Board: A♣ 5♦ 3♥ 2♠ 7♣ - gives player1 pair of aces
+        const boardCards = [CARD.ACE_CLUBS, CARD.FIVE_DIAMONDS, CARD.THREE_HEARTS, CARD.TWO_SPADES, CARD.SEVEN_CLUBS];
+        
+        const allCards = [...player1Cards, ...player2Cards, ...boardCards];
+        const slots = [SLOT.A1, SLOT.A2, SLOT.B1, SLOT.B2, SLOT.FLOP1, SLOT.FLOP2, SLOT.FLOP3, SLOT.TURN, SLOT.RIVER];
+        
+        const commits = [];
+        const sigs = [];
+        const cardCodes = [];
+        const cardSalts = [];
+        
+        // Build commits for all cards
+        for (let i = 0; i < allCards.length; i++) {
+            const obj = await buildCardCommit(wallet1, wallet2, dom, channelId, slots[i], allCards[i]);
+            commits.push(obj.cc);
+            sigs.push(obj.sigA, obj.sigB);
+            cardCodes.push(allCards[i]);
+            cardSalts.push(obj.salt);
+        }
+        
+        // Reveal all cards at once - should trigger automatic finalization
+        const revealTx = await escrow.connect(player1).revealCards(channelId, commits, sigs, cardCodes, cardSalts);
+        
+        // Should emit ShowdownFinalized event with player1 as winner (pair beats high card)
+        await expect(revealTx).to.emit(escrow, "ShowdownFinalized").withArgs(channelId, player1.address, deposit);
+
+        // Verify player1 won
+        const [p1Stack, p2Stack] = await escrow.stacks(channelId);
+        expect(p1Stack).to.equal(deposit * 2n);
+        expect(p2Stack).to.equal(0n);
+    });
+
     it("should handle finalization when only one player reveals cards", async function () {
         const handId = await escrow.getHandId(channelId);
         
