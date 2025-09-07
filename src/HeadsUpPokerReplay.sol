@@ -373,14 +373,12 @@ contract HeadsUpPokerReplay {
         return (ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0}), g);
     }
 
-    function replayAndGetEndState(
+    function replayGame(
         Action[] calldata actions,
         uint256 stackA,
         uint256 stackB,
         uint256 minSmallBlind
     ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
-        // TODO: this should replay the entire sequence and ensure it's terminal
-        // TODO: for non-terminal sequences use replayPrefixAndGetEndState
         (ReplayResult memory res, Game memory g) = _replayActions(
             actions,
             stackA,
@@ -388,10 +386,9 @@ contract HeadsUpPokerReplay {
             minSmallBlind
         );
 
-        // TODO: no blinds should not be allowed here
-        // For NO_BLINDS games, called amount is always 0 and it's always ended
+        // Disallow incomplete game sequences - only accept complete games
         if (res.end == End.NO_BLINDS) {
-            return (res.end, res.folder, 0);
+            revert NoBlinds();
         }
 
         if (!res.ended) revert HandNotDone();
@@ -400,7 +397,7 @@ contract HeadsUpPokerReplay {
         return (res.end, res.folder, calledAmount);
     }
 
-    function replayPrefixAndGetEndState(
+    function replayIncompleteGame(
         Action[] calldata actions,
         uint256 stackA,
         uint256 stackB,
