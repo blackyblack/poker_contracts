@@ -4,7 +4,7 @@ const { ACTION } = require("../helpers/actions");
 const { SLOT } = require("../helpers/slots");
 const { CARD } = require("../helpers/cards");
 const { buildActions, signActions, wallet1, wallet2, buildCardCommit } = require("../helpers/test-utils");
-const { domainSeparator, ZERO32 } = require("../helpers/hashes");
+const { domainSeparator } = require("../helpers/hashes");
 
 describe("Settle to Showdown", function () {
     let escrow, player1, player2;
@@ -15,10 +15,10 @@ describe("Settle to Showdown", function () {
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
         chainId = (await ethers.provider.getNetwork()).chainId;
-        
+
         const HeadsUpPokerEscrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await HeadsUpPokerEscrow.deploy();
-        
+
         // Open channel and join
         await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
         await escrow.connect(player2).join(channelId, { value: deposit });
@@ -26,7 +26,7 @@ describe("Settle to Showdown", function () {
 
     it("should initiate showdown when settle resolves to showdown", async function () {
         const handId = await escrow.getHandId(channelId);
-        
+
         // Create actions that lead to showdown (both players check down)
         const actions = buildActions([
             { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -44,14 +44,14 @@ describe("Settle to Showdown", function () {
 
         // This should not revert but should initiate showdown
         const tx = await escrow.connect(player1).settle(channelId, actions, signatures);
-        
+
         // Verify ShowdownStarted event was emitted
         await expect(tx).to.emit(escrow, "ShowdownStarted").withArgs(channelId);
-        
+
         // Verify showdown state was set up
         const showdownState = await escrow.getShowdown(channelId);
         expect(showdownState.inProgress).to.be.true;
-        
+
         // Channel should not be finalized yet - requires card reveals
         const [p1Stack, p2Stack] = await escrow.stacks(channelId);
         expect(p1Stack).to.equal(deposit);
@@ -60,7 +60,7 @@ describe("Settle to Showdown", function () {
 
     it("should prevent duplicate settle calls after showdown initiated", async function () {
         const handId = await escrow.getHandId(channelId);
-        
+
         const actions = buildActions([
             { action: ACTION.SMALL_BLIND, amount: 1n },
             { action: ACTION.BIG_BLIND, amount: 2n },
@@ -77,7 +77,7 @@ describe("Settle to Showdown", function () {
 
         // First settle should work
         await escrow.connect(player1).settle(channelId, actions, signatures);
-        
+
         // Second settle should revert due to showdown in progress
         await expect(escrow.connect(player2).settle(channelId, actions, signatures))
             .to.be.revertedWithCustomError(escrow, "ShowdownInProgress");
@@ -85,7 +85,7 @@ describe("Settle to Showdown", function () {
 
     it("should still handle fold endings normally", async function () {
         const handId = await escrow.getHandId(channelId);
-        
+
         // Create actions that lead to fold
         const actions = buildActions([
             { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -96,11 +96,11 @@ describe("Settle to Showdown", function () {
         const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
         const tx = await escrow.connect(player1).settle(channelId, actions, signatures);
-        
+
         // Should emit Settled event for fold, not ShowdownStarted
         await expect(tx).to.emit(escrow, "Settled");
         await expect(tx).to.not.emit(escrow, "ShowdownStarted");
-        
+
         // Channel should be finalized
         const [p1Stack, p2Stack] = await escrow.stacks(channelId);
         expect(p2Stack).to.be.gt(deposit); // Player2 should have won
@@ -108,7 +108,7 @@ describe("Settle to Showdown", function () {
 
     it("should allow card reveals after settle-initiated showdown", async function () {
         const handId = await escrow.getHandId(channelId);
-        
+
         // Initiate showdown via settle
         const actions = buildActions([
             { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -128,12 +128,12 @@ describe("Settle to Showdown", function () {
         // Prepare card commits for reveal
         const dom = domainSeparator(escrow.target, chainId);
         const player1Cards = [CARD.ACE_SPADES, CARD.KING_SPADES];
-        
+
         const commits = [];
         const sigs = [];
         const cardCodes = [];
         const cardSalts = [];
-        
+
         // Only reveal player1's cards
         const slots = [SLOT.A1, SLOT.A2];
         for (let i = 0; i < 2; i++) {
@@ -143,7 +143,7 @@ describe("Settle to Showdown", function () {
             cardCodes.push(player1Cards[i]);
             cardSalts.push(obj.salt);
         }
-        
+
         // Reveal player1's cards
         const revealTx = await escrow.connect(player1).revealCards(channelId, commits, sigs, cardCodes, cardSalts);
         await expect(revealTx).to.emit(escrow, "CommitsUpdated");
@@ -158,7 +158,7 @@ describe("Settle to Showdown", function () {
 
     it("should automatically finalize when both players reveal cards", async function () {
         const handId = await escrow.getHandId(channelId);
-        
+
         // Initiate showdown via settle
         const actions = buildActions([
             { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -177,22 +177,22 @@ describe("Settle to Showdown", function () {
 
         // Set up cards for both players and board
         const dom = domainSeparator(escrow.target, chainId);
-        
+
         // Player1 gets better hand: Pair of Aces
         const player1Cards = [CARD.ACE_SPADES, CARD.KING_SPADES];
         // Player2 gets worse hand: Queen high  
         const player2Cards = [CARD.QUEEN_HEARTS, CARD.JACK_HEARTS];
         // Board: A♣ 5♦ 3♥ 2♠ 7♣ - gives player1 pair of aces
         const boardCards = [CARD.ACE_CLUBS, CARD.FIVE_DIAMONDS, CARD.THREE_HEARTS, CARD.TWO_SPADES, CARD.SEVEN_CLUBS];
-        
+
         const allCards = [...player1Cards, ...player2Cards, ...boardCards];
         const slots = [SLOT.A1, SLOT.A2, SLOT.B1, SLOT.B2, SLOT.FLOP1, SLOT.FLOP2, SLOT.FLOP3, SLOT.TURN, SLOT.RIVER];
-        
+
         const commits = [];
         const sigs = [];
         const cardCodes = [];
         const cardSalts = [];
-        
+
         // Build commits for all cards
         for (let i = 0; i < allCards.length; i++) {
             const obj = await buildCardCommit(wallet1, wallet2, dom, channelId, slots[i], allCards[i]);
@@ -201,10 +201,10 @@ describe("Settle to Showdown", function () {
             cardCodes.push(allCards[i]);
             cardSalts.push(obj.salt);
         }
-        
+
         // Reveal all cards at once - should trigger automatic finalization
         const revealTx = await escrow.connect(player1).revealCards(channelId, commits, sigs, cardCodes, cardSalts);
-        
+
         // Should emit ShowdownFinalized event with player1 as winner (pair beats high card)
         await expect(revealTx).to.emit(escrow, "ShowdownFinalized").withArgs(channelId, player1.address, 2n);
 
@@ -216,7 +216,7 @@ describe("Settle to Showdown", function () {
 
     it("should handle finalization when only one player reveals cards", async function () {
         const handId = await escrow.getHandId(channelId);
-        
+
         // Initiate showdown via settle
         const actions = buildActions([
             { action: ACTION.SMALL_BLIND, amount: 1n },
@@ -236,12 +236,12 @@ describe("Settle to Showdown", function () {
         // Only player1 reveals cards
         const dom = domainSeparator(escrow.target, chainId);
         const player1Cards = [CARD.ACE_SPADES, CARD.KING_SPADES];
-        
+
         const commits = [];
         const sigs = [];
         const cardCodes = [];
         const cardSalts = [];
-        
+
         const slots = [SLOT.A1, SLOT.A2];
         for (let i = 0; i < 2; i++) {
             const obj = await buildCardCommit(wallet1, wallet2, dom, channelId, slots[i], player1Cards[i]);
@@ -250,7 +250,7 @@ describe("Settle to Showdown", function () {
             cardCodes.push(player1Cards[i]);
             cardSalts.push(obj.salt);
         }
-        
+
         await escrow.connect(player1).revealCards(channelId, commits, sigs, cardCodes, cardSalts);
 
         // Fast forward past the reveal deadline

@@ -2,8 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ZERO32, domainSeparator, cardCommitDigest } = require("../helpers/hashes");
 const { SLOT } = require("../helpers/slots");
-const { buildCardCommit, buildActions, signActions, wallet1, wallet2, wallet3, playBlindsAndCheckDown } = require("../helpers/test-utils");
-const { ACTION } = require("../helpers/actions");
+const { buildCardCommit, wallet1, wallet2, wallet3, playPlayer1WinsShowdown } = require("../helpers/test-utils");
 
 const EMPTY_CODES = Array(9).fill(0xff);
 const EMPTY_SALTS = Array(9).fill(ZERO32);
@@ -13,13 +12,11 @@ describe("startShowdown & revealCards", function () {
     let player1, player2;
     const channelId = 1n;
     const deposit = ethers.parseEther("1");
-    let chainId;
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
         const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await Escrow.deploy();
-        chainId = (await ethers.provider.getNetwork()).chainId;
         await escrow.open(channelId, player2.address, 1n, { value: deposit });
         await escrow.connect(player2).join(channelId, { value: deposit });
     });
@@ -270,7 +267,7 @@ describe("startShowdown & revealCards", function () {
     it("allows finalize after deadline when opponent holes not opened", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
 
-        await playBlindsAndCheckDown(escrow, channelId, player1, chainId);
+        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
 
         // Start with commits that don't include opponent holes
         const partialCommits = commits.slice(0, 2).concat(commits.slice(4)); // Skip opponent holes
@@ -324,7 +321,7 @@ describe("startShowdown & revealCards", function () {
         const codes = [...myHole, ...oppHole];
         const salts = [...mySalts, ...oppSalts];
 
-        await playBlindsAndCheckDown(escrow, channelId, player1, chainId);
+        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
 
         await escrow
             .connect(player1)

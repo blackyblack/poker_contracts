@@ -3,20 +3,17 @@ const { ethers } = require("hardhat");
 const { domainSeparator, ZERO32 } = require("../helpers/hashes");
 const { SLOT } = require("../helpers/slots");
 const { CARD } = require("../helpers/cards");
-const { ACTION } = require("../helpers/actions");
-const { buildActions, signActions, buildCardCommit, wallet1, wallet2, playBlindsAndCheckDown, playPlayer1WinsShowdown } = require("../helpers/test-utils");
+const { buildCardCommit, wallet1, wallet2, playPlayer1WinsShowdown } = require("../helpers/test-utils");
 
 describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
     let escrow, player1, player2;
     const channelId = 1n;
     const deposit = ethers.parseEther("1.0");
-    let chainId;
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
         const HeadsUpPokerEscrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await HeadsUpPokerEscrow.deploy();
-        chainId = (await ethers.provider.getNetwork()).chainId;
 
         // Setup channel
         await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
@@ -110,8 +107,8 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
             ];
             const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
-            
-            await playBlindsAndCheckDown(escrow, channelId, player1, chainId);
+
+            await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
 
             // showdown start by player1
             await escrow
@@ -159,7 +156,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
             const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
 
-            await playBlindsAndCheckDown(escrow, channelId, player1, chainId);
+            await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
 
             // showdown start by player1
             await escrow
@@ -170,7 +167,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
             const tx = await escrow
                 .connect(player2)
                 .revealCards(channelId, commits, sigs, revealCodes, revealSalts);
-            
+
             await expect(tx)
                 .to.emit(escrow, "ShowdownFinalized")
                 .withArgs(channelId, player1.address, 2n);
@@ -204,8 +201,8 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
 
             const { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts } =
                 await setupShowdownWithCards(player1Cards, player2Cards, boardCards);
-            
-            await playBlindsAndCheckDown(escrow, channelId, player1, chainId);
+
+            await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
 
             // showdown start by player1
             await escrow
@@ -216,7 +213,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
             const tx = await escrow
                 .connect(player2)
                 .revealCards(channelId, commits, sigs, revealCodes, revealSalts);
-            
+
             // In case of tie no one wins anything (pot remains the same)
             await expect(tx)
                 .to.emit(escrow, "ShowdownFinalized")
@@ -225,19 +222,6 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
             expect(p1Stack).to.equal(deposit);
             expect(p2Stack).to.equal(deposit);
-        });
-
-        it("should play a basic showdown game where player1 wins 2 chips", async function () {
-            // This test demonstrates the reusable helper for a basic showdown
-            // where both players put in 2 chips (1 SB + 1 call) and player1 wins
-            await escrow.open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-            
-            await playPlayer1WinsShowdown(escrow, channelId, player1, chainId);
-            
-            // Verify showdown was initiated (would need card reveals to complete)
-            const showdownState = await escrow.getShowdownState(channelId);
-            expect(showdownState.inProgress).to.be.true;
         });
     });
 });

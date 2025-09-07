@@ -63,7 +63,7 @@ describe("HeadsUpPokerEscrow", function () {
                 error: "NoDeposit"
             },
             {
-                name: "zero minSmallBlind", 
+                name: "zero minSmallBlind",
                 setup: () => ({ deposit, minBlind: 0n, opponent: null }),
                 error: "InvalidMinSmallBlind"
             },
@@ -99,9 +99,9 @@ describe("HeadsUpPokerEscrow", function () {
         creationValidationTests.forEach(test => {
             it(`should reject opening channel with ${test.name}`, async function () {
                 const setup = test.setup();
-                const opponent = setup.opponent === "self" ? player1.address : 
-                              setup.opponent === null ? player2.address : setup.opponent;
-                
+                const opponent = setup.opponent === "self" ? player1.address :
+                    setup.opponent === null ? player2.address : setup.opponent;
+
                 await expect(escrow.connect(player1).open(channelId, opponent, setup.minBlind, { value: setup.deposit }))
                     .to.be.revertedWithCustomError(escrow, test.error);
             });
@@ -166,7 +166,7 @@ describe("HeadsUpPokerEscrow", function () {
             it(`should reject joining ${test.name}`, async function () {
                 const setup = test.setup();
                 const player = setup.player === "player2" ? player2 : other;
-                
+
                 await expect(escrow.connect(player).join(setup.channelId, { value: setup.deposit }))
                     .to.be.revertedWithCustomError(escrow, test.error);
             });
@@ -290,25 +290,6 @@ describe("HeadsUpPokerEscrow", function () {
                 .to.be.revertedWithCustomError(escrow, "ActionWrongSignerB");
         });
 
-        it("should reject settlement when actions don't end in fold", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to street 1 
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to street 2
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks  
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to street 3
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }  // Should reach showdown (street 4)
-            ], channelId, handId);
-
-            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-
-            await expect(escrow.settle(channelId, actions, signatures))
-                .to.be.revertedWithCustomError(escrow, "ReplayDidNotEndInFold");
-        });
-
         it("should reject settlement with wrong channel ID in actions", async function () {
             const wrongChannelId = 999n;
             const actions = buildActions([
@@ -360,7 +341,7 @@ describe("HeadsUpPokerEscrow", function () {
         });
 
         it("should reject duplicate settlement", async function () {
-             const actions = buildActions([
+            const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n },
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.BET_RAISE, amount: 3n }, // Small blind raises
@@ -463,7 +444,7 @@ describe("HeadsUpPokerEscrow", function () {
                 expectSuccess: true
             },
             {
-                name: "accumulate winnings without withdrawal", 
+                name: "accumulate winnings without withdrawal",
                 beforeWithdraw: false,
                 expectSuccess: true,
                 testWinnings: true
