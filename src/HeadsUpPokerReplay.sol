@@ -342,7 +342,9 @@ contract HeadsUpPokerReplay {
         Action[] calldata actions,
         uint256 stackA,
         uint256 stackB,
-        uint256 minSmallBlind
+        uint256 minSmallBlind,
+        address player1,
+        address player2
     ) internal pure returns (ReplayResult memory res, Game memory g) {
         // Handle sequences without proper blinds
         if (actions.length < 2) {
@@ -354,6 +356,14 @@ contract HeadsUpPokerReplay {
 
         g = _initGame(sb, bb, stackA, stackB, minSmallBlind);
 
+        // Validate sender addresses for blind actions
+        uint8 smallBlindPlayer = getSmallBlindPlayer(sb.handId);
+        address expectedSmallBlindSender = (smallBlindPlayer == 0) ? player1 : player2;
+        address expectedBigBlindSender = (smallBlindPlayer == 0) ? player2 : player1;
+        
+        if (sb.sender != expectedSmallBlindSender) revert WrongPlayerTurn();
+        if (bb.sender != expectedBigBlindSender) revert WrongPlayerTurn();
+
         // If both players are all-in after blinds, immediate showdown
         if (g.allIn[0] && g.allIn[1]) {
             return (
@@ -363,6 +373,10 @@ contract HeadsUpPokerReplay {
         }
 
         for (uint256 i = 2; i < actions.length; i++) {
+            // Validate sender for each action
+            address expectedSender = (g.actor == 0) ? player1 : player2;
+            if (actions[i].sender != expectedSender) revert WrongPlayerTurn();
+            
             (g, res) = _applyAction(g, actions[i], actions[i - 1]);
             if (res.ended) {
                 return (res, g);
@@ -377,13 +391,17 @@ contract HeadsUpPokerReplay {
         Action[] calldata actions,
         uint256 stackA,
         uint256 stackB,
-        uint256 minSmallBlind
+        uint256 minSmallBlind,
+        address player1,
+        address player2
     ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
         (ReplayResult memory res, Game memory g) = _replayActions(
             actions,
             stackA,
             stackB,
-            minSmallBlind
+            minSmallBlind,
+            player1,
+            player2
         );
 
         // Disallow incomplete game sequences - only accept complete games
@@ -401,13 +419,17 @@ contract HeadsUpPokerReplay {
         Action[] calldata actions,
         uint256 stackA,
         uint256 stackB,
-        uint256 minSmallBlind
+        uint256 minSmallBlind,
+        address player1,
+        address player2
     ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
         (ReplayResult memory res, Game memory g) = _replayActions(
             actions,
             stackA,
             stackB,
-            minSmallBlind
+            minSmallBlind,
+            player1,
+            player2
         );
 
         // For NO_BLINDS games, called amount is always 0
@@ -428,136 +450,6 @@ contract HeadsUpPokerReplay {
         }
 
         return (End.SHOWDOWN, 0, calledAmount);
-    }
-
-    // ------------------------------------------------------------------
-    // Player turn validation functions
-    // ------------------------------------------------------------------
-    
-    function replayGameWithTurnValidation(
-        Action[] calldata actions,
-        uint256 stackA,
-        uint256 stackB,
-        uint256 minSmallBlind,
-        address player1,
-        address player2
-    ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
-        _validatePlayerTurns(actions, player1, player2);
-        return replayGame(actions, stackA, stackB, minSmallBlind);
-    }
-
-    function replayIncompleteGameWithTurnValidation(
-        Action[] calldata actions,
-        uint256 stackA,
-        uint256 stackB,
-        uint256 minSmallBlind,
-        address player1,
-        address player2
-    ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
-        _validatePlayerTurns(actions, player1, player2);
-        return replayIncompleteGame(actions, stackA, stackB, minSmallBlind);
-    }
-
-    function _validatePlayerTurns(
-        Action[] calldata actions,
-        address player1,
-        address player2
-    ) private pure {
-        if (actions.length < 2) {
-            return; // No validation needed for incomplete sequences
-        }
-
-        // In heads up poker:
-        // Player 1 = Small Blind (dealer position)
-        // Player 2 = Big Blind (out of position)
-        
-        // Validate first two actions (blinds)
-        if (actions[0].sender != player1) revert WrongPlayerTurn(); // SB must be player1
-        if (actions[1].sender != player2) revert WrongPlayerTurn(); // BB must be player2
-        
-        // For the rest of the hand, we need to track whose turn it is
-        // based on the game state
-        if (actions.length > 2) {
-            _validateActionSequence(actions, player1, player2);
-        }
-    }
-
-    function _validateActionSequence(
-        Action[] calldata actions,
-        address player1,
-        address player2
-    ) private pure {
-        // Build game state to track whose turn it is
-        Game memory g;
-        
-        // Initialize with blinds
-        Action calldata sb = actions[0];
-        Action calldata bb = actions[1];
-        
-        // Basic blind validation
-        if (sb.action != ACT_SMALL_BLIND) revert SmallBlindActionInvalid();
-        if (bb.action != ACT_BIG_BLIND) revert BigBlindActionInvalid();
-        
-        // Set initial state: after blinds, small blind acts first (preflop)
-        g.actor = 0; // player1 (small blind)
-        g.bigBlindPlayer = 1; // player2 (big blind)
-        g.street = 0; // preflop
-        
-        // Validate each subsequent action
-        for (uint256 i = 2; i < actions.length; i++) {
-            Action calldata action = actions[i];
-            address expectedSender = (g.actor == 0) ? player1 : player2;
-            
-            if (action.sender != expectedSender) revert WrongPlayerTurn();
-            
-            // Update game state to determine next actor
-            g = _updateGameStateForTurnValidation(g, action);
-        }
-    }
-
-    function _updateGameStateForTurnValidation(
-        Game memory g,
-        Action calldata action
-    ) private pure returns (Game memory) {
-        uint8 opp = 1 - g.actor;
-        
-        if (action.action == ACT_FOLD) {
-            // Game ends on fold, no need to update actor
-            return g;
-        }
-        
-        if (action.action == ACT_CHECK_CALL) {
-            if (g.street == 0) {
-                // Preflop: calling moves to next street if no raises
-                g.street = 1;
-                g.actor = g.bigBlindPlayer; // BB acts first postflop
-            } else {
-                // Postflop: checking alternates turns, calling moves to next street
-                if (g.toCall > 0) {
-                    // This was a call, move to next street
-                    g.street++;
-                    if (g.street >= 4) {
-                        // Showdown reached
-                        return g;
-                    }
-                    g.actor = g.bigBlindPlayer; // BB acts first on new street
-                    g.toCall = 0;
-                } else {
-                    // This was a check, alternate turn
-                    g.actor = opp;
-                }
-            }
-            return g;
-        }
-        
-        if (action.action == ACT_BET_RAISE) {
-            // After a bet/raise, opponent acts next
-            g.actor = opp;
-            g.toCall = action.amount; // Simplified, just track there's something to call
-            return g;
-        }
-        
-        return g;
     }
 
     function _hashAction(Action calldata act) private pure returns (bytes32) {
