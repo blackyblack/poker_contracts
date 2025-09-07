@@ -346,18 +346,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
         
-        // Verify signatures for all actions (skip if no actions for games without blinds)
-        if (actions.length > 0) {
-            _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
-        }
+        // Verify signatures for all actions
+        _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
         
         // Check if this is starting a new dispute or extending an existing one
         if (ds.inProgress) {
             // Must provide a longer sequence to extend dispute
             if (actions.length <= ds.actionCount) revert SequenceNotLonger();
-        } else {
-            // Starting new dispute - allow any length including empty sequences
-            // No minimum length requirement to support games without blinds
         }
         
         // Replay actions to get projected end state (handles both terminal and non-terminal)
@@ -386,7 +381,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     /// @notice Finalize dispute after dispute window has passed
     /// @dev Applies the projected outcome from the longest submitted sequence.
-    /// For fold outcomes, transfers called amount. For showdown outcomes, awards to submitter.
+    /// For fold outcomes, transfers called amount. For showdown outcomes waits for cards reveal.
     /// @param channelId The channel identifier
     function finalizeDispute(uint256 channelId) external nonReentrant {
         Channel storage ch = channels[channelId];

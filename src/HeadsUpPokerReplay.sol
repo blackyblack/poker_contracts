@@ -352,11 +352,6 @@ contract HeadsUpPokerReplay {
         Action calldata sb = actions[0];
         Action calldata bb = actions[1];
 
-        // Check if we have valid blinds, otherwise treat as no blinds game
-        if (sb.action != ACT_SMALL_BLIND || bb.action != ACT_BIG_BLIND) {
-            return (ReplayResult({ended: true, end: End.NO_BLINDS, folder: 0}), g);
-        }
-
         g = _initGame(sb, bb, stackA, stackB, minSmallBlind);
 
         // If both players are all-in after blinds, immediate showdown
@@ -384,6 +379,8 @@ contract HeadsUpPokerReplay {
         uint256 stackB,
         uint256 minSmallBlind
     ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
+        // TODO: this should replay the entire sequence and ensure it's terminal
+        // TODO: for non-terminal sequences use replayPrefixAndGetEndState
         (ReplayResult memory res, Game memory g) = _replayActions(
             actions,
             stackA,
@@ -391,6 +388,7 @@ contract HeadsUpPokerReplay {
             minSmallBlind
         );
 
+        // TODO: no blinds should not be allowed here
         // For NO_BLINDS games, called amount is always 0 and it's always ended
         if (res.end == End.NO_BLINDS) {
             return (res.end, res.folder, 0);

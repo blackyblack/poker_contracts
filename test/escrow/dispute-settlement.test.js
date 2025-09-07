@@ -216,10 +216,6 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             const [finalP1, finalP2] = await escrow.stacks(channelId);
             expect(finalP1).to.equal(initialP1);
             expect(finalP2).to.equal(initialP2);
-            
-            // Channel should be finalized
-            const channel = await escrow.channels(channelId);
-            expect(channel.finalized).to.be.true;
         });
     });
 

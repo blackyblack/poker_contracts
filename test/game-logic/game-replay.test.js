@@ -1269,11 +1269,9 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.FOLD, amount: 0n }, // Not a blind
                 { action: ACTION.CHECK_CALL, amount: 0n } // Not a blind
             ]);
-            
-            const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
-            expect(end).to.equal(2n); // End.NO_BLINDS
-            expect(folder).to.equal(0n); // No folder
-            expect(calledAmount).to.equal(0n); // No called amount
+
+            await expect(replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n))
+                .to.be.revertedWithCustomError(replay, "SmallBlindActionInvalid");
         });
     });
 });
