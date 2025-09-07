@@ -70,8 +70,8 @@ contract HeadsUpPokerReplay {
     }
 
     struct ReplayResult {
-        bool isTerminal;
-        bool isFinished;
+        bool isTerminal; // Action sequence naturally ends the game (fold, showdown, all-in)
+        bool isFinished; // Action sequence represents a complete poker game (fold or natural showdown after all streets)
         End end;
         uint8 folder;
     }
@@ -341,6 +341,9 @@ contract HeadsUpPokerReplay {
         revert UnknownAction();
     }
 
+    /// @notice Replay action sequence and determine if it's terminal and/or finished
+    /// @dev isTerminal: action sequence naturally ends (fold, showdown, all-in)
+    ///      isFinished: complete poker game (fold or natural showdown after all streets)
     function _replayActions(
         Action[] calldata actions,
         uint256 stackA,
