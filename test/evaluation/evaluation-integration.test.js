@@ -110,7 +110,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
 
             await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
 
-            // showdown start by player1
+            // Player 1 reveals their cards
             await escrow
                 .connect(player1)
                 .revealCards(channelId, commits, sigs, startCardCodes, startCardSalts);
@@ -158,7 +158,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
 
             await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
 
-            // showdown start by player1
+            // Player 1 reveals their cards
             await escrow
                 .connect(player1)
                 .revealCards(channelId, commits, sigs, startCardCodes, startCardSalts);
@@ -204,7 +204,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
 
             await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
 
-            // showdown start by player1
+            // Player 1 reveals their cards
             await escrow
                 .connect(player1)
                 .revealCards(channelId, commits, sigs, startCardCodes, startCardSalts);
