@@ -64,6 +64,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error ActionWrongHand();
     error ActionWrongSignerA();
     error ActionWrongSignerB();
+    error ActionInvalidSender();
+    error ActionWrongSigner();
     error NoActionsProvided();
     error DisputeInProgress();
     error NoDisputeInProgress();
@@ -297,11 +299,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
         
         // Replay actions to verify they are terminal and get end state
-        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayGame(
+        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayGameWithTurnValidation(
             actions, 
             ch.deposit1, 
             ch.deposit2,
-            ch.minSmallBlind
+            ch.minSmallBlind,
+            ch.player1,
+            ch.player2
         );
 
         if (endType != HeadsUpPokerReplay.End.FOLD) {
@@ -356,11 +360,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
         
         // Replay actions to get projected end state (handles both terminal and non-terminal)
-        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayIncompleteGame(
+        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayIncompleteGameWithTurnValidation(
             actions, 
             ch.deposit1, 
             ch.deposit2,
-            ch.minSmallBlind
+            ch.minSmallBlind,
+            ch.player1,
+            ch.player2
         );
         
         // Update dispute state (no need to store actions, just the projected outcome)
@@ -459,7 +465,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address player1,
         address player2
     ) private view {
-        if (actions.length * 2 != signatures.length) revert ActionSignatureLengthMismatch();
+        if (actions.length != signatures.length) revert ActionSignatureLengthMismatch();
         
         for (uint256 i = 0; i < actions.length; i++) {
             Action calldata action = actions[i];
@@ -468,15 +474,16 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             if (action.channelId != channelId) revert ActionWrongChannel();
             if (action.handId != handId) revert ActionWrongHand();
             
+            // Verify sender is one of the valid players
+            if (action.sender != player1 && action.sender != player2) revert ActionInvalidSender();
+            
             // Get EIP712 digest for this action
             bytes32 digest = digestAction(action);
             
-            // Verify both players signed this action
-            bytes calldata sig1 = signatures[i * 2];
-            bytes calldata sig2 = signatures[i * 2 + 1];
+            // Verify the sender signed this action
+            bytes calldata sig = signatures[i];
             
-            if (digest.recover(sig1) != player1) revert ActionWrongSignerA();
-            if (digest.recover(sig2) != player2) revert ActionWrongSignerB();
+            if (digest.recover(sig) != action.sender) revert ActionWrongSigner();
         }
     }
 

@@ -15,12 +15,13 @@ const wallet3 = new ethers.Wallet(
 
 /**
  * Helper to build actions with proper hashes and sequence numbers
- * @param {Array} specs - Array of action specifications {action, amount}
+ * @param {Array} specs - Array of action specifications {action, amount, sender}
  * @param {bigint} channelId - Channel ID (default: 1n)
  * @param {bigint} handId - Hand ID (default: 1n)
+ * @param {Array} players - Array of player addresses [player1, player2] (optional)
  * @returns {Array} Array of action objects
  */
-function buildActions(specs, channelId = 1n, handId = 1n) {
+function buildActions(specs, channelId = 1n, handId = 1n, players = null) {
     let seq = 0;
     let prevHash = handGenesis(channelId, handId);
     const actions = [];
@@ -31,7 +32,8 @@ function buildActions(specs, channelId = 1n, handId = 1n) {
             seq: seq++,
             action: spec.action,
             amount: spec.amount,
-            prevHash
+            prevHash,
+            sender: spec.sender || (players ? players[seq % 2] : ethers.ZeroAddress)
         };
         actions.push(act);
         prevHash = actionHash(act);
@@ -42,7 +44,7 @@ function buildActions(specs, channelId = 1n, handId = 1n) {
 /**
  * Helper to sign actions
  * @param {Array} actions - Array of actions to sign
- * @param {Array} signers - Array of wallet signers
+ * @param {Array} signers - Array of wallet signers  
  * @param {string} contractAddress - Contract address for domain separator
  * @param {bigint} chainId - Chain ID for domain separator
  * @returns {Array} Array of signatures
@@ -53,9 +55,22 @@ async function signActions(actions, signers, contractAddress, chainId) {
 
     for (const action of actions) {
         const digest = actionDigest(domain, action);
-        const sig1 = signers[0].signingKey.sign(digest).serialized;
-        const sig2 = signers[1].signingKey.sign(digest).serialized;
-        signatures.push(sig1, sig2);
+        
+        // Find which signer matches the action sender
+        let signer = null;
+        for (const s of signers) {
+            if (s.address.toLowerCase() === action.sender.toLowerCase()) {
+                signer = s;
+                break;
+            }
+        }
+        
+        if (!signer) {
+            throw new Error(`No signer found for sender ${action.sender}`);
+        }
+        
+        const sig = signer.signingKey.sign(digest).serialized;
+        signatures.push(sig);
     }
     return signatures;
 }
