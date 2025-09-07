@@ -480,8 +480,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
     }
 
-    // Applies a batch of commits/openings.
-    function _applyCommitUpdate(
+    // Applies a batch of card commits/openings.
+    function _applyCardCommitUpdate(
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
@@ -587,10 +587,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             wonAmount = 0;
         }
 
-        _forfeitTo(channelId, winner, wonAmount);
+        _rewardWinner(channelId, winner, wonAmount);
     }
 
-    function _forfeitTo(uint256 channelId, address winner, uint256 wonAmount) internal {
+    function _rewardWinner(uint256 channelId, address winner, uint256 wonAmount) internal {
         Channel storage ch = channels[channelId];
         ShowdownState storage sd = showdowns[channelId];
 
@@ -625,8 +625,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     function getDisputeWindow() external pure returns (uint256) {
         return disputeWindow;
     }
-
-
 
     /// @notice Initiates showdown state
     /// @dev Sets up showdown state without requiring initial card commits
@@ -688,7 +686,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         if (block.timestamp > sd.deadline) revert Expired();
 
-        _applyCommitUpdate(
+        _applyCardCommitUpdate(
             channelId,
             commits,
             sigs,
@@ -721,6 +719,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             winner = ch.player2;
         }
 
-        _forfeitTo(channelId, winner, wonAmount);
+        _rewardWinner(channelId, winner, wonAmount);
     }
 }
