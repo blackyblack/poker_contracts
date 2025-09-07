@@ -121,7 +121,7 @@ async function playPlayer1WinsShowdown(escrow, channelId, player1, player1Wallet
     const handId = await escrow.getHandId(channelId);
     const actions = buildActions(actionSpecs, channelId, handId);
     const signatures = await signActions(actions, [player1Wallet, player2Wallet], await escrow.getAddress(), chainId);
-    await escrow.connect(player1).settle(channelId, actions, signatures);
+    return await escrow.connect(player1).settle(channelId, actions, signatures);
 }
 
 module.exports = {
