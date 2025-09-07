@@ -70,7 +70,8 @@ contract HeadsUpPokerReplay {
     }
 
     struct ReplayResult {
-        bool ended;
+        bool isTerminal;
+        bool isFinished;
         End end;
         uint8 folder;
     }
@@ -188,14 +189,14 @@ contract HeadsUpPokerReplay {
             if (g.allIn[opp]) {
                 return (
                     g,
-                    ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0})
+                    ReplayResult({isTerminal: true, isFinished: false, end: End.SHOWDOWN, folder: 0})
                 );
             }
             if (act.action != ACT_CHECK_CALL || act.amount != 0)
                 revert PlayerAllIn();
             return (
                 g,
-                ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0})
+                ReplayResult({isTerminal: true, isFinished: false, end: End.SHOWDOWN, folder: 0})
             );
         }
 
@@ -203,7 +204,7 @@ contract HeadsUpPokerReplay {
             if (act.amount != 0) revert FoldAmountInvalid();
             return (
                 g,
-                ReplayResult({ended: true, end: End.FOLD, folder: uint8(p)})
+                ReplayResult({isTerminal: true, isFinished: true, end: End.FOLD, folder: uint8(p)})
             );
         }
 
@@ -230,7 +231,8 @@ contract HeadsUpPokerReplay {
                     return (
                         g,
                         ReplayResult({
-                            ended: true,
+                            isTerminal: true,
+                            isFinished: false,
                             end: End.SHOWDOWN,
                             folder: 0
                         })
@@ -245,7 +247,7 @@ contract HeadsUpPokerReplay {
                 g.raiseCount = 0;
                 return (
                     g,
-                    ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0})
+                    ReplayResult({isTerminal: false, isFinished: false, end: End.SHOWDOWN, folder: 0})
                 );
             }
 
@@ -258,7 +260,8 @@ contract HeadsUpPokerReplay {
                     return (
                         g,
                         ReplayResult({
-                            ended: true,
+                            isTerminal: true,
+                            isFinished: true,
                             end: End.SHOWDOWN,
                             folder: 0
                         })
@@ -277,7 +280,7 @@ contract HeadsUpPokerReplay {
             }
             return (
                 g,
-                ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0})
+                ReplayResult({isTerminal: false, isFinished: false, end: End.SHOWDOWN, folder: 0})
             );
         }
 
@@ -331,7 +334,7 @@ contract HeadsUpPokerReplay {
 
             return (
                 g,
-                ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0})
+                ReplayResult({isTerminal: false, isFinished: false, end: End.SHOWDOWN, folder: 0})
             );
         }
 
@@ -346,7 +349,7 @@ contract HeadsUpPokerReplay {
     ) internal pure returns (ReplayResult memory res, Game memory g) {
         // Handle sequences without proper blinds
         if (actions.length < 2) {
-            return (ReplayResult({ended: true, end: End.NO_BLINDS, folder: 0}), g);
+            return (ReplayResult({isTerminal: true, isFinished: false, end: End.NO_BLINDS, folder: 0}), g);
         }
 
         Action calldata sb = actions[0];
@@ -357,20 +360,20 @@ contract HeadsUpPokerReplay {
         // If both players are all-in after blinds, immediate showdown
         if (g.allIn[0] && g.allIn[1]) {
             return (
-                ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0}),
+                ReplayResult({isTerminal: true, isFinished: false, end: End.SHOWDOWN, folder: 0}),
                 g
             );
         }
 
         for (uint256 i = 2; i < actions.length; i++) {
             (g, res) = _applyAction(g, actions[i], actions[i - 1]);
-            if (res.ended) {
+            if (res.isTerminal) {
                 return (res, g);
             }
         }
 
         // Not ended by the sequence itself
-        return (ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0}), g);
+        return (ReplayResult({isTerminal: false, isFinished: false, end: End.SHOWDOWN, folder: 0}), g);
     }
 
     function replayGame(
@@ -394,7 +397,7 @@ contract HeadsUpPokerReplay {
             return (res.end, res.folder, 0);
         }
 
-        if (!res.ended) revert HandNotDone();
+        if (!res.isTerminal) revert HandNotDone();
 
         calledAmount = _calculateCalledAmount(g);
         return (res.end, res.folder, calledAmount);
@@ -421,7 +424,7 @@ contract HeadsUpPokerReplay {
         calledAmount = _calculateCalledAmount(g);
 
         // If already terminal by the sequence, return immediately
-        if (res.ended) {
+        if (res.isTerminal) {
             return (res.end, res.folder, calledAmount);
         }
 
