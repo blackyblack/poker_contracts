@@ -106,4 +106,3 @@ contract HeadsUpPokerEIP712 is EIP712 {
         return digestCardCommit(cc).recover(sig);
     }
 }
-

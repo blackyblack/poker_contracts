@@ -83,7 +83,7 @@ describe("HeadsUpPokerReplay", function () {
                 error: "NoBlinds"
             },
             {
-                name: "only one action provided", 
+                name: "only one action provided",
                 actions: [{ action: ACTION.SMALL_BLIND, amount: 1n }],
                 error: "NoBlinds"
             },
@@ -96,7 +96,7 @@ describe("HeadsUpPokerReplay", function () {
                 error: "SmallBlindAmountInvalid"
             },
             {
-                name: "big blind amount is incorrect", 
+                name: "big blind amount is incorrect",
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 1n },
                     { action: ACTION.BIG_BLIND, amount: 3n }
@@ -223,31 +223,37 @@ describe("HeadsUpPokerReplay", function () {
 
         // Table-driven test for fold scenarios on different streets
         const foldTests = [
-            { street: "flop", expectedFolder: 0n, actions: [
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.FOLD, amount: 0n } // SB folds
-            ]},
-            { street: "turn", expectedFolder: 1n, actions: [
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to turn
-                { action: ACTION.FOLD, amount: 0n } // BB folds
-            ]},
-            { street: "river", expectedFolder: 1n, actions: [
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to turn
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to river
-                { action: ACTION.FOLD, amount: 0n } // BB folds
-            ]}
+            {
+                street: "flop", expectedFolder: 0n, actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // Move to flop
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                    { action: ACTION.FOLD, amount: 0n } // SB folds
+                ]
+            },
+            {
+                street: "turn", expectedFolder: 1n, actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // Move to flop
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // Move to turn
+                    { action: ACTION.FOLD, amount: 0n } // BB folds
+                ]
+            },
+            {
+                street: "river", expectedFolder: 1n, actions: [
+                    { action: ACTION.SMALL_BLIND, amount: 1n },
+                    { action: ACTION.BIG_BLIND, amount: 2n },
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // Move to flop
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // Move to turn
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
+                    { action: ACTION.CHECK_CALL, amount: 0n }, // Move to river
+                    { action: ACTION.FOLD, amount: 0n } // BB folds
+                ]
+            }
         ];
 
         foldTests.forEach(test => {
@@ -948,7 +954,7 @@ describe("HeadsUpPokerReplay", function () {
                 error: "SmallBlindAmountInvalid"
             },
             {
-                name: "big blind amount against correct player's stack", 
+                name: "big blind amount against correct player's stack",
                 handId: 2n, // Player 0 is BB
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 6n },
@@ -1099,7 +1105,7 @@ describe("HeadsUpPokerReplay", function () {
                 const actions = buildActions(test.actions);
                 const stacks = test.stacks || [10n, 10n];
                 const [end, folder, wonAmount] = await replay.replayAndGetEndState(actions, stacks[0], stacks[1], 1n);
-                
+
                 expect(end).to.equal(test.expectedEnd);
                 if (test.expectedEnd === 0n) {
                     expect(folder).to.equal(test.expectedFolder);
@@ -1117,7 +1123,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB calls, making toCall = 0
             ]);
-            
+
             const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
             expect(end).to.equal(1n); // End.SHOWDOWN
             expect(folder).to.equal(0n); // No folder for showdown
@@ -1131,7 +1137,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.BET_RAISE, amount: 3n } // SB raises to 4 total (1+3), BB needs to call 2 more
             ]);
-            
+
             const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB is the actor who must fold
@@ -1145,7 +1151,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 10n },
                 { action: ACTION.CHECK_CALL, amount: 0n } // SB calls and goes all-in (had only 5)
             ]);
-            
+
             const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 5n, 10n, 1n);
             expect(end).to.equal(1n); // End.SHOWDOWN
             expect(folder).to.equal(0n); // No folder for showdown  
@@ -1158,7 +1164,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.SMALL_BLIND, amount: 5n },
                 { action: ACTION.BIG_BLIND, amount: 10n }
             ]);
-            
+
             const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 5n, 10n, 5n);
             expect(end).to.equal(1n); // End.SHOWDOWN
             expect(folder).to.equal(0n); // No folder for showdown
@@ -1185,7 +1191,7 @@ describe("HeadsUpPokerReplay", function () {
                     prevHash: "0x" + "11".repeat(32) // Wrong prev hash
                 }
             ];
-            
+
             await expect(replay.replayPrefixAndGetEndState(badActions, 10n, 10n, 1n))
                 .to.be.revertedWithCustomError(replay, "SmallBlindPrevHashInvalid");
         });
@@ -1197,7 +1203,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n },
                 { action: ACTION.CHECK_CALL, amount: 0n }
             ]);
-            
+
             // Manually break the sequence
             actions[2].seq = 1; // Same as previous action
 
@@ -1214,7 +1220,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks,
                 { action: ACTION.BET_RAISE, amount: 3n }   // SB bets on flop, BB needs to respond
             ]);
-            
+
             const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB is the actor who must act
@@ -1231,7 +1237,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks on flop
                 { action: ACTION.CHECK_CALL, amount: 0n }  // BB checks on flop, move to turn
             ]);
-            
+
             const [end, folder, calledAmount] = await replay.replayPrefixAndGetEndState(actions, 10n, 10n, 1n);
             expect(end).to.equal(1n); // End.SHOWDOWN
             expect(folder).to.equal(0n); // No folder

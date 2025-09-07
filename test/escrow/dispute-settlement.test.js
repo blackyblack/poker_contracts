@@ -146,65 +146,6 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             await expect(escrow.dispute(channelId, actions2, signatures2))
                 .to.be.revertedWithCustomError(escrow, "SequenceNotLonger");
         });
-    });
-
-    describe("Finalize Dispute", function () {
-        const channelId = 3n;
-        const deposit = ethers.parseEther("1.0");
-
-        beforeEach(async function () {
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-        });
-
-        it("should finalize dispute after window expires", async function () {
-            const handId = await escrow.getHandId(channelId);
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n } // Fold sequence
-            ], channelId, handId);
-
-            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-            await escrow.dispute(channelId, actions, signatures);
-
-            // Fast forward past dispute window
-            await ethers.provider.send("evm_increaseTime", [3601]); // 1 hour + 1 second
-            await ethers.provider.send("evm_mine");
-
-            const tx = await escrow.finalizeDispute(channelId);
-            await expect(tx)
-                .to.emit(escrow, "DisputeFinalized");
-
-            // Check that channel is finalized
-            const dispute = await escrow.getDispute(channelId);
-            expect(dispute.inProgress).to.be.false;
-        });
-
-        it("should reject finalization before window expires", async function () {
-            const handId = await escrow.getHandId(channelId);
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n }
-            ], channelId, handId);
-
-            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-            await escrow.dispute(channelId, actions, signatures);
-
-            await expect(escrow.finalizeDispute(channelId))
-                .to.be.revertedWithCustomError(escrow, "DisputeStillActive");
-        });
-    });
-
-    describe("Integration with Existing Features", function () {
-        const channelId = 4n;
-        const deposit = ethers.parseEther("1.0");
-
-        beforeEach(async function () {
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-        });
 
         it("should allow settle during dispute", async function () {
             const handId = await escrow.getHandId(channelId);
@@ -227,29 +168,6 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
 
             await expect(escrow.settle(channelId, settleActions, settleSignatures))
                 .to.emit(escrow, "Settled");
-        });
-
-        it("should prevent settleFold during dispute", async function () {
-            const handId = await escrow.getHandId(channelId);
-
-            // Start dispute first
-            const disputeActions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n }
-            ], channelId, handId);
-            const disputeSignatures = await signActions(disputeActions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-            await escrow.dispute(channelId, disputeActions, disputeSignatures);
-
-            // Try to settleFold - should fail
-            const settleActions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n }
-            ], channelId, handId);
-            const settleSignatures = await signActions(settleActions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-
-            await expect(escrow.settleFold(channelId, settleActions, settleSignatures))
-                .to.be.revertedWithCustomError(escrow, "DisputeInProgress");
         });
 
         it("should return correct dispute window", async function () {
@@ -302,6 +220,55 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             // Channel should be finalized
             const channel = await escrow.channels(channelId);
             expect(channel.finalized).to.be.true;
+        });
+    });
+
+    describe("Finalize Dispute", function () {
+        const channelId = 3n;
+        const deposit = ethers.parseEther("1.0");
+
+        beforeEach(async function () {
+            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
+            await escrow.connect(player2).join(channelId, { value: deposit });
+        });
+
+        it("should finalize dispute after window expires", async function () {
+            const handId = await escrow.getHandId(channelId);
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.FOLD, amount: 0n } // Fold sequence
+            ], channelId, handId);
+
+            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+            await escrow.dispute(channelId, actions, signatures);
+
+            // Fast forward past dispute window
+            await ethers.provider.send("evm_increaseTime", [3601]); // 1 hour + 1 second
+            await ethers.provider.send("evm_mine");
+
+            const tx = await escrow.finalizeDispute(channelId);
+            await expect(tx)
+                .to.emit(escrow, "DisputeFinalized");
+
+            // Check that channel is finalized
+            const dispute = await escrow.getDispute(channelId);
+            expect(dispute.inProgress).to.be.false;
+        });
+
+        it("should reject finalization before window expires", async function () {
+            const handId = await escrow.getHandId(channelId);
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.FOLD, amount: 0n }
+            ], channelId, handId);
+
+            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+            await escrow.dispute(channelId, actions, signatures);
+
+            await expect(escrow.finalizeDispute(channelId))
+                .to.be.revertedWithCustomError(escrow, "DisputeStillActive");
         });
     });
 });

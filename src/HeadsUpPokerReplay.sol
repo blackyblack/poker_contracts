@@ -66,7 +66,7 @@ contract HeadsUpPokerReplay {
         uint256 lastRaise;
         bool checked;
         bool reopen;
-        uint8 raiseCount;  // Number of raises on current street
+        uint8 raiseCount; // Number of raises on current street
     }
 
     struct ReplayResult {
@@ -75,7 +75,10 @@ contract HeadsUpPokerReplay {
         uint8 folder;
     }
 
-    function handGenesis(uint256 chId, uint256 handId) internal pure returns (bytes32) {
+    function handGenesis(
+        uint256 chId,
+        uint256 handId
+    ) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked("HUP_GENESIS", chId, handId));
     }
 
@@ -89,7 +92,9 @@ contract HeadsUpPokerReplay {
 
     /// @notice Calculate the called amount - the minimum contribution between both players
     /// @dev This represents the amount that should transfer from loser to winner
-    function _calculateCalledAmount(Game memory g) private pure returns (uint256) {
+    function _calculateCalledAmount(
+        Game memory g
+    ) private pure returns (uint256) {
         // The called amount is the minimum of what both players contributed
         // This ensures only the "called" portion changes hands
         return g.total[0] < g.total[1] ? g.total[0] : g.total[1];
@@ -103,8 +108,9 @@ contract HeadsUpPokerReplay {
         uint256 minSmallBlind
     ) internal pure returns (Game memory g) {
         // TODO: allow game without blinds (e.g. sitout players)
-        
-        if (sb.prevHash != handGenesis(sb.channelId, sb.handId)) revert SmallBlindPrevHashInvalid();
+
+        if (sb.prevHash != handGenesis(sb.channelId, sb.handId))
+            revert SmallBlindPrevHashInvalid();
         if (sb.action != ACT_SMALL_BLIND) revert SmallBlindActionInvalid();
         if (sb.seq != 0) revert SmallBlindSequenceInvalid();
 
@@ -117,10 +123,18 @@ contract HeadsUpPokerReplay {
         uint8 bigBlindPlayer = 1 - smallBlindPlayer;
 
         if (smallBlindPlayer == 0) {
-            if (sb.amount == 0 || sb.amount < minSmallBlind || sb.amount > stackA) revert SmallBlindAmountInvalid();
+            if (
+                sb.amount == 0 ||
+                sb.amount < minSmallBlind ||
+                sb.amount > stackA
+            ) revert SmallBlindAmountInvalid();
             if (bb.amount > stackB) revert BigBlindStackInvalid();
         } else {
-            if (sb.amount == 0 || sb.amount < minSmallBlind || sb.amount > stackB) revert SmallBlindAmountInvalid();
+            if (
+                sb.amount == 0 ||
+                sb.amount < minSmallBlind ||
+                sb.amount > stackB
+            ) revert SmallBlindAmountInvalid();
             if (bb.amount > stackA) revert BigBlindStackInvalid();
         }
 
@@ -172,15 +186,25 @@ contract HeadsUpPokerReplay {
         // All-in handling
         if (g.allIn[p]) {
             if (g.allIn[opp]) {
-                return (g, ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0}));
+                return (
+                    g,
+                    ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0})
+                );
             }
-            if (act.action != ACT_CHECK_CALL || act.amount != 0) revert PlayerAllIn();
-            return (g, ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0}));
+            if (act.action != ACT_CHECK_CALL || act.amount != 0)
+                revert PlayerAllIn();
+            return (
+                g,
+                ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0})
+            );
         }
 
         if (act.action == ACT_FOLD) {
             if (act.amount != 0) revert FoldAmountInvalid();
-            return (g, ReplayResult({ended: true, end: End.FOLD, folder: uint8(p)}));
+            return (
+                g,
+                ReplayResult({ended: true, end: End.FOLD, folder: uint8(p)})
+            );
         }
 
         if (act.action == ACT_CHECK_CALL) {
@@ -203,7 +227,14 @@ contract HeadsUpPokerReplay {
                 // if player1 was all-in and was called, he cannot raise any more
                 // if player2 was all-in when calling, player1 cannot raise any more
                 if (g.allIn[0] || g.allIn[1]) {
-                    return (g, ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0}));
+                    return (
+                        g,
+                        ReplayResult({
+                            ended: true,
+                            end: End.SHOWDOWN,
+                            folder: 0
+                        })
+                    );
                 }
 
                 g.street++;
@@ -212,7 +243,10 @@ contract HeadsUpPokerReplay {
                 g.contrib[1] = 0;
                 g.actor = g.bigBlindPlayer;
                 g.raiseCount = 0;
-                return (g, ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0}));
+                return (
+                    g,
+                    ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0})
+                );
             }
 
             // Check
@@ -221,7 +255,14 @@ contract HeadsUpPokerReplay {
                 g.street++;
                 if (g.street == 4) {
                     // natural showdown
-                    return (g, ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0}));
+                    return (
+                        g,
+                        ReplayResult({
+                            ended: true,
+                            end: End.SHOWDOWN,
+                            folder: 0
+                        })
+                    );
                 }
                 g.contrib[0] = 0;
                 g.contrib[1] = 0;
@@ -234,7 +275,10 @@ contract HeadsUpPokerReplay {
                 g.checked = true;
                 g.actor = uint8(opp);
             }
-            return (g, ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0}));
+            return (
+                g,
+                ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0})
+            );
         }
 
         if (act.action == ACT_BET_RAISE) {
@@ -243,13 +287,15 @@ contract HeadsUpPokerReplay {
             uint256 prevStack = g.stacks[p];
             if (act.amount > prevStack) revert RaiseStackInvalid();
 
-            if (g.raiseCount >= MAX_RAISES_PER_STREET) revert RaiseLimitExceeded();
+            if (g.raiseCount >= MAX_RAISES_PER_STREET)
+                revert RaiseLimitExceeded();
 
             uint256 toCallBefore = g.toCall;
             uint256 minRaise = g.lastRaise;
 
             if (toCallBefore > 0) {
-                if (act.amount <= toCallBefore) revert RaiseInsufficientIncrease();
+                if (act.amount <= toCallBefore)
+                    revert RaiseInsufficientIncrease();
 
                 uint256 raiseInc = act.amount - toCallBefore;
 
@@ -283,7 +329,10 @@ contract HeadsUpPokerReplay {
             g.actor = uint8(opp);
             g.raiseCount++;
 
-            return (g, ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0}));
+            return (
+                g,
+                ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0})
+            );
         }
 
         revert UnknownAction();
@@ -312,7 +361,10 @@ contract HeadsUpPokerReplay {
 
         // If both players are all-in after blinds, immediate showdown
         if (g.allIn[0] && g.allIn[1]) {
-            return (ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0}), g);
+            return (
+                ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0}),
+                g
+            );
         }
 
         for (uint256 i = 2; i < actions.length; i++) {
@@ -332,8 +384,12 @@ contract HeadsUpPokerReplay {
         uint256 stackB,
         uint256 minSmallBlind
     ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
-        (ReplayResult memory res, Game memory g) =
-            _replayActions(actions, stackA, stackB, minSmallBlind);
+        (ReplayResult memory res, Game memory g) = _replayActions(
+            actions,
+            stackA,
+            stackB,
+            minSmallBlind
+        );
 
         // For NO_BLINDS games, called amount is always 0 and it's always ended
         if (res.end == End.NO_BLINDS) {
@@ -352,8 +408,12 @@ contract HeadsUpPokerReplay {
         uint256 stackB,
         uint256 minSmallBlind
     ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
-        (ReplayResult memory res, Game memory g) =
-            _replayActions(actions, stackA, stackB, minSmallBlind);
+        (ReplayResult memory res, Game memory g) = _replayActions(
+            actions,
+            stackA,
+            stackB,
+            minSmallBlind
+        );
 
         // For NO_BLINDS games, called amount is always 0
         if (res.end == End.NO_BLINDS) {

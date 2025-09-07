@@ -1,5 +1,6 @@
 const { ethers } = require("hardhat");
 const { actionHash, actionDigest, handGenesis, domainSeparator, commitHash, cardCommitDigest } = require("./hashes");
+const { ACTION } = require("./actions");
 
 // Standard test wallet private keys
 const wallet1 = new ethers.Wallet(
@@ -99,6 +100,30 @@ async function buildCardCommit(a, b, dom, channelId, slot, card, handId = 1n) {
     return { cc, sigA, sigB, salt, card, slot };
 }
 
+/**
+ * Helper to play a basic showdown game where player1 wins 2 chips
+ */
+async function playPlayer1WinsShowdown(escrow, channelId, player1, player1Wallet, player2Wallet) {
+    // Simple sequence where both players put in 2 chips (blinds) and check down
+    const actionSpecs = [
+        { action: ACTION.SMALL_BLIND, amount: 1n },
+        { action: ACTION.BIG_BLIND, amount: 2n },
+        { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls to match BB
+        { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (flop)
+        { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+        { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (turn) 
+        { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
+        { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (river)
+        { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
+    ];
+
+    const chainId = (await ethers.provider.getNetwork()).chainId;
+    const handId = await escrow.getHandId(channelId);
+    const actions = buildActions(actionSpecs, channelId, handId);
+    const signatures = await signActions(actions, [player1Wallet, player2Wallet], await escrow.getAddress(), chainId);
+    await escrow.connect(player1).settle(channelId, actions, signatures);
+}
+
 module.exports = {
     wallet1,
     wallet2,
@@ -106,5 +131,6 @@ module.exports = {
     buildActions,
     signActions,
     signCardCommit,
-    buildCardCommit
+    buildCardCommit,
+    playPlayer1WinsShowdown
 };
