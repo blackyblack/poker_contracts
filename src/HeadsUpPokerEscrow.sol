@@ -297,7 +297,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
         
         // Replay actions to verify they are terminal and get end state
-        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayAndGetEndState(
+        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayGame(
             actions, 
             ch.deposit1, 
             ch.deposit2,
@@ -344,7 +344,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         
         if (sd.inProgress) revert ShowdownInProgress();
         if (ch.player1 == address(0)) revert NoChannel();
-        if (actions.length == 0) revert NoActionsProvided();
         if (ch.finalized) revert AlreadyFinalized();
         
         // Verify signatures for all actions
@@ -354,14 +353,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ds.inProgress) {
             // Must provide a longer sequence to extend dispute
             if (actions.length <= ds.actionCount) revert SequenceNotLonger();
-        } else {
-            // TODO: allow shorter sequence; what if there are no actions at all?
-            // Starting new dispute - must be at least 2 actions (blinds) but allow any length
-            if (actions.length < 2) revert SequenceTooShort();
         }
         
         // Replay actions to get projected end state (handles both terminal and non-terminal)
-        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayPrefixAndGetEndState(
+        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayIncompleteGame(
             actions, 
             ch.deposit1, 
             ch.deposit2,
@@ -386,7 +381,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     /// @notice Finalize dispute after dispute window has passed
     /// @dev Applies the projected outcome from the longest submitted sequence.
-    /// For fold outcomes, transfers called amount. For showdown outcomes, awards to submitter.
+    /// For fold outcomes, transfers called amount. For showdown outcomes waits for cards reveal.
     /// @param channelId The channel identifier
     function finalizeDispute(uint256 channelId) external nonReentrant {
         Channel storage ch = channels[channelId];
@@ -397,6 +392,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.finalized) revert AlreadyFinalized();
         
         // Finalize based on the projected end state
+        
+        if (ds.endType == HeadsUpPokerReplay.End.NO_BLINDS) {
+            // For games without blinds, finalize without transferring any funds
+            ds.inProgress = false;
+            ch.finalized = true;
+            emit DisputeFinalized(channelId, address(0), 0);
+            return;
+        }
 
         if (ds.endType != HeadsUpPokerReplay.End.FOLD) {
             // Initiate showdown state - players must reveal cards to determine winner
