@@ -106,12 +106,15 @@ contract HeadsUpPokerReplay {
         return g.total[0] < g.total[1] ? g.total[0] : g.total[1];
     }
 
-    function _initGame(
+    function _initGameWithValidation(
         Action calldata sb,
         Action calldata bb,
         uint256 stackA,
         uint256 stackB,
-        uint256 minSmallBlind
+        uint256 minSmallBlind,
+        address player1,
+        address player2,
+        address[][] memory actionSigners
     ) internal pure returns (Game memory g) {
         if (sb.prevHash != handGenesis(sb.channelId, sb.handId))
             revert SmallBlindPrevHashInvalid();
@@ -125,6 +128,20 @@ contract HeadsUpPokerReplay {
 
         uint8 smallBlindPlayer = getSmallBlindPlayer(sb.handId);
         uint8 bigBlindPlayer = 1 - smallBlindPlayer;
+
+        // Validate that the correct players signed the blind actions
+        address expectedSBPlayer = (smallBlindPlayer == 0) ? player1 : player2;
+        address expectedBBPlayer = (bigBlindPlayer == 0) ? player1 : player2;
+        
+        // Check small blind signer
+        if (actionSigners[0][0] != expectedSBPlayer && actionSigners[0][1] != expectedSBPlayer) {
+            revert ActionWrongSigner();
+        }
+        
+        // Check big blind signer  
+        if (actionSigners[1][0] != expectedBBPlayer && actionSigners[1][1] != expectedBBPlayer) {
+            revert ActionWrongSigner();
+        }
 
         if (smallBlindPlayer == 0) {
             if (
@@ -348,7 +365,7 @@ contract HeadsUpPokerReplay {
         Action calldata prev,
         address player1,
         address player2,
-        address[2] calldata signers
+        address[2] memory signers
     ) internal pure returns (Game memory, ReplayResult memory) {
         if (act.seq <= prev.seq) revert SequenceInvalid();
         if (act.prevHash != _hashAction(prev)) revert PrevHashInvalid();
@@ -716,7 +733,7 @@ contract HeadsUpPokerReplay {
         uint256 minSmallBlind,
         address player1,
         address player2,
-        address[][] calldata actionSigners
+        address[][] memory actionSigners
     ) internal pure returns (ReplayResult memory res, Game memory g) {
         // Handle sequences without proper blinds
         if (actions.length < 2) {
@@ -726,7 +743,7 @@ contract HeadsUpPokerReplay {
         Action calldata sb = actions[0];
         Action calldata bb = actions[1];
 
-        g = _initGame(sb, bb, stackA, stackB, minSmallBlind);
+        g = _initGameWithValidation(sb, bb, stackA, stackB, minSmallBlind, player1, player2, actionSigners);
 
         // If both players are all-in after blinds, immediate showdown
         if (g.allIn[0] && g.allIn[1]) {
@@ -779,7 +796,7 @@ contract HeadsUpPokerReplay {
         uint256 minSmallBlind,
         address player1,
         address player2,
-        address[][] calldata actionSigners
+        address[][] memory actionSigners
     ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
         (ReplayResult memory res, Game memory g) = _replayActionsWithValidation(
             actions,
@@ -842,7 +859,7 @@ contract HeadsUpPokerReplay {
         uint256 minSmallBlind,
         address player1,
         address player2,
-        address[][] calldata actionSigners
+        address[][] memory actionSigners
     ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
         (ReplayResult memory res, Game memory g) = _replayActionsWithValidation(
             actions,
