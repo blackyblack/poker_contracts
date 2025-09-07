@@ -183,7 +183,8 @@ describe("HeadsUpPokerReplay", function () {
                     ]);
                     const badAction = {
                         channelId: 1n, handId: 1n, seq: 3, action: 99,
-                        amount: 0n, prevHash: actionHash(actions[1])
+                        amount: 0n, prevHash: actionHash(actions[1]),
+                        sender: "0x1000000000000000000000000000000000000001"
                     };
                     return [...actions, badAction];
                 },

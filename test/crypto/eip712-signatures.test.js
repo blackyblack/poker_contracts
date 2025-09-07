@@ -17,6 +17,8 @@ describe("HeadsUpPokerEIP712", function () {
     });
 
     it("recovers signer for Action", async function () {
+        const wallet1 = ethers.Wallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/0");
+        
         const action = {
             channelId,
             handId: 1n,
@@ -24,13 +26,13 @@ describe("HeadsUpPokerEIP712", function () {
             action: ACTION.CHECK_CALL,
             amount: 100n,
             prevHash: handGenesis(channelId, 1n),
+            sender: wallet1.address
         };
 
         const chainId = (await ethers.provider.getNetwork()).chainId;
         const verifyingContract = await contract.getAddress();
         const domSep = domainSeparator(verifyingContract, chainId);
         const digest = actionDigest(domSep, action);
-        const wallet1 = ethers.Wallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/0");
         const sig = wallet1.signingKey.sign(digest).serialized;
         const recovered = await contract.recoverActionSigner(action, sig);
         expect(recovered).to.equal(wallet1.address);

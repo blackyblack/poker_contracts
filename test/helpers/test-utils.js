@@ -25,7 +25,38 @@ function buildActions(specs, channelId = 1n, handId = 1n, players = null) {
     let seq = 0;
     let prevHash = handGenesis(channelId, handId);
     const actions = [];
+    
+    // Default players if not provided
+    const defaultPlayers = players || [
+        "0x1000000000000000000000000000000000000001", // player1 (small blind)
+        "0x2000000000000000000000000000000000000002"  // player2 (big blind)
+    ];
+    
     for (const spec of specs) {
+        let sender;
+        
+        if (spec.sender) {
+            // Use explicitly provided sender
+            sender = spec.sender;
+        } else {
+            // Auto-assign sender based on heads up poker rules
+            if (seq === 0) {
+                // First action: Small Blind - always player1 (dealer position)
+                sender = defaultPlayers[0];
+            } else if (seq === 1) {
+                // Second action: Big Blind - always player2
+                sender = defaultPlayers[1];
+            } else {
+                // For post-blind actions, we need to track game state to determine whose turn it is
+                // This is a simplified version - for more complex scenarios, use explicit senders
+                // Preflop after blinds: SB acts first (player1)
+                // Postflop: BB acts first (player2)
+                // For now, alternate starting with SB (player1) on action 2
+                const actionsAfterBlinds = seq - 2;
+                sender = defaultPlayers[actionsAfterBlinds % 2];
+            }
+        }
+        
         const act = {
             channelId,
             handId,
@@ -33,7 +64,7 @@ function buildActions(specs, channelId = 1n, handId = 1n, players = null) {
             action: spec.action,
             amount: spec.amount,
             prevHash,
-            sender: spec.sender || (players ? players[seq % 2] : ethers.ZeroAddress)
+            sender
         };
         actions.push(act);
         prevHash = actionHash(act);
