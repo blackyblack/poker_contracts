@@ -480,8 +480,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
     }
 
-    // Applies a batch of commits/openings.
-    function _applyCommitUpdate(
+    // Applies a batch of card commits/openings.
+    function _applyCardCommitUpdate(
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata commits,
         bytes[] calldata sigs,
@@ -587,10 +587,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             wonAmount = 0;
         }
 
-        _forfeitTo(channelId, winner, wonAmount);
+        _rewardWinner(channelId, winner, wonAmount);
     }
 
-    function _forfeitTo(uint256 channelId, address winner, uint256 wonAmount) internal {
+    function _rewardWinner(uint256 channelId, address winner, uint256 wonAmount) internal {
         Channel storage ch = channels[channelId];
         ShowdownState storage sd = showdowns[channelId];
 
@@ -626,81 +626,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return disputeWindow;
     }
 
-    // TODO: remove `startShowdown`
-
-    /// @notice Player submits commitments and openings to start showdown
-    function startShowdown(
-        uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata commits,
-        bytes[] calldata sigs,
-        uint8[] calldata cardCodes,
-        bytes32[] calldata cardSalts
-    ) external nonReentrant {
-        startShowdownInternal(channelId, commits, sigs, cardCodes, cardSalts, msg.sender);
-    }
-
-    /// @notice Player or third party submits commitments and openings to start showdown on behalf of a player
-    function startShowdownOnBehalfOf(
-        uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata commits,
-        bytes[] calldata sigs,
-        uint8[] calldata cardCodes,
-        bytes32[] calldata cardSalts,
-        address onBehalfOf
-    ) external nonReentrant {
-        startShowdownInternal(channelId, commits, sigs, cardCodes, cardSalts, onBehalfOf);
-    }
-
-    function startShowdownInternal(
-        uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata commits,
-        bytes[] calldata sigs,
-        uint8[] calldata cardCodes,
-        bytes32[] calldata cardSalts,
-        address onBehalfOf
-    ) internal {
-        Channel storage ch = channels[channelId];
-        DisputeState storage ds = disputes[channelId];
-        
-        if (ch.deposit1 == 0 || ch.deposit2 == 0) revert ChannelNotReady();
-        if (ds.inProgress) revert DisputeInProgress();
-        if (onBehalfOf != ch.player1 && onBehalfOf != ch.player2) revert NotPlayer();
-
-        ShowdownState storage sd = showdowns[channelId];
-        if (sd.inProgress) revert ShowdownInProgress();
-
-        sd.deadline = block.timestamp + revealWindow;
-        sd.inProgress = true;
-        sd.lockedCommitMask = 0;
-        for (uint8 i = 0; i < 9; i++) {
-            sd.cards[i] = 0xFF;
-        }
-
-        _applyCommitUpdate(
-            channelId,
-            commits,
-            sigs,
-            cardCodes,
-            cardSalts
-        );
-
-        uint8 initiatorSlot1 = onBehalfOf == ch.player1 ? SLOT_A1 : SLOT_B1;
-        uint8 initiatorSlot2 = onBehalfOf == ch.player1 ? SLOT_A2 : SLOT_B2;
-        if (
-            (sd.lockedCommitMask & (uint16(1) << initiatorSlot1)) == 0 ||
-            (sd.lockedCommitMask & (uint16(1) << initiatorSlot2)) == 0 ||
-            sd.cards[initiatorSlot1] == 0xFF ||
-            sd.cards[initiatorSlot2] == 0xFF
-        ) {
-            revert InitiatorHolesRequired();
-        }
-
-        emit ShowdownStarted(channelId);
-        emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask);
-    }
-
     /// @notice Initiates showdown state
-    /// @dev Unlike startShowdownInternal, this doesn't require initial card commits
+    /// @dev Sets up showdown state without requiring initial card commits
     /// @param channelId The channel identifier
     function _initiateShowdown(uint256 channelId, uint256 calledAmount) internal {
         ShowdownState storage sd = showdowns[channelId];
@@ -759,7 +686,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         if (block.timestamp > sd.deadline) revert Expired();
 
-        _applyCommitUpdate(
+        _applyCardCommitUpdate(
             channelId,
             commits,
             sigs,
@@ -792,6 +719,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             winner = ch.player2;
         }
 
-        _forfeitTo(channelId, winner, wonAmount);
+        _rewardWinner(channelId, winner, wonAmount);
     }
 }

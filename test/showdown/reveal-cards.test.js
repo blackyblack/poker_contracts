@@ -7,7 +7,7 @@ const { buildCardCommit, wallet1, wallet2, wallet3, playPlayer1WinsShowdown } = 
 const EMPTY_CODES = Array(9).fill(0xff);
 const EMPTY_SALTS = Array(9).fill(ZERO32);
 
-describe("startShowdown & revealCards", function () {
+describe("Commit Verification - revealCards", function () {
     let escrow;
     let player1, player2;
     const channelId = 1n;
@@ -142,11 +142,16 @@ describe("startShowdown & revealCards", function () {
         },
         {
             name: "bad B signature",
-            setup: async ({ commits, sigs, startCodesP1, startSaltsP1, objs, dom }) => {
+            setup: async ({ commits, sigs, startCodesP1, startSaltsP1, startCodesP2, startSaltsP2, objs, dom }) => {
                 const digest = cardCommitDigest(dom, objs[2].cc);
                 const badSig = wallet3.signingKey.sign(digest).serialized;
                 sigs[5] = badSig; // B signature for commit index2
-                return { commits, sigs, codes: startCodesP1, salts: startSaltsP1 };
+                // Ensure slot B1 is actually opened (not 0xFF), otherwise signature check is skipped
+                const codes = [...startCodesP1];
+                const salts = [...startSaltsP1];
+                codes[2] = startCodesP2[2];
+                salts[2] = startSaltsP2[2];
+                return { commits, sigs, codes, salts };
             },
             error: "CommitWrongSignerB",
             errorArgs: [2],
@@ -182,12 +187,20 @@ describe("startShowdown & revealCards", function () {
             const setupData = await setup();
             const { commits, sigs, codes, salts } = await test.setup(setupData);
 
+            // Start showdown first with a simple game
+            await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
+
+            // Try to reveal cards with invalid data
             const expectation = expect(
-                escrow.connect(player1).startShowdown(channelId, commits, sigs, codes, salts)
-            ).to.be.revertedWithCustomError(escrow, test.error);
+                escrow
+                    .connect(player1)
+                    .revealCards(channelId, commits, sigs, codes, salts)
+            );
 
             if (test.errorArgs) {
-                expectation.withArgs(...test.errorArgs);
+                await expectation.to.be.revertedWithCustomError(escrow, test.error).withArgs(...test.errorArgs);
+            } else {
+                await expectation.to.be.revertedWithCustomError(escrow, test.error);
             }
         });
     });
@@ -204,9 +217,12 @@ describe("startShowdown & revealCards", function () {
         partialSalts[2] = startSaltsP2[2];
         partialSalts[3] = startSaltsP2[3];
 
+        // Initiate showdown by settling to showdown
+        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
+
         await escrow
             .connect(player1)
-            .startShowdown(channelId, partialCommits, partialSigs, partialCodes, partialSalts);
+            .revealCards(channelId, partialCommits, partialSigs, partialCodes, partialSalts);
 
         const sd = await escrow.getShowdown(channelId);
         expect(sd.inProgress).to.equal(true);
@@ -216,11 +232,16 @@ describe("startShowdown & revealCards", function () {
 
     it("happy path stores hashes and cards", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
-        const tx = await escrow
-            .connect(player1)
-            .startShowdown(channelId, commits, sigs, startCodesP1, startSaltsP1);
-        const rcpt = await tx.wait();
+
+        // Initiate showdown by settling to showdown
+        const showdownTx = await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
+
+        const rcpt = await showdownTx.wait();
         const block = await ethers.provider.getBlock(rcpt.blockNumber);
+
+        await escrow
+            .connect(player1)
+            .revealCards(channelId, commits, sigs, startCodesP1, startSaltsP1);
 
         const sd = await escrow.getShowdown(channelId);
         expect(sd.inProgress).to.equal(true);
@@ -242,9 +263,11 @@ describe("startShowdown & revealCards", function () {
         partialSalts[2] = startSaltsP2[2];
         partialSalts[3] = startSaltsP2[3];
 
+        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
+
         await escrow
             .connect(player1)
-            .startShowdown(channelId, partialCommits, partialSigs, partialCodes, partialSalts);
+            .revealCards(channelId, partialCommits, partialSigs, partialCodes, partialSalts);
 
         // Submit additional commit for river card
         const riverCommit = commits[8]; // River card commit
@@ -338,50 +361,14 @@ describe("startShowdown & revealCards", function () {
         expect(finalBalance).to.be.equal(initialBalance);
     });
 
-    it("allows third party to start showdown on behalf of player1", async () => {
-        const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
-        const [, , thirdParty] = await ethers.getSigners();
-
-        const tx = await escrow
-            .connect(thirdParty)
-            .startShowdownOnBehalfOf(channelId, commits, sigs, startCodesP1, startSaltsP1, player1.address);
-        const rcpt = await tx.wait();
-        const block = await ethers.provider.getBlock(rcpt.blockNumber);
-
-        const sd = await escrow.getShowdown(channelId);
-        expect(sd.inProgress).to.equal(true);
-        const window = await escrow.revealWindow();
-        expect(sd.deadline).to.equal(BigInt(block.timestamp) + window);
-    });
-
-    it("allows third party to start showdown on behalf of player2", async () => {
-        const { commits, sigs, startCodesP2, startSaltsP2 } = await setup();
-        const [, , thirdParty] = await ethers.getSigners();
-
-        await escrow
-            .connect(thirdParty)
-            .startShowdownOnBehalfOf(channelId, commits, sigs, startCodesP2, startSaltsP2, player2.address);
-
-        const sd = await escrow.getShowdown(channelId);
-        expect(sd.inProgress).to.equal(true);
-    });
-
-    it("reverts when third party tries to start showdown for invalid player", async () => {
-        const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
-        const [, , thirdParty] = await ethers.getSigners();
-
-        await expect(
-            escrow
-                .connect(thirdParty)
-                .startShowdownOnBehalfOf(channelId, commits, sigs, startCodesP1, startSaltsP1, thirdParty.address)
-        ).to.be.revertedWithCustomError(escrow, "NotPlayer");
-    });
-
     it("allows third party to submit additional commits on behalf of player", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
         const [, , thirdParty] = await ethers.getSigners();
 
-        // Start with partial commits (missing river card)
+        // Initiate showdown by settling to showdown
+        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
+
+        // Submit partial commits first (missing river card)
         const partialCommits = commits.slice(0, -1);
         const partialSigs = sigs.slice(0, -2);
         const partialCodes = [...startCodesP1.slice(0, -1)];
@@ -389,7 +376,7 @@ describe("startShowdown & revealCards", function () {
 
         await escrow
             .connect(player1)
-            .startShowdown(channelId, partialCommits, partialSigs, partialCodes, partialSalts);
+            .revealCards(channelId, partialCommits, partialSigs, partialCodes, partialSalts);
 
         // Third party submits additional commit for river card on behalf of player2
         const riverCommit = commits[8]; // River card commit
@@ -411,13 +398,10 @@ describe("startShowdown & revealCards", function () {
     });
 
     it("reverts when third party tries to submit commits for invalid player", async () => {
-        const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
         const [, , thirdParty] = await ethers.getSigners();
 
-        // Start showdown first
-        await escrow
-            .connect(player1)
-            .startShowdown(channelId, commits, sigs, startCodesP1, startSaltsP1);
+        // Initiate showdown by settling to showdown
+        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
 
         // Third party tries to submit for invalid player
         await expect(
@@ -437,10 +421,13 @@ describe("startShowdown & revealCards", function () {
     it("rejects commit override with different hash", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1, dom } = await setup();
 
+        // Initiate showdown by settling to showdown
+        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
+
         // Start showdown with initial commits
         await escrow
             .connect(player1)
-            .startShowdown(channelId, commits, sigs, startCodesP1, startSaltsP1);
+            .revealCards(channelId, commits, sigs, startCodesP1, startSaltsP1);
 
         let sd = await escrow.getShowdown(channelId);
         expect(Number(sd.lockedCommitMask)).to.equal(0x1F3); // Player1 slots + board are committed
@@ -476,10 +463,13 @@ describe("startShowdown & revealCards", function () {
     it("allows resubmitting identical commit", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
 
+        // Initiate showdown by settling to showdown
+        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
+
         // Start showdown with initial commits
         await escrow
             .connect(player1)
-            .startShowdown(channelId, commits, sigs, startCodesP1, startSaltsP1);
+            .revealCards(channelId, commits, sigs, startCodesP1, startSaltsP1);
 
         let sd = await escrow.getShowdown(channelId);
         expect(Number(sd.lockedCommitMask)).to.equal(0x1F3); // Player1 slots + board are committed
@@ -504,75 +494,41 @@ describe("startShowdown & revealCards", function () {
         expect(Number(sd.lockedCommitMask)).to.equal(0x1F3);
     });
 
-    // Table-driven tests for initiator hole card validation
-    const initiatorValidationTests = [
-        {
-            name: "initiator does not provide both hole cards",
-            player: "player1",
-            setup: ({ commits, sigs, startCodesP1, startSaltsP1 }) => ({
-                commits: commits.slice(2), // Skip player1's holes
-                sigs: sigs.slice(4),
-                codes: (() => {
-                    const arr = startCodesP1.slice(2);
-                    return arr;
-                })(),
-                salts: (() => {
-                    const arr = startSaltsP1.slice(2);
-                    return arr;
-                })()
-            })
-        },
-        {
-            name: "initiator provides only one hole card",
-            player: "player1",
-            setup: ({ commits, sigs, startCodesP1, startSaltsP1 }) => ({
-                commits: [commits[0]].concat(commits.slice(2)),
-                sigs: [sigs[0], sigs[1]].concat(sigs.slice(4)),
-                codes: (() => {
-                    const arr = [startCodesP1[0]].concat(startCodesP1.slice(2));
-                    return arr;
-                })(),
-                salts: (() => {
-                    const arr = [startSaltsP1[0]].concat(startSaltsP1.slice(2));
-                    arr[1] = ZERO32;
-                    return arr;
-                })()
-            })
-        },
-        {
-            name: "player2 initiator does not provide both hole cards",
-            player: "player2",
-            setup: ({ commits, sigs, startCodesP2, startSaltsP2 }) => ({
-                commits: commits.slice(0, 2).concat(commits.slice(4)), // Skip player2's holes
-                sigs: sigs.slice(0, 4).concat(sigs.slice(8)),
-                codes: (() => {
-                    const arr = startCodesP2.slice(0, 2).concat(startCodesP2.slice(4));
-                    return arr;
-                })(),
-                salts: (() => {
-                    const arr = startSaltsP2.slice(0, 2).concat(startSaltsP2.slice(4));
-                    return arr;
-                })()
-            })
-        }
-    ];
+    it("reverts when no showdown is in progress", async () => {
+        const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
 
-    initiatorValidationTests.forEach(test => {
-        it(`reverts when ${test.name}`, async () => {
-            const setupData = await setup();
-            const setup_result = test.setup({ ...setupData });
+        // Try to reveal cards without initiating showdown first
+        await expect(
+            escrow
+                .connect(player1)
+                .revealCards(channelId, commits, sigs, startCodesP1, startSaltsP1)
+        ).to.be.revertedWithCustomError(escrow, "NoShowdownInProgress");
+    });
 
-            const player = test.player === "player1" ? player1 : player2;
+    it("should result in tie when both players reveal holes but board incomplete", async () => {
+        const { commits, sigs, myHole, mySalts, oppHole, oppSalts } = await setup();
 
-            await expect(
-                escrow.connect(player).startShowdown(
-                    channelId,
-                    setup_result.commits,
-                    setup_result.sigs,
-                    setup_result.codes,
-                    setup_result.salts
-                )
-            ).to.be.revertedWithCustomError(escrow, "InitiatorHolesRequired");
-        });
+        const holeCommits = commits.slice(0, 4); // only hole cards
+        const holeSigs = sigs.slice(0, 8);
+        const codes = [...myHole, ...oppHole];
+        const salts = [...mySalts, ...oppSalts];
+
+        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
+
+        await escrow
+            .connect(player1)
+            .revealCards(channelId, holeCommits, holeSigs, codes, salts);
+
+        await ethers.provider.send("evm_increaseTime", [3601]);
+        await ethers.provider.send("evm_mine");
+
+        const [initialBalance,] = await escrow.stacks(channelId);
+
+        await escrow.finalizeShowdown(channelId);
+
+        const [finalBalance,] = await escrow.stacks(channelId);
+
+        // Should be unchanged (tie) since both revealed holes but no board
+        expect(finalBalance).to.equal(initialBalance);
     });
 });
