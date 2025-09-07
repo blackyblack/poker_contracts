@@ -107,8 +107,6 @@ contract HeadsUpPokerReplay {
         uint256 stackB,
         uint256 minSmallBlind
     ) internal pure returns (Game memory g) {
-        // TODO: allow game without blinds (e.g. sitout players)
-
         if (sb.prevHash != handGenesis(sb.channelId, sb.handId))
             revert SmallBlindPrevHashInvalid();
         if (sb.action != ACT_SMALL_BLIND) revert SmallBlindActionInvalid();
