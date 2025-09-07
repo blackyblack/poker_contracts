@@ -293,15 +293,18 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (actions.length == 0) revert NoActionsProvided();
         if (ch.finalized) revert AlreadyFinalized();
         
-        // Verify signatures for all actions
-        _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
+        // Verify signatures and extract signers
+        address[][] memory actionSigners = _verifyAndExtractSigners(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
         
-        // Replay actions to verify they are terminal and get end state
+        // Replay actions with signature validation to verify they are terminal and get end state
         (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayGame(
             actions, 
             ch.deposit1, 
             ch.deposit2,
-            ch.minSmallBlind
+            ch.minSmallBlind,
+            ch.player1,
+            ch.player2,
+            actionSigners
         );
 
         if (endType != HeadsUpPokerReplay.End.FOLD) {
@@ -346,8 +349,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
         
-        // Verify signatures for all actions
-        _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
+        // Verify signatures and extract signers
+        address[][] memory actionSigners = _verifyAndExtractSigners(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
         
         // Check if this is starting a new dispute or extending an existing one
         if (ds.inProgress) {
@@ -355,12 +358,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             if (actions.length <= ds.actionCount) revert SequenceNotLonger();
         }
         
-        // Replay actions to get projected end state (handles both terminal and non-terminal)
+        // Replay actions with signature validation to get projected end state (handles both terminal and non-terminal)
         (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayIncompleteGame(
             actions, 
             ch.deposit1, 
             ch.deposit2,
-            ch.minSmallBlind
+            ch.minSmallBlind,
+            ch.player1,
+            ch.player2,
+            actionSigners
         );
         
         // Update dispute state (no need to store actions, just the projected outcome)
@@ -451,15 +457,17 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     /// @param signatures Array of signatures (2 per action: player1, player2)
     /// @param player1 Address of player1
     /// @param player2 Address of player2
-    function _verifyActionSignatures(
+    function _verifyAndExtractSigners(
         uint256 channelId,
         uint256 handId,
         Action[] calldata actions,
         bytes[] calldata signatures,
         address player1,
         address player2
-    ) private view {
+    ) private view returns (address[][] memory actionSigners) {
         if (actions.length * 2 != signatures.length) revert ActionSignatureLengthMismatch();
+        
+        actionSigners = new address[][](actions.length);
         
         for (uint256 i = 0; i < actions.length; i++) {
             Action calldata action = actions[i];
@@ -475,8 +483,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             bytes calldata sig1 = signatures[i * 2];
             bytes calldata sig2 = signatures[i * 2 + 1];
             
-            if (digest.recover(sig1) != player1) revert ActionWrongSignerA();
-            if (digest.recover(sig2) != player2) revert ActionWrongSignerB();
+            address signer1 = digest.recover(sig1);
+            address signer2 = digest.recover(sig2);
+            
+            if (signer1 != player1) revert ActionWrongSignerA();
+            if (signer2 != player2) revert ActionWrongSignerB();
+            
+            actionSigners[i] = new address[](2);
+            actionSigners[i][0] = signer1;
+            actionSigners[i][1] = signer2;
         }
     }
 

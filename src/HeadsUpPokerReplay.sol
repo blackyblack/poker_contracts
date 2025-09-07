@@ -2,8 +2,10 @@
 pragma solidity 0.8.24;
 
 import {Action} from "./HeadsUpPokerActions.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 contract HeadsUpPokerReplay {
+    using ECDSA for bytes32;
     enum End {
         FOLD,
         SHOWDOWN,
@@ -52,6 +54,10 @@ contract HeadsUpPokerReplay {
     error NoReopenAllowed();
     error UnknownAction();
     error HandNotDone();
+    error ActionSignatureLengthMismatch();
+    error ActionWrongChannel();
+    error ActionWrongHand();
+    error ActionWrongSigner();
 
     struct Game {
         uint256[2] stacks;
@@ -336,6 +342,338 @@ contract HeadsUpPokerReplay {
         revert UnknownAction();
     }
 
+    function _applyActionWithValidation(
+        Game memory g,
+        Action calldata act,
+        Action calldata prev,
+        address player1,
+        address player2,
+        address[2] calldata signers
+    ) internal pure returns (Game memory, ReplayResult memory) {
+        if (act.seq <= prev.seq) revert SequenceInvalid();
+        if (act.prevHash != _hashAction(prev)) revert PrevHashInvalid();
+        if (act.action <= ACT_BIG_BLIND) revert BlindOnlyStart();
+
+        uint256 p = g.actor;
+        address currentPlayer = (p == 0) ? player1 : player2;
+        
+        // Verify that the acting player signed this action
+        if (signers[0] != currentPlayer && signers[1] != currentPlayer) {
+            revert ActionWrongSigner();
+        }
+
+        uint256 opp = 1 - p;
+
+        // All-in handling
+        if (g.allIn[p]) {
+            if (g.allIn[opp]) {
+                return (
+                    g,
+                    ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0})
+                );
+            }
+            if (act.action != ACT_CHECK_CALL || act.amount != 0)
+                revert PlayerAllIn();
+            return (
+                g,
+                ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0})
+            );
+        }
+
+        if (act.action == ACT_FOLD) {
+            if (act.amount != 0) revert FoldAmountInvalid();
+            return (
+                g,
+                ReplayResult({ended: true, end: End.FOLD, folder: uint8(p)})
+            );
+        }
+
+        if (act.action == ACT_CHECK_CALL) {
+            if (g.toCall > 0) {
+                if (act.amount != 0) revert CallAmountInvalid();
+                uint256 callAmt = g.toCall;
+                if (g.stacks[p] < callAmt) {
+                    callAmt = g.stacks[p];
+                }
+                g.total[p] += callAmt;
+
+                g.stacks[p] -= callAmt;
+                if (g.stacks[p] == 0) g.allIn[p] = true;
+                g.toCall = 0;
+                g.lastRaise = g.bigBlindAmount;
+                g.checked = false;
+                g.reopen = true;
+
+                // cannot continue after CHECK when any of the players is all-in
+                // if player1 was all-in and was called, he cannot raise any more
+                // if player2 was all-in when calling, player1 cannot raise any more
+                if (g.allIn[0] || g.allIn[1]) {
+                    return (
+                        g,
+                        ReplayResult({
+                            ended: true,
+                            end: End.SHOWDOWN,
+                            folder: 0
+                        })
+                    );
+                }
+
+                g.street++;
+                if (g.street > 3) revert StreetOverflow();
+                g.contrib[0] = 0;
+                g.contrib[1] = 0;
+                g.actor = g.bigBlindPlayer;
+                g.raiseCount = 0;
+                return (
+                    g,
+                    ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0})
+                );
+            }
+
+            // Check
+            if (act.amount != 0) revert CheckAmountInvalid();
+            if (g.checked) {
+                g.street++;
+                if (g.street == 4) {
+                    // natural showdown
+                    return (
+                        g,
+                        ReplayResult({
+                            ended: true,
+                            end: End.SHOWDOWN,
+                            folder: 0
+                        })
+                    );
+                }
+                g.contrib[0] = 0;
+                g.contrib[1] = 0;
+                g.actor = g.bigBlindPlayer;
+                g.checked = false;
+                g.reopen = true;
+                g.lastRaise = g.bigBlindAmount;
+                g.raiseCount = 0;
+            } else {
+                g.checked = true;
+                g.actor = uint8(opp);
+            }
+            return (
+                g,
+                ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0})
+            );
+        }
+
+        if (act.action == ACT_BET_RAISE) {
+            if (act.amount == 0) revert RaiseAmountZero();
+
+            uint256 prevStack = g.stacks[p];
+            if (act.amount > prevStack) revert RaiseStackInvalid();
+
+            if (g.raiseCount >= MAX_RAISES_PER_STREET)
+                revert RaiseLimitExceeded();
+
+            uint256 toCallBefore = g.toCall;
+            uint256 minRaise = g.lastRaise;
+
+            if (toCallBefore > 0) {
+                if (act.amount <= toCallBefore)
+                    revert RaiseInsufficientIncrease();
+
+                uint256 raiseInc = act.amount - toCallBefore;
+
+                if (raiseInc < minRaise) {
+                    if (act.amount != prevStack) revert MinimumRaiseNotMet();
+                    g.reopen = false;
+                } else {
+                    if (!g.reopen) revert NoReopenAllowed();
+                    g.reopen = true;
+                    g.lastRaise = raiseInc;
+                }
+            } else {
+                if (act.amount < minRaise) {
+                    if (act.amount != prevStack) revert MinimumRaiseNotMet();
+                    g.reopen = false;
+                } else {
+                    g.reopen = true;
+                    g.lastRaise = act.amount;
+                }
+            }
+
+            g.contrib[p] += act.amount;
+            g.total[p] += act.amount;
+
+            g.stacks[p] = prevStack - act.amount;
+            if (g.stacks[p] == 0) g.allIn[p] = true;
+
+            uint256 newDiff = g.contrib[p] - g.contrib[opp];
+            g.toCall = newDiff;
+            g.checked = false;
+            g.actor = uint8(opp);
+            g.raiseCount++;
+
+            return (
+                g,
+                ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0})
+            );
+        }
+
+        revert UnknownAction();
+    }
+
+        // All-in handling
+        if (g.allIn[p]) {
+            if (g.allIn[opp]) {
+                return (
+                    g,
+                    ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0})
+                );
+            }
+            if (act.action != ACT_CHECK_CALL || act.amount != 0)
+                revert PlayerAllIn();
+            return (
+                g,
+                ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0})
+            );
+        }
+
+        if (act.action == ACT_FOLD) {
+            if (act.amount != 0) revert FoldAmountInvalid();
+            return (
+                g,
+                ReplayResult({ended: true, end: End.FOLD, folder: uint8(p)})
+            );
+        }
+
+        if (act.action == ACT_CHECK_CALL) {
+            if (g.toCall > 0) {
+                if (act.amount != 0) revert CallAmountInvalid();
+                uint256 callAmt = g.toCall;
+                if (g.stacks[p] < callAmt) {
+                    callAmt = g.stacks[p];
+                }
+                g.total[p] += callAmt;
+
+                g.stacks[p] -= callAmt;
+                if (g.stacks[p] == 0) g.allIn[p] = true;
+                g.toCall = 0;
+                g.lastRaise = g.bigBlindAmount;
+                g.checked = false;
+                g.reopen = true;
+
+                // cannot continue after CHECK when any of the players is all-in
+                // if player1 was all-in and was called, he cannot raise any more
+                // if player2 was all-in when calling, player1 cannot raise any more
+                if (g.allIn[0] || g.allIn[1]) {
+                    return (
+                        g,
+                        ReplayResult({
+                            ended: true,
+                            end: End.SHOWDOWN,
+                            folder: 0
+                        })
+                    );
+                }
+
+                g.street++;
+                if (g.street > 3) revert StreetOverflow();
+                g.contrib[0] = 0;
+                g.contrib[1] = 0;
+                g.actor = g.bigBlindPlayer;
+                g.raiseCount = 0;
+                return (
+                    g,
+                    ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0})
+                );
+            }
+
+            // Check
+            if (act.amount != 0) revert CheckAmountInvalid();
+            if (g.checked) {
+                g.street++;
+                if (g.street == 4) {
+                    // natural showdown
+                    return (
+                        g,
+                        ReplayResult({
+                            ended: true,
+                            end: End.SHOWDOWN,
+                            folder: 0
+                        })
+                    );
+                }
+                g.contrib[0] = 0;
+                g.contrib[1] = 0;
+                g.actor = g.bigBlindPlayer;
+                g.checked = false;
+                g.reopen = true;
+                g.lastRaise = g.bigBlindAmount;
+                g.raiseCount = 0;
+            } else {
+                g.checked = true;
+                g.actor = uint8(opp);
+            }
+            return (
+                g,
+                ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0})
+            );
+        }
+
+        if (act.action == ACT_BET_RAISE) {
+            if (act.amount == 0) revert RaiseAmountZero();
+
+            uint256 prevStack = g.stacks[p];
+            if (act.amount > prevStack) revert RaiseStackInvalid();
+
+            if (g.raiseCount >= MAX_RAISES_PER_STREET)
+                revert RaiseLimitExceeded();
+
+            uint256 toCallBefore = g.toCall;
+            uint256 minRaise = g.lastRaise;
+
+            if (toCallBefore > 0) {
+                if (act.amount <= toCallBefore)
+                    revert RaiseInsufficientIncrease();
+
+                uint256 raiseInc = act.amount - toCallBefore;
+
+                if (raiseInc < minRaise) {
+                    if (act.amount != prevStack) revert MinimumRaiseNotMet();
+                    g.reopen = false;
+                } else {
+                    if (!g.reopen) revert NoReopenAllowed();
+                    g.reopen = true;
+                    g.lastRaise = raiseInc;
+                }
+            } else {
+                if (act.amount < minRaise) {
+                    if (act.amount != prevStack) revert MinimumRaiseNotMet();
+                    g.reopen = false;
+                } else {
+                    g.reopen = true;
+                    g.lastRaise = act.amount;
+                }
+            }
+
+            g.contrib[p] += act.amount;
+            g.total[p] += act.amount;
+
+            g.stacks[p] = prevStack - act.amount;
+            if (g.stacks[p] == 0) g.allIn[p] = true;
+
+            uint256 newDiff = g.contrib[p] - g.contrib[opp];
+            g.toCall = newDiff;
+            g.checked = false;
+            g.actor = uint8(opp);
+            g.raiseCount++;
+
+            return (
+                g,
+                ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0})
+            );
+        }
+
+        revert UnknownAction();
+    }
+
     function _replayActions(
         Action[] calldata actions,
         uint256 stackA,
@@ -371,6 +709,45 @@ contract HeadsUpPokerReplay {
         return (ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0}), g);
     }
 
+    function _replayActionsWithValidation(
+        Action[] calldata actions,
+        uint256 stackA,
+        uint256 stackB,
+        uint256 minSmallBlind,
+        address player1,
+        address player2,
+        address[][] calldata actionSigners
+    ) internal pure returns (ReplayResult memory res, Game memory g) {
+        // Handle sequences without proper blinds
+        if (actions.length < 2) {
+            return (ReplayResult({ended: true, end: End.NO_BLINDS, folder: 0}), g);
+        }
+
+        Action calldata sb = actions[0];
+        Action calldata bb = actions[1];
+
+        g = _initGame(sb, bb, stackA, stackB, minSmallBlind);
+
+        // If both players are all-in after blinds, immediate showdown
+        if (g.allIn[0] && g.allIn[1]) {
+            return (
+                ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0}),
+                g
+            );
+        }
+
+        for (uint256 i = 2; i < actions.length; i++) {
+            address[2] memory signers = [actionSigners[i][0], actionSigners[i][1]];
+            (g, res) = _applyActionWithValidation(g, actions[i], actions[i - 1], player1, player2, signers);
+            if (res.ended) {
+                return (res, g);
+            }
+        }
+
+        // Not ended by the sequence itself
+        return (ReplayResult({ended: false, end: End.SHOWDOWN, folder: 0}), g);
+    }
+
     function replayGame(
         Action[] calldata actions,
         uint256 stackA,
@@ -395,6 +772,36 @@ contract HeadsUpPokerReplay {
         return (res.end, res.folder, calledAmount);
     }
 
+    function replayGame(
+        Action[] calldata actions,
+        uint256 stackA,
+        uint256 stackB,
+        uint256 minSmallBlind,
+        address player1,
+        address player2,
+        address[][] calldata actionSigners
+    ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
+        (ReplayResult memory res, Game memory g) = _replayActionsWithValidation(
+            actions,
+            stackA,
+            stackB,
+            minSmallBlind,
+            player1,
+            player2,
+            actionSigners
+        );
+
+        // Disallow incomplete game sequences - only accept complete games
+        if (res.end == End.NO_BLINDS) {
+            revert NoBlinds();
+        }
+
+        if (!res.ended) revert HandNotDone();
+
+        calledAmount = _calculateCalledAmount(g);
+        return (res.end, res.folder, calledAmount);
+    }
+
     function replayIncompleteGame(
         Action[] calldata actions,
         uint256 stackA,
@@ -406,6 +813,45 @@ contract HeadsUpPokerReplay {
             stackA,
             stackB,
             minSmallBlind
+        );
+
+        // For NO_BLINDS games, called amount is always 0
+        if (res.end == End.NO_BLINDS) {
+            return (res.end, res.folder, 0);
+        }
+
+        calledAmount = _calculateCalledAmount(g);
+
+        // If already terminal by the sequence, return immediately
+        if (res.ended) {
+            return (res.end, res.folder, calledAmount);
+        }
+
+        // Apply finalization rules on non-terminal prefix
+        if (g.toCall > 0) {
+            return (End.FOLD, uint8(g.actor), calledAmount);
+        }
+
+        return (End.SHOWDOWN, 0, calledAmount);
+    }
+
+    function replayIncompleteGame(
+        Action[] calldata actions,
+        uint256 stackA,
+        uint256 stackB,
+        uint256 minSmallBlind,
+        address player1,
+        address player2,
+        address[][] calldata actionSigners
+    ) external pure returns (End end, uint8 folder, uint256 calledAmount) {
+        (ReplayResult memory res, Game memory g) = _replayActionsWithValidation(
+            actions,
+            stackA,
+            stackB,
+            minSmallBlind,
+            player1,
+            player2,
+            actionSigners
         );
 
         // For NO_BLINDS games, called amount is always 0
