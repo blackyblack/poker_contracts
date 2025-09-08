@@ -64,14 +64,12 @@ describe("Action Sender Validation", function () {
     });
 
     it("validates turn order in heads up poker", async function () {
-        const players = [player1.address, player2.address];
-        
         // Valid action sequence: SB, BB, SB calls
         const validActions = buildActions([
-            { action: ACTION.SMALL_BLIND, amount: 1n },
-            { action: ACTION.BIG_BLIND, amount: 2n },
-            { action: ACTION.CHECK_CALL, amount: 0n } // SB calls (player1)
-        ], 1n, 1n, players);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address } // SB calls (player1)
+        ], 1n, 1n);
 
         // Should have correct turn order
         expect(validActions[0].sender).to.equal(player1.address); // SB
@@ -79,17 +77,13 @@ describe("Action Sender Validation", function () {
         expect(validActions[2].sender).to.equal(player1.address); // SB acts first preflop
     });
 
-    it("builds actions with default senders when not specified", async function () {
-        const actions = buildActions([
-            { action: ACTION.SMALL_BLIND, amount: 1n },
-            { action: ACTION.BIG_BLIND, amount: 2n },
-            { action: ACTION.CHECK_CALL, amount: 0n }
-        ]);
-
-        // Should have default senders assigned
-        expect(actions[0].sender).to.be.a('string');
-        expect(actions[1].sender).to.be.a('string');
-        expect(actions[2].sender).to.be.a('string');
-        expect(actions[0].sender).to.not.equal(actions[1].sender); // Different players
+    it("requires explicit senders for all actions", async function () {
+        expect(() => {
+            buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n },
+                { action: ACTION.BIG_BLIND, amount: 2n },
+                { action: ACTION.CHECK_CALL, amount: 0n }
+            ]);
+        }).to.throw("Action at index 0 must have an explicit sender address");
     });
 });
