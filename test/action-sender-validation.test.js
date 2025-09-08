@@ -80,10 +80,10 @@ describe("Action Sender Validation", function () {
     it("requires explicit senders for all actions", async function () {
         expect(() => {
             buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.CHECK_CALL, amount: 0n }
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }
+        ]);
         }).to.throw("Action at index 0 must have an explicit sender address");
     });
 });

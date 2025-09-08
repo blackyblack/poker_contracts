@@ -20,17 +20,17 @@ async function settleBasicFold(escrow, channelId, winner, wallet1, wallet2, chai
     if (winner === wallet1.address) {
         // Player2 should fold, so player1 wins
         actions = buildActions([
-            { action: ACTION.SMALL_BLIND, amount: 1n },
-            { action: ACTION.BIG_BLIND, amount: 2n },
-            { action: ACTION.BET_RAISE, amount: 3n }, // Small blind raises
-            { action: ACTION.FOLD, amount: 0n } // Big blind folds
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // Small blind raises,
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address } // Big blind folds
         ], channelId, handId);
     } else {
         // Player1 should fold, so player2 wins  
         actions = buildActions([
-            { action: ACTION.SMALL_BLIND, amount: 1n },
-            { action: ACTION.BIG_BLIND, amount: 2n },
-            { action: ACTION.FOLD, amount: 0n } // Small blind folds
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address } // Small blind folds
         ], channelId, handId);
     }
 
@@ -192,11 +192,11 @@ describe("HeadsUpPokerEscrow", function () {
         it("should allow fold settlement for player1 as winner", async function () {
             // Create scenario where player2 (big blind) folds, making player1 the winner
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 3n }, // Small blind raises
-                { action: ACTION.FOLD, amount: 0n } // Big blind folds
-            ], channelId, handId);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // Small blind raises,
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address } // Big blind folds
+        ], channelId, handId);
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
@@ -216,10 +216,10 @@ describe("HeadsUpPokerEscrow", function () {
         it("should allow fold settlement for player2 as winner", async function () {
             // Create scenario where player1 (small blind) folds, making player2 the winner
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n } // Small blind folds
-            ], channelId, handId);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address } // Small blind folds
+        ], channelId, handId);
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
@@ -238,10 +238,10 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should reject fold settlement with invalid signatures", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n }
-            ], channelId, handId);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address }
+        ], channelId, handId);
 
             // Sign with wrong players
             const signatures = await signActions(actions, [wallet1, wallet3], await escrow.getAddress(), chainId);
@@ -253,10 +253,10 @@ describe("HeadsUpPokerEscrow", function () {
         it("should settle fold with valid co-signed action transcript", async function () {
             // Create a valid fold scenario: blinds + small blind folds
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n } // Small blind folds
-            ], channelId, handId);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address } // Small blind folds
+        ], channelId, handId);
 
             // Sign all actions with both players
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
@@ -278,10 +278,10 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should reject settlement with invalid signatures", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n }
-            ], channelId, handId);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address }
+        ], channelId, handId);
 
             // Sign with wrong players (other instead of player2)
             const signatures = await signActions(actions, [wallet1, wallet3], await escrow.getAddress(), chainId);
@@ -293,10 +293,10 @@ describe("HeadsUpPokerEscrow", function () {
         it("should reject settlement with wrong channel ID in actions", async function () {
             const wrongChannelId = 999n;
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n }
-            ], wrongChannelId, handId); // Wrong channel ID
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address }
+        ], wrongChannelId, handId); // Wrong channel ID
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
@@ -307,10 +307,10 @@ describe("HeadsUpPokerEscrow", function () {
         it("should reject settlement with wrong hand ID in actions", async function () {
             const wrongHandId = 999n;
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n }
-            ], channelId, wrongHandId); // Wrong hand ID
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address }
+        ], channelId, wrongHandId); // Wrong hand ID
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
@@ -328,10 +328,10 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should reject settlement with mismatched signature count", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n }
-            ], channelId, handId);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address }
+        ], channelId, handId);
 
             // Provide wrong number of signatures (only 3 instead of 6)
             const signatures = ["0x00", "0x00", "0x00"];
@@ -342,11 +342,11 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should reject duplicate settlement", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 3n }, // Small blind raises
-                { action: ACTION.FOLD, amount: 0n } // Big blind folds
-            ], channelId, handId);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // Small blind raises,
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address } // Big blind folds
+        ], channelId, handId);
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
@@ -363,11 +363,11 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should handle big blind fold scenario correctly", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 3n }, // Small blind raises
-                { action: ACTION.FOLD, amount: 0n } // Big blind folds
-            ], channelId, handId);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // Small blind raises,
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address } // Big blind folds
+        ], channelId, handId);
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
@@ -548,13 +548,13 @@ describe("HeadsUpPokerEscrow", function () {
 
         it("should allow winner to withdraw their balance", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: ethers.parseEther("0.1") }, // Small blind raises
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks 
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to street 1
-                { action: ACTION.FOLD, amount: 0n } // Small blind folds
-            ], channelId, handId);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.BET_RAISE, amount: ethers.parseEther("0.1"), sender: player1.address }, // Small blind raises,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // Move to street 1,
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address } // Small blind folds
+        ], channelId, handId);
 
             // Sign all actions with both players
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);

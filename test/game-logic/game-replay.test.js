@@ -372,29 +372,29 @@ describe("HeadsUpPokerReplay", function () {
     describe("Bet/Raise Action Tests", function () {
         it("reverts when bet/raise amount is zero", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 0n } // Should be > 0
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 0n, sender: player1.address } // Should be > 0
+        ]);
             await expect(replay.replayGame(actions, 10n, 10n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "RaiseAmountZero");
         });
 
         it("reverts when raise is below minimum", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 2n } // Below minimum raise (should be >= 3)
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 2n, sender: player1.address } // Below minimum raise (should be >= 3)
+        ]);
             await expect(replay.replayGame(actions, 10n, 10n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "MinimumRaiseNotMet");
         });
 
         it("handles minimum raise correctly", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 3n }, // Minimum raise
-                { action: ACTION.FOLD, amount: 0n }
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // Minimum raise,
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address }
+        ]);
             const [end, folder,] = await replay.replayGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
@@ -402,21 +402,21 @@ describe("HeadsUpPokerReplay", function () {
 
         it("reverts when raise exceeds available stack plus toCall", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 11n } // Exceeds 9 available + 1 toCall
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 11n, sender: player1.address } // Exceeds 9 available + 1 toCall
+        ]);
             await expect(replay.replayGame(actions, 10n, 10n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "RaiseStackInvalid");
         });
 
         it("handles all-in raise with exact amount", async function () {
             // Should not revert, this is a valid all-in
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 8n }, // All-in with remaining stack
-                { action: ACTION.FOLD, amount: 0n }
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 8n, sender: player1.address }, // All-in with remaining stack,
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address }
+        ]);
             const [end, folder,] = await replay.replayGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
@@ -424,51 +424,51 @@ describe("HeadsUpPokerReplay", function () {
 
         it("reverts when all-in raise amount is incorrect", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 5n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 10n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 4n } // Should be 5 to go all-in (5+4=9 total
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 5n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 10n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 4n, sender: player1.address } // Should be 5 to go all-in (5+4=9 total
+        ]);
             await expect(replay.replayGame(actions, 10n, 10n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "RaiseInsufficientIncrease");
         });
 
         it("reverts when raise doesn't increase the bet", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 2n }, // Raises to 3 total (1+2)
-                { action: ACTION.BET_RAISE, amount: 1n } // Trying to raise to 3 total (2+1), no increase
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 2n, sender: player1.address }, // Raises to 3 total (1+2),
+            { action: ACTION.BET_RAISE, amount: 1n, sender: player2.address } // Trying to raise to 3 total (2+1), no increase
+        ]);
             await expect(replay.replayGame(actions, 3n, 10n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "RaiseInsufficientIncrease");
         });
 
         it("reverts when bet exceeds deposit limit", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 8n } // Total 9 > stack 8
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 8n, sender: player1.address } // Total 9 > stack 8
+        ]);
             await expect(replay.replayGame(actions, 8n, 10n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "RaiseStackInvalid");
         });
 
         it("handles re-raise scenario with underraised bet", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises to 4 total
-                { action: ACTION.BET_RAISE, amount: 3n }, // BB re-raises to 5 total (2+3)
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // SB raises to 4 total,
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player2.address }, // BB re-raises to 5 total (2+3)
+        ]);
             // This should revert since the re-raise must be at least the size of the previous raise (2)
             await expect(replay.replayGame(actions, 10n, 10n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "MinimumRaiseNotMet");
         });
 
         it("handles re-raise scenario", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises to 4 total
-                { action: ACTION.BET_RAISE, amount: 5n }, // BB re-raises to 7 total (2+5)
-                { action: ACTION.FOLD, amount: 0n } // SB folds
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // SB raises to 4 total,
+            { action: ACTION.BET_RAISE, amount: 5n, sender: player2.address }, // BB re-raises to 7 total (2+5),
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address } // SB folds
+        ]);
             const [end, folder,] = await replay.replayGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
@@ -476,12 +476,12 @@ describe("HeadsUpPokerReplay", function () {
 
         it("handles betting on postflop streets", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
-                { action: ACTION.BET_RAISE, amount: 3n }, // BB bets on flop
-                { action: ACTION.FOLD, amount: 0n } // SB folds
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to flop,
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player2.address }, // BB bets on flop,
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address } // SB folds
+        ]);
             const [end, folder,] = await replay.replayGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
@@ -489,26 +489,26 @@ describe("HeadsUpPokerReplay", function () {
 
         it("prevents re-raise after short all-in", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 2n }, // SB short all-in to 3
-                { action: ACTION.BET_RAISE, amount: 3n } // BB attempts re-raise
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 2n, sender: player1.address }, // SB short all-in to 3,
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player2.address } // BB attempts re-raise
+        ]);
             await expect(replay.replayGame(actions, 3n, 10n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
         });
 
         it("handles minimum bet on each street", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
-                { action: ACTION.BET_RAISE, amount: 2n }, // BB minimum bet (size of big blind)
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to turn
-                { action: ACTION.BET_RAISE, amount: 2n }, // BB minimum bet again
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to river
-                { action: ACTION.BET_RAISE, amount: 2n }, // BB minimum bet again
-                { action: ACTION.FOLD, amount: 0n } // SB folds
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to flop,
+            { action: ACTION.BET_RAISE, amount: 2n, sender: player2.address }, // BB minimum bet (size of big blind),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to turn,
+            { action: ACTION.BET_RAISE, amount: 2n, sender: player2.address }, // BB minimum bet again,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to river,
+            { action: ACTION.BET_RAISE, amount: 2n, sender: player2.address }, // BB minimum bet again,
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address } // SB folds
+        ]);
             const [end, folder,] = await replay.replayGame(actions, 20n, 20n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
@@ -516,11 +516,11 @@ describe("HeadsUpPokerReplay", function () {
 
         it("handles maximum bet without going all-in", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 8n }, // SB bets almost all-in (9 total)
-                { action: ACTION.FOLD, amount: 0n } // BB folds
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 8n, sender: player1.address }, // SB bets almost all-in (9 total),
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address } // BB folds
+        ]);
             const [end, folder,] = await replay.replayGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
@@ -529,10 +529,10 @@ describe("HeadsUpPokerReplay", function () {
         it("reverts on bet when player is already all-in on previous street", async function () {
             // Test that a player who went all-in cannot act
             const badActions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 5n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 10n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB goes all-in calling
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 5n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 10n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address } // SB goes all-in calling
+        ]);
             // First verify this makes SB all-in
             const [end, ,] = await replay.replayGame(badActions, 6n, 10n, 1n, player1, player2);
             expect(end).to.equal(1n); // Should be showdown since SB is all-in
@@ -543,11 +543,11 @@ describe("HeadsUpPokerReplay", function () {
             // Player1 bets 100, player2 calls with 50 (his full stack) and all-ins.
             // Only 50 from player1 should go to the pot, not the full 100.
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 100n }, // SB bets 100
-                { action: ACTION.CHECK_CALL, amount: 0n } // BB calls with only 50 total stack
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 100n, sender: player1.address }, // SB bets 100,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address } // BB calls with only 50 total stack
+        ]);
             const [end, , wonAmount] = await replay.replayGame(actions, 200n, 50n, 1n, player1, player2);
             expect(end).to.equal(1n); // End.SHOWDOWN
             expect(wonAmount).to.equal(50n); // 50 should be the max pot won by either player
@@ -557,58 +557,58 @@ describe("HeadsUpPokerReplay", function () {
     describe("Edge Cases and Complex Scenarios", function () {
         it("handles complex betting sequence", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises
-                { action: ACTION.BET_RAISE, amount: 5n }, // BB re-raises  
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.BET_RAISE, amount: 2n }, // SB bets
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB calls, move to turn
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB checks, move to river
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // SB raises,
+            { action: ACTION.BET_RAISE, amount: 5n, sender: player2.address }, // BB re-raises,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to flop,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.BET_RAISE, amount: 2n, sender: player1.address }, // SB bets,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB calls, move to turn,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address } // SB checks, move to river
+        ]);
             // Should be waiting for BB to act on river
             await expect(replay.replayGame(actions, 20n, 20n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "HandNotDone");
         });
 
         it("reverts on incomplete hand", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n } // Game not finished
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address } // Game not finished
+        ]);
             await expect(replay.replayGame(actions, 10n, 10n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "HandNotDone");
         });
 
         it("handles alternating actor correctly through streets", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 }, // Player 0 (SB) acts
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },   // Player 1 (BB) acts  
-                { action: ACTION.CHECK_CALL, amount: 0n },  // Player 0 (SB) acts - calls
-                // Now on flop, BB acts first (player 1)
-                { action: ACTION.CHECK_CALL, amount: 0n },  // Player 1 (BB) checks
-                { action: ACTION.CHECK_CALL, amount: 0n },  // Player 0 (SB) checks
-                // Now on turn, BB acts first (player 1)  
-                { action: ACTION.CHECK_CALL, amount: 0n },  // Player 1 (BB) checks
-                { action: ACTION.CHECK_CALL, amount: 0n },  // Player 0 (SB) checks
-                // Now on river, BB acts first (player 1)
-                { action: ACTION.CHECK_CALL, amount: 0n },  // Player 1 (BB) checks
-                { action: ACTION.CHECK_CALL, amount: 0n }   // Player 0 (SB) checks -> showdown
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 }, // Player 0 (SB) acts,
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },   // Player 1 (BB) acts,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address },  // Player 0 (SB) acts - calls,
+            // Now on flop, BB acts first (player 1),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address },  // Player 1 (BB) checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address },  // Player 0 (SB) checks,
+            // Now on turn, BB acts first (player 1),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address },  // Player 1 (BB) checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address },  // Player 0 (SB) checks,
+            // Now on river, BB acts first (player 1),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address },  // Player 1 (BB) checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }   // Player 0 (SB) checks -> showdown
+        ]);
             const [end, ,] = await replay.replayGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
         it("handles raise-reraise-reraise sequence on same street", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises to 4 total
-                { action: ACTION.BET_RAISE, amount: 5n }, // BB reraises to 7 total (raise of 5)
-                { action: ACTION.BET_RAISE, amount: 8n }, // SB reraises to 12 total (raise of 8, >= 5)
-                { action: ACTION.FOLD, amount: 0n } // BB folds
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // SB raises to 4 total,
+            { action: ACTION.BET_RAISE, amount: 5n, sender: player2.address }, // BB reraises to 7 total (raise of 5),
+            { action: ACTION.BET_RAISE, amount: 8n, sender: player1.address }, // SB reraises to 12 total (raise of 8, >= 5),
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address } // BB folds
+        ]);
             const [end, folder,] = await replay.replayGame(actions, 20n, 20n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
@@ -616,33 +616,33 @@ describe("HeadsUpPokerReplay", function () {
 
         it("handles betting reopened on multiple streets", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB calls, move to flop
-                { action: ACTION.BET_RAISE, amount: 5n }, // BB bets on flop
-                { action: ACTION.BET_RAISE, amount: 10n }, // SB raises on flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB calls, move to turn
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.BET_RAISE, amount: 10n }, // SB bets on turn
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB calls, move to river
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB checks -> showdown
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // SB raises,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB calls, move to flop,
+            { action: ACTION.BET_RAISE, amount: 5n, sender: player1.address }, // BB bets on flop,
+            { action: ACTION.BET_RAISE, amount: 10n, sender: player2.address }, // SB raises on flop,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // BB calls, move to turn,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.BET_RAISE, amount: 10n, sender: player1.address }, // SB bets on turn,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB calls, move to river,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address } // SB checks -> showdown
+        ]);
             const [end, ,] = await replay.replayGame(actions, 50n, 50n, 1n, player1, player2);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
         it("handles fold after multiple betting rounds", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
-                { action: ACTION.BET_RAISE, amount: 3n }, // BB bets
-                { action: ACTION.BET_RAISE, amount: 6n }, // SB raises  
-                { action: ACTION.BET_RAISE, amount: 12n }, // BB reraises
-                { action: ACTION.FOLD, amount: 0n } // SB folds on flop
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to flop,
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player2.address }, // BB bets,
+            { action: ACTION.BET_RAISE, amount: 6n, sender: player1.address }, // SB raises,
+            { action: ACTION.BET_RAISE, amount: 12n, sender: player2.address }, // BB reraises,
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address } // SB folds on flop
+        ]);
             const [end, folder,] = await replay.replayGame(actions, 30n, 30n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
@@ -652,11 +652,11 @@ describe("HeadsUpPokerReplay", function () {
     describe("All-in Scenarios", function () {
         it("handles all-in preflop followed by fold", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 9n }, // SB goes all-in
-                { action: ACTION.FOLD, amount: 0n } // BB folds
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 9n, sender: player1.address }, // SB goes all-in,
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address } // BB folds
+        ]);
             const [end, folder,] = await replay.replayGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
@@ -688,11 +688,11 @@ describe("HeadsUpPokerReplay", function () {
         it("handles player all-in from big blind posting only", async function () {
             // Test when only the big blind player goes all-in from posting blind
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                // BB is now all-in, SB should still be able to act
-                { action: ACTION.FOLD, amount: 0n } // SB folds
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            // BB is now all-in, SB should still be able to act,
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address } // SB folds
+        ]);
             const [end, folder,] = await replay.replayGame(actions, 10n, 2n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
@@ -701,33 +701,33 @@ describe("HeadsUpPokerReplay", function () {
         it("handles SB all-in from blind, BB calls scenario", async function () {
             // SB goes all-in from posting blind, BB can call to complete action
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 3n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 6n, sender: player2 },
-                // SB is all-in, has no more chips, so BB needs to check to complete
-                { action: ACTION.CHECK_CALL, amount: 0n } // BB checks (since SB is all-in)
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 3n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 6n, sender: player2 },
+            // SB is all-in, has no more chips, so BB needs to check to complete,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address } // BB checks (since SB is all-in)
+        ]);
             const [end, ,] = await replay.replayGame(actions, 3n, 10n, 1n, player1, player2);
             expect(end).to.equal(1n); // Should go to showdown
         });
 
         it("handles both players all-in preflop immediately", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 5n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 10n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls all-in
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 5n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 10n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address } // SB calls all-in
+        ]);
             const [end, ,] = await replay.replayGame(actions, 5n, 10n, 1n, player1, player2);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
 
         it("handles one player all-in postflop", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
-                { action: ACTION.BET_RAISE, amount: 8n }, // BB bets all remaining 8
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to flop,
+            { action: ACTION.BET_RAISE, amount: 8n, sender: player2.address }, // BB bets all remaining 8,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address } // SB calls
+        ]);
             const [end, ,] = await replay.replayGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
@@ -735,11 +735,11 @@ describe("HeadsUpPokerReplay", function () {
         it("handles edge case: only big blind all-in from blinds", async function () {
             // BB goes all-in from posting blind, SB still has chips to act
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                // Only BB is all-in, SB can still act
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            // Only BB is all-in, SB can still act,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address } // SB calls
+        ]);
             const [end, ,] = await replay.replayGame(actions, 10n, 2n, 1n, player1, player2); // BB has exactly 2
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
@@ -747,11 +747,11 @@ describe("HeadsUpPokerReplay", function () {
         it("verifies normal play still works when neither player all-in from blinds", async function () {
             // Normal case where neither player is all-in after blinds  
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
-                { action: ACTION.CHECK_CALL, amount: 0n } // BB checks, advance to flop
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address } // BB checks, advance to flop
+        ]);
             await expect(replay.replayGame(actions, 100n, 100n, 1n, player1, player2))
                 .to.be.revertedWithCustomError(replay, "HandNotDone");
         });
@@ -760,16 +760,16 @@ describe("HeadsUpPokerReplay", function () {
     describe("Street Transitions", function () {
         it("handles bet-call sequence advancing streets correctly", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
-                { action: ACTION.BET_RAISE, amount: 3n }, // BB bets on flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to turn
-                { action: ACTION.BET_RAISE, amount: 4n }, // BB bets on turn
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to river
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks on river
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB checks -> showdown
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to flop,
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player2.address }, // BB bets on flop,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to turn,
+            { action: ACTION.BET_RAISE, amount: 4n, sender: player2.address }, // BB bets on turn,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to river,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks on river,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address } // SB checks -> showdown
+        ]);
             const [end, ,] = await replay.replayGame(actions, 20n, 20n, 1n, player1, player2);
             expect(end).to.equal(1n); // End.SHOWDOWN
         });
@@ -777,16 +777,16 @@ describe("HeadsUpPokerReplay", function () {
         it("verifies correct actor after street transitions", async function () {
             // This test ensures BB acts first on each postflop street
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop - now BB should act first
-                { action: ACTION.BET_RAISE, amount: 2n }, // BB acts first on flop (correct)
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to turn - now BB should act first  
-                { action: ACTION.BET_RAISE, amount: 3n }, // BB acts first on turn (correct)
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to river - now BB should act first
-                { action: ACTION.BET_RAISE, amount: 4n }, // BB acts first on river (correct)
-                { action: ACTION.FOLD, amount: 0n } // SB folds
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to flop - now BB should act first,
+            { action: ACTION.BET_RAISE, amount: 2n, sender: player2.address }, // BB acts first on flop (correct),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to turn - now BB should act first,
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player2.address }, // BB acts first on turn (correct),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to river - now BB should act first,
+            { action: ACTION.BET_RAISE, amount: 4n, sender: player2.address }, // BB acts first on river (correct),
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address } // SB folds
+        ]);
             const [end, folder,] = await replay.replayGame(actions, 20n, 20n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
@@ -796,16 +796,16 @@ describe("HeadsUpPokerReplay", function () {
             // This should be impossible given normal flow, but test boundary
             // The contract should prevent going beyond street 3 (river)
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to street 1 
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to street 2
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks  
-                { action: ACTION.CHECK_CALL, amount: 0n }, // Move to street 3
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }  // Should reach showdown (street 4)
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // Move to street 1,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // Move to street 2,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // Move to street 3,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }  // Should reach showdown (street 4)
+        ]);
             const [end, ,] = await replay.replayGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(1n); // End.SHOWDOWN - should not revert, should end normally
         });
@@ -814,24 +814,24 @@ describe("HeadsUpPokerReplay", function () {
     describe("Reopening Betting Logic", function () {
         it("tests reopen false after short all-in prevents further raising", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises (reopens betting)
-                { action: ACTION.BET_RAISE, amount: 3n }, // BB short all-in (closes reopening)
-                { action: ACTION.BET_RAISE, amount: 5n } // SB tries to raise again (should fail)
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // SB raises (reopens betting),
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player2.address }, // BB short all-in (closes reopening),
+            { action: ACTION.BET_RAISE, amount: 5n, sender: player1.address } // SB tries to raise again (should fail)
+        ]);
             await expect(replay.replayGame(actions, 10n, 5n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "NoReopenAllowed");
         });
 
         it("tests reopen true after full raise allows further raising", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 3n }, // SB raises by 2 (minimum)
-                { action: ACTION.BET_RAISE, amount: 5n }, // BB raises by 5 (> minimum, reopens)
-                { action: ACTION.BET_RAISE, amount: 7n }, // SB raises by 7 (>= 5, valid)
-                { action: ACTION.FOLD, amount: 0n } // BB folds
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // SB raises by 2 (minimum),
+            { action: ACTION.BET_RAISE, amount: 5n, sender: player2.address }, // BB raises by 5 (> minimum, reopens),
+            { action: ACTION.BET_RAISE, amount: 7n, sender: player1.address }, // SB raises by 7 (>= 5, valid),
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address } // BB folds
+        ]);
             const [end, folder,] = await replay.replayGame(actions, 20n, 20n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
@@ -839,12 +839,12 @@ describe("HeadsUpPokerReplay", function () {
 
         it("tests minimum raise requirement with exact amounts", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 4n }, // SB raises by 4 (to 5 total)
-                { action: ACTION.BET_RAISE, amount: 6n }, // BB re-raises min: toCall 3 + raise inc 3
-                { action: ACTION.FOLD, amount: 0n } // SB folds
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 4n, sender: player1.address }, // SB raises by 4 (to 5 total),
+            { action: ACTION.BET_RAISE, amount: 6n, sender: player2.address }, // BB re-raises min: toCall 3 + raise inc 3,
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address } // SB folds
+        ]);
             const [end, folder, wonAmount] = await replay.replayGame(actions, 20n, 20n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(0n); // SB folded
@@ -855,13 +855,13 @@ describe("HeadsUpPokerReplay", function () {
     describe("Reraise Limit Tests", function () {
         it("allows up to 4 raises per street", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 }, // raise 1
-                { action: ACTION.BET_RAISE, amount: 3n }, // raise 2
-                { action: ACTION.BET_RAISE, amount: 5n }, // raise 3
-                { action: ACTION.BET_RAISE, amount: 8n }, // raise 4
-                { action: ACTION.FOLD, amount: 0n } // BB folds
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 }, // raise 1,
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // raise 2,
+            { action: ACTION.BET_RAISE, amount: 5n, sender: player2.address }, // raise 3,
+            { action: ACTION.BET_RAISE, amount: 8n, sender: player1.address }, // raise 4,
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address } // BB folds
+        ]);
             const [end, folder] = await replay.replayGame(actions, 50n, 50n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
@@ -869,29 +869,29 @@ describe("HeadsUpPokerReplay", function () {
 
         it("reverts when exceeding 4 raises per street", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 }, // raise 1
-                { action: ACTION.BET_RAISE, amount: 3n }, // raise 2
-                { action: ACTION.BET_RAISE, amount: 5n }, // raise 3
-                { action: ACTION.BET_RAISE, amount: 8n }, // raise 4
-                { action: ACTION.BET_RAISE, amount: 12n } // raise 5 - should fail
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 }, // raise 1,
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // raise 2,
+            { action: ACTION.BET_RAISE, amount: 5n, sender: player2.address }, // raise 3,
+            { action: ACTION.BET_RAISE, amount: 8n, sender: player1.address }, // raise 4,
+            { action: ACTION.BET_RAISE, amount: 12n, sender: player2.address } // raise 5 - should fail
+        ]);
             await expect(replay.replayGame(actions, 50n, 50n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "RaiseLimitExceeded");
         });
 
         it("resets raise counter between streets", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 }, // raise 1 preflop
-                { action: ACTION.BET_RAISE, amount: 3n }, // raise 2 preflop
-                { action: ACTION.BET_RAISE, amount: 5n }, // raise 3 preflop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, go to flop
-                { action: ACTION.BET_RAISE, amount: 2n }, // BB bets flop (raise 1 on flop)
-                { action: ACTION.BET_RAISE, amount: 4n }, // SB raises (raise 2 on flop)
-                { action: ACTION.BET_RAISE, amount: 5n }, // BB reraises (raise 3 on flop)
-                { action: ACTION.BET_RAISE, amount: 8n }, // SB reraises (raise 4 on flop) - should work
-                { action: ACTION.FOLD, amount: 0n } // BB folds
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 }, // raise 1 preflop,
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // raise 2 preflop,
+            { action: ACTION.BET_RAISE, amount: 5n, sender: player2.address }, // raise 3 preflop,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, go to flop,
+            { action: ACTION.BET_RAISE, amount: 2n, sender: player2.address }, // BB bets flop (raise 1 on flop),
+            { action: ACTION.BET_RAISE, amount: 4n, sender: player1.address }, // SB raises (raise 2 on flop),
+            { action: ACTION.BET_RAISE, amount: 5n, sender: player2.address }, // BB reraises (raise 3 on flop),
+            { action: ACTION.BET_RAISE, amount: 8n, sender: player1.address }, // SB reraises (raise 4 on flop) - should work,
+            { action: ACTION.FOLD, amount: 0n, sender: player2.address } // BB folds
+        ]);
             const [end, folder] = await replay.replayGame(actions, 50n, 50n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
             expect(folder).to.equal(1n); // BB folded
@@ -899,15 +899,15 @@ describe("HeadsUpPokerReplay", function () {
 
         it("reverts when exceeding limit on later streets", async function () {
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, go to flop
-                { action: ACTION.BET_RAISE, amount: 2n }, // BB bets flop (raise 1)
-                { action: ACTION.BET_RAISE, amount: 4n }, // SB raises (raise 2)
-                { action: ACTION.BET_RAISE, amount: 6n }, // BB reraises (raise 3)
-                { action: ACTION.BET_RAISE, amount: 8n }, // SB reraises (raise 4)
-                { action: ACTION.BET_RAISE, amount: 12n } // BB reraises (raise 5) - should fail
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, go to flop,
+            { action: ACTION.BET_RAISE, amount: 2n, sender: player2.address }, // BB bets flop (raise 1),
+            { action: ACTION.BET_RAISE, amount: 4n, sender: player1.address }, // SB raises (raise 2),
+            { action: ACTION.BET_RAISE, amount: 6n, sender: player2.address }, // BB reraises (raise 3),
+            { action: ACTION.BET_RAISE, amount: 8n, sender: player1.address }, // SB reraises (raise 4),
+            { action: ACTION.BET_RAISE, amount: 12n, sender: player2.address } // BB reraises (raise 5) - should fail
+        ]);
             await expect(replay.replayGame(actions, 50n, 50n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "RaiseLimitExceeded");
         });
     });
@@ -924,10 +924,10 @@ describe("HeadsUpPokerReplay", function () {
         blindAlternationTests.forEach(test => {
             it(`should have ${test.desc}`, async function () {
                 const actions = buildActions([
-                    { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                    { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                    { action: ACTION.FOLD, amount: 0n } // Small blind folds
-                ], 1n, test.handId);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address } // Small blind folds
+        ], 1n, test.handId);
 
                 const [end, folder, wonAmount] = await replay.replayGame(actions, 10n, 10n, 1n, player1, player2);
                 expect(end).to.equal(0n); // End.FOLD
@@ -989,10 +989,10 @@ describe("HeadsUpPokerReplay", function () {
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
                     { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                    { action: ACTION.BET_RAISE, amount: 3n }, // SB raises
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB calls, flop
-                    { action: ACTION.BET_RAISE, amount: 2n }, // BB bets
-                    { action: ACTION.FOLD, amount: 0n } // SB folds
+                    { action: ACTION.BET_RAISE, amount: 3n, sender: "TBD" }, // SB raises
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // BB calls, flop
+                    { action: ACTION.BET_RAISE, amount: 2n, sender: "TBD" }, // BB bets
+                    { action: ACTION.FOLD, amount: 0n, sender: "TBD" } // SB folds
                 ],
                 expectedEnd: 0n, expectedFolder: 0n, expectedWon: 4n
             },
@@ -1001,8 +1001,8 @@ describe("HeadsUpPokerReplay", function () {
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
                     { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                    { action: ACTION.BET_RAISE, amount: 19n }, // SB all-in
-                    { action: ACTION.CHECK_CALL, amount: 0n } // BB calls
+                    { action: ACTION.BET_RAISE, amount: 19n, sender: "TBD" }, // SB all-in
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" } // BB calls
                 ],
                 expectedEnd: 1n, expectedFolder: 0n, expectedWon: 20n
             },
@@ -1011,13 +1011,13 @@ describe("HeadsUpPokerReplay", function () {
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
                     { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, flop
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, turn
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, river
-                    { action: ACTION.CHECK_CALL, amount: 0n } // SB checks → showdown
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // SB calls
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // BB checks, flop
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // SB checks
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // BB checks, turn
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // SB checks
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // BB checks, river
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" } // SB checks → showdown
                 ],
                 expectedEnd: 1n, expectedFolder: 0n, expectedWon: 2n
             }
@@ -1044,7 +1044,7 @@ describe("HeadsUpPokerReplay", function () {
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
                     { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                    { action: ACTION.FOLD, amount: 0n }
+                    { action: ACTION.FOLD, amount: 0n, sender: "TBD" }
                 ],
                 expectedEnd: 0n, expectedFolder: 0n, expectedWon: 1n
             },
@@ -1053,8 +1053,8 @@ describe("HeadsUpPokerReplay", function () {
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
                     { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                    { action: ACTION.BET_RAISE, amount: 3n },
-                    { action: ACTION.FOLD, amount: 0n }
+                    { action: ACTION.BET_RAISE, amount: 3n, sender: "TBD" },
+                    { action: ACTION.FOLD, amount: 0n, sender: "TBD" }
                 ],
                 expectedEnd: 0n, expectedFolder: 1n, expectedWon: 2n
             },
@@ -1063,10 +1063,10 @@ describe("HeadsUpPokerReplay", function () {
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
                     { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // Move to flop
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                    { action: ACTION.BET_RAISE, amount: 5n }, // SB bets
-                    { action: ACTION.FOLD, amount: 0n } // BB folds
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // Move to flop
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // BB checks
+                    { action: ACTION.BET_RAISE, amount: 5n, sender: "TBD" }, // SB bets
+                    { action: ACTION.FOLD, amount: 0n, sender: "TBD" } // BB folds
                 ],
                 expectedEnd: 0n, expectedFolder: 1n, expectedWon: 2n
             },
@@ -1075,8 +1075,8 @@ describe("HeadsUpPokerReplay", function () {
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
                     { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                    { action: ACTION.BET_RAISE, amount: 8n },
-                    { action: ACTION.CHECK_CALL, amount: 0n }
+                    { action: ACTION.BET_RAISE, amount: 8n, sender: "TBD" },
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }
                 ],
                 stacks: [10n, 5n], expectedEnd: 1n, expectedWon: 5n
             },
@@ -1085,8 +1085,8 @@ describe("HeadsUpPokerReplay", function () {
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 2n, sender: player1 },
                     { action: ACTION.BIG_BLIND, amount: 4n, sender: player2 },
-                    { action: ACTION.BET_RAISE, amount: 6n },
-                    { action: ACTION.CHECK_CALL, amount: 0n }
+                    { action: ACTION.BET_RAISE, amount: 6n, sender: "TBD" },
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }
                 ],
                 stacks: [10n, 8n], expectedEnd: 1n, expectedWon: 8n
             },
@@ -1095,13 +1095,13 @@ describe("HeadsUpPokerReplay", function () {
                 actions: [
                     { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
                     { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, flop
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, turn
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-                    { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, river
-                    { action: ACTION.CHECK_CALL, amount: 0n } // SB checks → showdown
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // SB calls
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // BB checks, flop
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // SB checks
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // BB checks, turn
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // SB checks
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" }, // BB checks, river
+                    { action: ACTION.CHECK_CALL, amount: 0n, sender: "TBD" } // SB checks → showdown
                 ],
                 expectedEnd: 1n, expectedWon: 2n
             }
@@ -1126,10 +1126,10 @@ describe("HeadsUpPokerReplay", function () {
         it("prefix ends with toCall == 0 -> SHOWDOWN and called unchanged", async function () {
             // Both players check after blinds (toCall becomes 0)
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls, making toCall = 0
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address } // SB calls, making toCall = 0
+        ]);
 
             const [end, folder, calledAmount] = await replay.replayIncompleteGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(1n); // End.SHOWDOWN
@@ -1140,10 +1140,10 @@ describe("HeadsUpPokerReplay", function () {
         it("prefix ends with toCall > 0 -> FOLD by actor and called = min(totalA, totalB)", async function () {
             // SB raises, now BB has to call but prefix ends
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.BET_RAISE, amount: 3n } // SB raises to 4 total (1+3), BB needs to call 2 more
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address } // SB raises to 4 total (1+3), BB needs to call 2 more
+        ]);
 
             const [end, folder, calledAmount] = await replay.replayIncompleteGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
@@ -1154,10 +1154,10 @@ describe("HeadsUpPokerReplay", function () {
         it("any street all-in -> SHOWDOWN", async function () {
             // Both players go all-in
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 5n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 10n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n } // SB calls and goes all-in (had only 5)
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 5n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 10n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address } // SB calls and goes all-in (had only 5)
+        ]);
 
             const [end, folder, calledAmount] = await replay.replayIncompleteGame(actions, 5n, 10n, 1n, player1, player2);
             expect(end).to.equal(1n); // End.SHOWDOWN
@@ -1206,10 +1206,10 @@ describe("HeadsUpPokerReplay", function () {
         it("invalid action sequence -> revert in underlying replay", async function () {
             // Invalid sequence progression
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n }
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }
+        ]);
 
             // Manually break the sequence
             actions[2].seq = 1; // Same as previous action
@@ -1221,12 +1221,12 @@ describe("HeadsUpPokerReplay", function () {
         it("toCall > 0 with multiple actions leading to fold", async function () {
             // Multiple actions but toCall still > 0 at end
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls, move to flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks,
-                { action: ACTION.BET_RAISE, amount: 3n }   // SB bets on flop, BB needs to respond
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls, move to flop,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,,
+            { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }   // SB bets on flop, BB needs to respond
+        ]);
 
             const [end, folder, calledAmount] = await replay.replayIncompleteGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
@@ -1237,13 +1237,13 @@ describe("HeadsUpPokerReplay", function () {
         it("toCall == 0 after multiple checks leads to showdown", async function () {
             // Check down scenario
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks, move to flop
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks on flop
-                { action: ACTION.CHECK_CALL, amount: 0n }  // BB checks on flop, move to turn
-            ]);
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks, move to flop,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks on flop,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }  // BB checks on flop, move to turn
+        ]);
 
             const [end, folder, calledAmount] = await replay.replayIncompleteGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(1n); // End.SHOWDOWN
@@ -1273,9 +1273,9 @@ describe("HeadsUpPokerReplay", function () {
 
         it("invalid action types in first two positions returns NO_BLINDS", async function () {
             const actions = buildActions([
-                { action: ACTION.FOLD, amount: 0n }, // Not a blind,
-                { action: ACTION.CHECK_CALL, amount: 0n } // Not a blind
-            ]);
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address }, // Not a blind,,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address } // Not a blind
+        ]);
 
             await expect(replay.replayIncompleteGame(actions, 10n, 10n, 1n, player1, player2))
                 .to.be.revertedWithCustomError(replay, "SmallBlindActionInvalid");
