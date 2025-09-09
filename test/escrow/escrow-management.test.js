@@ -483,6 +483,7 @@ describe("HeadsUpPokerEscrow", function () {
                     // Second game without withdrawing
                     await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
                     await escrow.connect(player2).join(channelId, { value: deposit });
+                    // reverse order of wallets since player1 is now BB
                     await settleBasicFold(escrow, channelId, player2.address, wallet2, wallet1, chainId);
 
                     // Check accumulated winnings
