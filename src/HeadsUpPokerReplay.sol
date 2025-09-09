@@ -117,6 +117,7 @@ contract HeadsUpPokerReplay {
         if (bb.seq != 1) revert BigBlindSequenceInvalid();
         if (bb.prevHash != _hashAction(sb)) revert BigBlindPrevHashInvalid();
         if (bb.action != ACT_BIG_BLIND) revert BigBlindActionInvalid();
+
         if (bb.amount != sb.amount * 2) revert BigBlindAmountInvalid();
 
         uint8 smallBlindPlayer = getSmallBlindPlayer(sb.handId);
@@ -166,7 +167,7 @@ contract HeadsUpPokerReplay {
         g.lastRaise = bb.amount;
         g.checked = false;
         g.reopen = true;
-        g.raiseCount = 1; // Big blind counts as first raise
+        g.raiseCount = 0; // Big blind does not count as a raise
 
         return g;
     }
@@ -231,6 +232,20 @@ contract HeadsUpPokerReplay {
                         g,
                         ReplayResult({
                             ended: true,
+                            end: End.SHOWDOWN,
+                            folder: 0
+                        })
+                    );
+                }
+
+                // If preflop and no raises, allow BB to check or raise after SB called
+                if (g.street == 0 && g.raiseCount == 0) {
+                    g.checked = true;
+                    g.actor = uint8(opp);
+                    return (
+                        g,
+                        ReplayResult({
+                            ended: false,
                             end: End.SHOWDOWN,
                             folder: 0
                         })
@@ -348,7 +363,10 @@ contract HeadsUpPokerReplay {
     ) internal pure returns (ReplayResult memory res, Game memory g) {
         // Handle sequences without proper blinds
         if (actions.length < 2) {
-            return (ReplayResult({ended: true, end: End.NO_BLINDS, folder: 0}), g);
+            return (
+                ReplayResult({ended: true, end: End.NO_BLINDS, folder: 0}),
+                g
+            );
         }
 
         Action calldata sb = actions[0];
@@ -358,14 +376,18 @@ contract HeadsUpPokerReplay {
 
         // Validate sender addresses for blind actions
         uint8 smallBlindPlayer = getSmallBlindPlayer(sb.handId);
-        address expectedSmallBlindSender = (smallBlindPlayer == 0) ? player1 : player2;
-        address expectedBigBlindSender = (smallBlindPlayer == 0) ? player2 : player1;
-        
+        address expectedSmallBlindSender = (smallBlindPlayer == 0)
+            ? player1
+            : player2;
+        address expectedBigBlindSender = (smallBlindPlayer == 0)
+            ? player2
+            : player1;
+
         if (sb.sender != expectedSmallBlindSender) revert WrongPlayerTurn();
         if (bb.sender != expectedBigBlindSender) revert WrongPlayerTurn();
 
-        // If both players are all-in after blinds, immediate showdown
-        if (g.allIn[0] && g.allIn[1]) {
+        // If small blind is all-in, game ends immediately
+        if (g.allIn[smallBlindPlayer]) {
             return (
                 ReplayResult({ended: true, end: End.SHOWDOWN, folder: 0}),
                 g
@@ -376,7 +398,7 @@ contract HeadsUpPokerReplay {
             // Validate sender for each action
             address expectedSender = (g.actor == 0) ? player1 : player2;
             if (actions[i].sender != expectedSender) revert WrongPlayerTurn();
-            
+
             (g, res) = _applyAction(g, actions[i], actions[i - 1]);
             if (res.ended) {
                 return (res, g);

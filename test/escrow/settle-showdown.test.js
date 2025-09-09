@@ -32,12 +32,13 @@ describe("Settle to Showdown", function () {
             { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
             { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (flop)
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (first to act postflop)
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks (turn)
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks  
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks (river)
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }  // BB checks -> showdown
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (turn)
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address },  // BB checks (river),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }  // SB checks -> showdown
         ], channelId, handId);
 
         const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
@@ -65,7 +66,8 @@ describe("Settle to Showdown", function () {
             { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
             { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls,
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (flop),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (first to act postflop),
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (turn),
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
@@ -114,7 +116,8 @@ describe("Settle to Showdown", function () {
             { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
             { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls,
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (flop),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (first to act postflop),
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (turn),
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
@@ -164,7 +167,8 @@ describe("Settle to Showdown", function () {
             { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
             { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls,
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (flop),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (first to act postflop),
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (turn),
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
@@ -222,8 +226,9 @@ describe("Settle to Showdown", function () {
             { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
             { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls,
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (flop),
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (first to act postflop),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks (turn),
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (turn),
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
             { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (river),
