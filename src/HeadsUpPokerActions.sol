@@ -8,4 +8,5 @@ struct Action {
     uint8 action;
     uint128 amount;
     bytes32 prevHash;
+    address sender;
 }

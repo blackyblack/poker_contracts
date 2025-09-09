@@ -26,7 +26,7 @@ contract HeadsUpPokerEIP712 is EIP712 {
     // ---------------------------------------------------------------------
     bytes32 internal constant ACTION_TYPEHASH =
         keccak256(
-            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
+            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash,address sender)"
         );
     bytes32 internal constant CARD_COMMIT_TYPEHASH =
         keccak256(
@@ -67,7 +67,8 @@ contract HeadsUpPokerEIP712 is EIP712 {
                 act.seq,
                 act.action,
                 act.amount,
-                act.prevHash
+                act.prevHash,
+                act.sender
             )
         );
         return _hashTypedDataV4(structHash);

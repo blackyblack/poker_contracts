@@ -9,7 +9,7 @@ const DOMAIN_TYPEHASH = ethers.keccak256(
 );
 const ACTION_TYPEHASH = ethers.keccak256(
     ethers.toUtf8Bytes(
-        "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash)"
+        "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash,address sender)"
     )
 );
 const CARD_COMMIT_TYPEHASH = ethers.keccak256(
@@ -77,7 +77,7 @@ function actionHash(action) {
     const abi = ethers.AbiCoder.defaultAbiCoder();
     return ethers.keccak256(
         abi.encode(
-            ["bytes32", "uint256", "uint256", "uint32", "uint8", "uint128", "bytes32"],
+            ["bytes32", "uint256", "uint256", "uint32", "uint8", "uint128", "bytes32", "address"],
             [
                 ACTION_TYPEHASH,
                 action.channelId,
@@ -85,7 +85,8 @@ function actionHash(action) {
                 action.seq,
                 action.action,
                 action.amount,
-                action.prevHash
+                action.prevHash,
+                action.sender
             ]
         )
     );
