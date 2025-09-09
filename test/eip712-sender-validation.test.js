@@ -7,6 +7,7 @@ describe("HeadsUpPokerEIP712 with Sender", function () {
     let contract, player1, player2;
     const channelId = 7n;
     const mnemonic = "test test test test test test test test test test test junk";
+    const mnemonic2 = "all all all all all all all all all all all all";
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
@@ -39,7 +40,7 @@ describe("HeadsUpPokerEIP712 with Sender", function () {
 
     it("fails to verify action signed by different address than sender", async function () {
         const wallet1 = ethers.Wallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/0");
-        const wallet2 = ethers.Wallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/1");
+        const wallet2 = ethers.Wallet.fromPhrase(mnemonic2, "m/44'/60'/0'/0/0");
         
         const action = {
             channelId,
@@ -77,7 +78,7 @@ describe("HeadsUpPokerEIP712 with Sender", function () {
 
         const action2 = {
             ...action1,
-            sender: player1.address  // Different sender
+            sender: player2.address  // Different sender
         };
 
         const chainId = (await ethers.provider.getNetwork()).chainId;

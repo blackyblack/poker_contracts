@@ -195,15 +195,16 @@ async function buildCardCommit(a, b, dom, channelId, slot, card, handId = 1n) {
 async function playPlayer1WinsShowdown(escrow, channelId, player1, player1Wallet, player2Wallet) {
     // Simple sequence where both players put in 2 chips (blinds) and check down
     const actionSpecs = [
-        { action: ACTION.SMALL_BLIND, amount: 1n },
-        { action: ACTION.BIG_BLIND, amount: 2n },
-        { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls to match BB
-        { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (flop)
-        { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-        { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (turn) 
-        { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-        { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (river)
-        { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
+        { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1Wallet.address },
+        { action: ACTION.BIG_BLIND, amount: 2n, sender: player2Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player1Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player2Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player2Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player1Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player2Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player1Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player2Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player1Wallet.address }
     ];
 
     const chainId = (await ethers.provider.getNetwork()).chainId;

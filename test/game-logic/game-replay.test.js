@@ -209,14 +209,15 @@ describe("HeadsUpPokerReplay", function () {
             });
         });
 
-        it("reverts when all-in player tries to act", async function () {
+        it("showdown when all-in player is called", async function () {
             const badActions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 5n, sender: player1 },
-                { action: ACTION.BIG_BLIND, amount: 10n, sender: player2 },
-                { action: ACTION.FOLD, amount: 0n, sender: player1 }
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1 },
+                { action: ACTION.BET_RAISE, amount: 5n, sender: player2 }
             ]);
-            await expect(replay.replayGame(badActions, 5n, 11n, 1n, player1, player2))
-                .to.be.revertedWithCustomError(replay, "PlayerAllIn");
+            const [end] = await replay.replayGame(badActions, 25n, 2n, 1n, player1, player2);
+            expect(end).to.equal(1n); // SHOWDOWN
         });
     });
 
@@ -569,8 +570,8 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.CHECK_CALL, amount: 0n, sender: player2 }, // BB checks,
                 { action: ACTION.BET_RAISE, amount: 2n, sender: player1 }, // SB bets,
                 { action: ACTION.CHECK_CALL, amount: 0n, sender: player2 }, // BB calls, move to turn,
-                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1 }, // BB checks,
-                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2 } // SB checks, move to river
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2 }, // BB checks,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1 } // SB checks, move to river
             ]);
             // Should be waiting for BB to act on river
             await expect(replay.replayGame(actions, 20n, 20n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "HandNotDone");
@@ -590,15 +591,16 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 }, // Player 0 (SB) acts,
                 { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },   // Player 1 (BB) acts,
                 { action: ACTION.CHECK_CALL, amount: 0n, sender: player1 },  // Player 0 (SB) acts - calls,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2 },  // Player 1 (BB) acts - checks -> move to flop,
                 // Now on flop, BB acts first (player 1),
-                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1 },  // Player 1 (BB) checks,
-                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2 },  // Player 0 (SB) checks,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2 },  // Player 1 (BB) checks,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1 },  // Player 0 (SB) checks,
                 // Now on turn, BB acts first (player 1),
                 { action: ACTION.CHECK_CALL, amount: 0n, sender: player2 },  // Player 1 (BB) checks,
                 { action: ACTION.CHECK_CALL, amount: 0n, sender: player1 },  // Player 0 (SB) checks,
                 // Now on river, BB acts first (player 1),
-                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1 },  // Player 1 (BB) checks,
-                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2 }   // Player 0 (SB) checks -> showdown
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2 },  // Player 1 (BB) checks,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1 }   // Player 0 (SB) checks -> showdown
             ]);
             const [end, ,] = await replay.replayGame(actions, 10n, 10n, 1n, player1, player2);
             expect(end).to.equal(1n); // End.SHOWDOWN
@@ -641,11 +643,11 @@ describe("HeadsUpPokerReplay", function () {
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
                 { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
-                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1 }, // SB calls, move to flop,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1 }, // SB calls,
                 { action: ACTION.BET_RAISE, amount: 3n, sender: player2 }, // BB bets,
-                { action: ACTION.BET_RAISE, amount: 6n, sender: player1 }, // SB raises,
-                { action: ACTION.BET_RAISE, amount: 12n, sender: player2 }, // BB reraises,
-                { action: ACTION.FOLD, amount: 0n, sender: player1 } // SB folds on flop
+                { action: ACTION.BET_RAISE, amount: 8n, sender: player1 }, // SB raises,
+                { action: ACTION.BET_RAISE, amount: 15n, sender: player2 }, // BB reraises,
+                { action: ACTION.FOLD, amount: 0n, sender: player1 } // SB folds on pre-flop
             ]);
             const [end, folder,] = await replay.replayGame(actions, 30n, 30n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
@@ -673,8 +675,8 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 }
                 // SB should be all-in after posting blind, so game should end immediately
             ]);
-            // SB has only 1 chip total, so goes all-in posting blind
-            await expect(replay.replayGame(actions, 1n, 10n, 1n, player1, player2)).to.be.revertedWithCustomError(replay, "HandNotDone");
+            const [end, ,] = await replay.replayGame(actions, 1n, 10n, 1n, player1, player2);
+            expect(end).to.equal(1n); // End.SHOWDOWN;
         });
 
         it("handles both players all-in from blinds by going to showdown", async function () {
@@ -695,7 +697,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
                 { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
                 // BB is now all-in, SB should still be able to act,
-                { action: ACTION.FOLD, amount: 0n, sender: player2 } // SB folds
+                { action: ACTION.FOLD, amount: 0n, sender: player1 } // SB folds
             ]);
             const [end, folder,] = await replay.replayGame(actions, 10n, 2n, 1n, player1, player2);
             expect(end).to.equal(0n); // End.FOLD
@@ -742,7 +744,7 @@ describe("HeadsUpPokerReplay", function () {
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1 },
                 { action: ACTION.BIG_BLIND, amount: 2n, sender: player2 },
                 // Only BB is all-in, SB can still act,
-                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2 } // SB calls
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1 } // SB calls
             ]);
             const [end, ,] = await replay.replayGame(actions, 10n, 2n, 1n, player1, player2); // BB has exactly 2
             expect(end).to.equal(1n); // End.SHOWDOWN

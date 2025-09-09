@@ -62,8 +62,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error ActionSignatureLengthMismatch();
     error ActionWrongChannel();
     error ActionWrongHand();
-    error ActionWrongSignerA();
-    error ActionWrongSignerB();
     error ActionInvalidSender();
     error ActionWrongSigner();
     error NoActionsProvided();
