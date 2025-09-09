@@ -18,43 +18,16 @@ const wallet3 = new ethers.Wallet(
  * @param {Array} specs - Array of action specifications {action, amount, sender}
  * @param {bigint} channelId - Channel ID (default: 1n)
  * @param {bigint} handId - Hand ID (default: 1n)
- * @param {Array} players - Array of player addresses [player1, player2] (optional)
  * @returns {Array} Array of action objects
  */
-function buildActions(specs, channelId = 1n, handId = 1n, players = null) {
+function buildActions(specs, channelId = 1n, handId = 1n) {
     let seq = 0;
     let prevHash = handGenesis(channelId, handId);
     const actions = [];
     
-    // Default players if not provided
-    const defaultPlayers = players || [
-        "0x1000000000000000000000000000000000000001", // player1 (small blind)
-        "0x2000000000000000000000000000000000000002"  // player2 (big blind)
-    ];
-    
     for (const spec of specs) {
-        let sender;
-        
-        if (spec.sender) {
-            // Use explicitly provided sender
-            sender = spec.sender;
-        } else {
-            // Auto-assign sender based on heads up poker rules
-            if (seq === 0) {
-                // First action: Small Blind - always player1 (dealer position)
-                sender = defaultPlayers[0];
-            } else if (seq === 1) {
-                // Second action: Big Blind - always player2
-                sender = defaultPlayers[1];
-            } else {
-                // For post-blind actions, we need to track game state to determine whose turn it is
-                // This is a simplified version - for more complex scenarios, use explicit senders
-                // Preflop after blinds: SB acts first (player1)
-                // Postflop: BB acts first (player2)
-                // For now, alternate starting with SB (player1) on action 2
-                const actionsAfterBlinds = seq - 2;
-                sender = defaultPlayers[actionsAfterBlinds % 2];
-            }
+        if (!spec.sender) {
+            throw new Error(`Action at index ${seq} must have an explicit sender address`);
         }
         
         const act = {
@@ -64,12 +37,82 @@ function buildActions(specs, channelId = 1n, handId = 1n, players = null) {
             action: spec.action,
             amount: spec.amount,
             prevHash,
-            sender
+            sender: spec.sender
         };
         actions.push(act);
         prevHash = actionHash(act);
     }
     return actions;
+}
+
+/**
+ * Helper to build standard blinds actions
+ * @param {bigint} sbAmount - Small blind amount
+ * @param {bigint} bbAmount - Big blind amount  
+ * @param {address} player1 - Player 1 address (small blind for handId % 2 == 1)
+ * @param {address} player2 - Player 2 address
+ * @param {bigint} handId - Hand ID to determine dealer position (default: 1n)
+ * @param {bigint} channelId - Channel ID (default: 1n)
+ * @returns {Array} Array of blind actions
+ */
+function buildBlinds(sbAmount, bbAmount, player1, player2, handId = 1n, channelId = 1n) {
+    // In heads-up, dealer is small blind
+    // handId % 2 determines dealer: 1 = player1, 0 = player2
+    const isPlayer1Dealer = handId % 2n === 1n;
+    const sbPlayer = isPlayer1Dealer ? player1 : player2;
+    const bbPlayer = isPlayer1Dealer ? player2 : player1;
+    
+    return buildActions([
+        { action: ACTION.SMALL_BLIND, amount: sbAmount, sender: sbPlayer },
+        { action: ACTION.BIG_BLIND, amount: bbAmount, sender: bbPlayer }
+    ], channelId, handId);
+}
+
+/**
+ * Helper to build a basic fold sequence (blinds + fold)
+ * @param {address} folder - Address of the player who folds
+ * @param {address} player1 - Player 1 address
+ * @param {address} player2 - Player 2 address
+ * @param {bigint} handId - Hand ID (default: 1n)
+ * @param {bigint} channelId - Channel ID (default: 1n)
+ * @returns {Array} Array of actions ending in fold
+ */
+function buildFoldSequence(folder, player1, player2, handId = 1n, channelId = 1n) {
+    const blinds = buildBlinds(1n, 2n, player1, player2, handId, channelId);
+    const foldAction = buildActions([
+        { action: ACTION.FOLD, amount: 0n, sender: folder }
+    ], channelId, handId);
+    foldAction[0].seq = 2;
+    foldAction[0].prevHash = blinds[1] ? actionHash(blinds[1]) : blinds[0] ? actionHash(blinds[0]) : handGenesis(channelId, handId);
+    
+    return [...blinds, ...foldAction];
+}
+
+/**
+ * Helper to build a check-down sequence (blinds + checks to showdown)
+ * @param {address} player1 - Player 1 address
+ * @param {address} player2 - Player 2 address
+ * @param {bigint} handId - Hand ID (default: 1n) 
+ * @param {bigint} channelId - Channel ID (default: 1n)
+ * @returns {Array} Array of actions leading to showdown
+ */
+function buildCheckDownSequence(player1, player2, handId = 1n, channelId = 1n) {
+    // Start with blinds
+    const isPlayer1Dealer = handId % 2n === 1n;
+    const sbPlayer = isPlayer1Dealer ? player1 : player2;
+    const bbPlayer = isPlayer1Dealer ? player2 : player1;
+    
+    return buildActions([
+        { action: ACTION.SMALL_BLIND, amount: 1n, sender: sbPlayer },
+        { action: ACTION.BIG_BLIND, amount: 2n, sender: bbPlayer },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: sbPlayer }, // SB calls
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: bbPlayer }, // BB checks (flop)
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: bbPlayer }, // BB checks (first to act postflop)
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: sbPlayer }, // SB checks
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: bbPlayer }, // BB checks (turn)
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: sbPlayer }, // SB checks  
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: bbPlayer }  // BB checks (river -> showdown)
+    ], channelId, handId);
 }
 
 /**
@@ -152,15 +195,16 @@ async function buildCardCommit(a, b, dom, channelId, slot, card, handId = 1n) {
 async function playPlayer1WinsShowdown(escrow, channelId, player1, player1Wallet, player2Wallet) {
     // Simple sequence where both players put in 2 chips (blinds) and check down
     const actionSpecs = [
-        { action: ACTION.SMALL_BLIND, amount: 1n },
-        { action: ACTION.BIG_BLIND, amount: 2n },
-        { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls to match BB
-        { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (flop)
-        { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-        { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (turn) 
-        { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-        { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (river)
-        { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
+        { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1Wallet.address },
+        { action: ACTION.BIG_BLIND, amount: 2n, sender: player2Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player1Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player2Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player2Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player1Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player2Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player1Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player2Wallet.address },
+        { action: ACTION.CHECK_CALL, amount: 0n, sender: player1Wallet.address }
     ];
 
     const chainId = (await ethers.provider.getNetwork()).chainId;
@@ -175,6 +219,9 @@ module.exports = {
     wallet2,
     wallet3,
     buildActions,
+    buildBlinds,
+    buildFoldSequence,
+    buildCheckDownSequence,
     signActions,
     signCardCommit,
     buildCardCommit,

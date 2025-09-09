@@ -29,15 +29,16 @@ describe("Settle to Showdown", function () {
 
         // Create actions that lead to showdown (both players check down)
         const actions = buildActions([
-            { action: ACTION.SMALL_BLIND, amount: 1n },
-            { action: ACTION.BIG_BLIND, amount: 2n },
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (flop)
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (turn)
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks  
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (river)
-            { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (flop)
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (turn)
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address },  // BB checks (river),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }  // SB checks -> showdown
         ], channelId, handId);
 
         const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
@@ -62,15 +63,16 @@ describe("Settle to Showdown", function () {
         const handId = await escrow.getHandId(channelId);
 
         const actions = buildActions([
-            { action: ACTION.SMALL_BLIND, amount: 1n },
-            { action: ACTION.BIG_BLIND, amount: 2n },
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (flop)
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (turn) 
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (river)
-            { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (first to act postflop),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (turn),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (river),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }  // SB checks -> showdown
         ], channelId, handId);
 
         const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
@@ -88,9 +90,9 @@ describe("Settle to Showdown", function () {
 
         // Create actions that lead to fold
         const actions = buildActions([
-            { action: ACTION.SMALL_BLIND, amount: 1n },
-            { action: ACTION.BIG_BLIND, amount: 2n },
-            { action: ACTION.FOLD, amount: 0n } // SB folds
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.FOLD, amount: 0n, sender: player1.address } // SB folds
         ], channelId, handId);
 
         const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
@@ -111,15 +113,16 @@ describe("Settle to Showdown", function () {
 
         // Initiate showdown via settle
         const actions = buildActions([
-            { action: ACTION.SMALL_BLIND, amount: 1n },
-            { action: ACTION.BIG_BLIND, amount: 2n },
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (flop)
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (turn)
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks  
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (river)
-            { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (first to act postflop),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (turn),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (river),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }  // SB checks -> showdown
         ], channelId, handId);
 
         const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
@@ -161,15 +164,16 @@ describe("Settle to Showdown", function () {
 
         // Initiate showdown via settle
         const actions = buildActions([
-            { action: ACTION.SMALL_BLIND, amount: 1n },
-            { action: ACTION.BIG_BLIND, amount: 2n },
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (flop)
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (turn)
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks  
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (river)
-            { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (first to act postflop),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (turn),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (river),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }  // SB checks -> showdown
         ], channelId, handId);
 
         const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
@@ -219,15 +223,16 @@ describe("Settle to Showdown", function () {
 
         // Initiate showdown via settle
         const actions = buildActions([
-            { action: ACTION.SMALL_BLIND, amount: 1n },
-            { action: ACTION.BIG_BLIND, amount: 2n },
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (flop)
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (turn)
-            { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks  
-            { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks (river)
-            { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (first to act postflop),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks (turn),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (turn),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks,
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks (river),
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }  // SB checks -> showdown
         ], channelId, handId);
 
         const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);

@@ -28,9 +28,9 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         it("should settle terminal fold sequences", async function () {
             const handId = await escrow.getHandId(channelId);
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n } // Small blind folds
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+                { action: ACTION.FOLD, amount: 0n, sender: player1.address } // Small blind folds
             ], channelId, handId);
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
@@ -48,15 +48,16 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         it("should initiate showdown for showdown sequences", async function () {
             const handId = await escrow.getHandId(channelId);
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n }, // SB
-                { action: ACTION.BIG_BLIND, amount: 2n }, // BB
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB calls
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks -> move to street 2
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }, // SB checks -> move to street 3
-                { action: ACTION.CHECK_CALL, amount: 0n }, // BB checks
-                { action: ACTION.CHECK_CALL, amount: 0n }  // SB checks -> showdown
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address }, // SB,
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address }, // BB,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB calls,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks -> move to street 1,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks -> move to street 2,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }, // SB checks -> move to street 3,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address }, // BB checks,
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player1.address }  // SB checks -> showdown
             ], channelId, handId);
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
@@ -77,9 +78,9 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         it("should start dispute with non-terminal sequence", async function () {
             const handId = await escrow.getHandId(channelId);
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 3n } // Raise - not terminal
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+                { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address } // Raise - not terminal
             ], channelId, handId);
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
@@ -99,19 +100,19 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
 
             // First dispute with 3 actions
             const actions1 = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 3n }
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+                { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }
             ], channelId, handId);
             const signatures1 = await signActions(actions1, [wallet1, wallet2], await escrow.getAddress(), chainId);
             await escrow.dispute(channelId, actions1, signatures1);
 
             // Extend dispute with 4 actions
             const actions2 = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 3n },
-                { action: ACTION.CHECK_CALL, amount: 0n } // Call the raise
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+                { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: player2.address } // Call the raise
             ], channelId, handId);
             const signatures2 = await signActions(actions2, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
@@ -129,17 +130,17 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
 
             // First dispute with 3 actions
             const actions1 = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.BET_RAISE, amount: 3n }
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+                { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }
             ], channelId, handId);
             const signatures1 = await signActions(actions1, [wallet1, wallet2], await escrow.getAddress(), chainId);
             await escrow.dispute(channelId, actions1, signatures1);
 
             // Try to "extend" with only 2 actions - should fail
             const actions2 = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n }
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address }
             ], channelId, handId);
             const signatures2 = await signActions(actions2, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
@@ -152,17 +153,17 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
 
             // Start dispute first
             const disputeActions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n }
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address }
             ], channelId, handId);
             const disputeSignatures = await signActions(disputeActions, [wallet1, wallet2], await escrow.getAddress(), chainId);
             await escrow.dispute(channelId, disputeActions, disputeSignatures);
 
             // Try to settle - should pass
             const settleActions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n }
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+                { action: ACTION.FOLD, amount: 0n, sender: player1.address }
             ], channelId, handId);
             const settleSignatures = await signActions(settleActions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
@@ -177,7 +178,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
 
         it("should allow dispute with empty actions array (no blinds)", async function () {
             const handId = await escrow.getHandId(channelId);
-            
+
             // Dispute with empty actions array - should be allowed
             await expect(escrow.dispute(channelId, [], []))
                 .to.emit(escrow, "DisputeStarted");
@@ -186,32 +187,32 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         it("should allow dispute with single action (missing big blind)", async function () {
             const handId = await escrow.getHandId(channelId);
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n }
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address }
             ], channelId, handId);
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-            
+
             await expect(escrow.dispute(channelId, actions, signatures))
                 .to.emit(escrow, "DisputeStarted");
         });
 
         it("should finalize dispute without blinds with no fund transfer", async function () {
             const handId = await escrow.getHandId(channelId);
-            
+
             // Get initial balances
             const [initialP1, initialP2] = await escrow.stacks(channelId);
-            
+
             // Start dispute with no actions
             await escrow.dispute(channelId, [], []);
-            
+
             // Fast forward past dispute window
             await ethers.provider.send("evm_increaseTime", [3601]); // 1 hour + 1 second
             await ethers.provider.send("evm_mine");
-            
+
             // Finalize dispute - should emit with address(0) as winner and 0 transfer amount
             await expect(escrow.finalizeDispute(channelId))
                 .to.emit(escrow, "DisputeFinalized")
                 .withArgs(channelId, ethers.ZeroAddress, 0);
-            
+
             // Check that balances remain unchanged
             const [finalP1, finalP2] = await escrow.stacks(channelId);
             expect(finalP1).to.equal(initialP1);
@@ -231,9 +232,9 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         it("should finalize dispute after window expires", async function () {
             const handId = await escrow.getHandId(channelId);
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n } // Fold sequence
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+                { action: ACTION.FOLD, amount: 0n, sender: player1.address } // Fold sequence
             ], channelId, handId);
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
@@ -255,9 +256,9 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         it("should reject finalization before window expires", async function () {
             const handId = await escrow.getHandId(channelId);
             const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n },
-                { action: ACTION.BIG_BLIND, amount: 2n },
-                { action: ACTION.FOLD, amount: 0n }
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+                { action: ACTION.FOLD, amount: 0n, sender: player1.address }
             ], channelId, handId);
 
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);

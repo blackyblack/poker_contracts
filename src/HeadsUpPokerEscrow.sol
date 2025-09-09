@@ -62,8 +62,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error ActionSignatureLengthMismatch();
     error ActionWrongChannel();
     error ActionWrongHand();
-    error ActionWrongSignerA();
-    error ActionWrongSignerB();
     error ActionInvalidSender();
     error ActionWrongSigner();
     error NoActionsProvided();
@@ -299,7 +297,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
         
         // Replay actions to verify they are terminal and get end state
-        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayGameWithTurnValidation(
+        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayGame(
             actions, 
             ch.deposit1, 
             ch.deposit2,
@@ -360,7 +358,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
         
         // Replay actions to get projected end state (handles both terminal and non-terminal)
-        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayIncompleteGameWithTurnValidation(
+        (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayIncompleteGame(
             actions, 
             ch.deposit1, 
             ch.deposit2,
