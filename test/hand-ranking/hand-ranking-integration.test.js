@@ -5,7 +5,7 @@ const { SLOT } = require("../helpers/slots");
 const { CARD } = require("../helpers/cards");
 const { buildCardCommit, wallet1, wallet2, playPlayer1WinsShowdown } = require("../helpers/test-utils");
 
-describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
+describe("HeadsUpPokerEscrow - Poker Hand Ranking Integration", function () {
     let escrow, player1, player2;
     const channelId = 1n;
     const deposit = ethers.parseEther("1.0");
@@ -83,7 +83,7 @@ describe("HeadsUpPokerEscrow - Poker Evaluation Integration", function () {
         return { commits, sigs, startCardCodes, startCardSalts, revealCodes, revealSalts, player2Cards };
     }
 
-    describe("Poker Hand Evaluation", function () {
+    describe("Poker Hand Ranking", function () {
         it("should determine winner correctly - pair beats high card", async function () {
             // Player 1: A♠ K♠ with A♣ 5♦ 3♥ 2♠ 7♣ board = Pair of Aces
             const player1Cards = [

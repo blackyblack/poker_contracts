@@ -7,7 +7,7 @@ const { buildCardCommit, wallet1, wallet2, wallet3, playPlayer1WinsShowdown } = 
 const EMPTY_CODES = Array(9).fill(0xff);
 const EMPTY_SALTS = Array(9).fill(ZERO32);
 
-describe("Commit Verification - revealCards", function () {
+describe("Showdown - revealCards", function () {
     let escrow;
     let player1, player2;
     const channelId = 1n;
@@ -289,6 +289,7 @@ describe("Commit Verification - revealCards", function () {
 
     it("allows finalize after deadline when opponent holes not opened", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
+        const window = await escrow.revealWindow();
 
         await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
 
@@ -316,7 +317,7 @@ describe("Commit Verification - revealCards", function () {
         );
 
         // Fast forward past reveal window
-        await ethers.provider.send("evm_increaseTime", [3601]); // 1 hour + 1 second
+        await ethers.provider.send("evm_increaseTime", [Number(window) + 1]); // 1 hour reveal window + 1 second
         await ethers.provider.send("evm_mine");
 
         const [initialBalance,] = await escrow.stacks(channelId);
@@ -338,6 +339,7 @@ describe("Commit Verification - revealCards", function () {
 
     it("should result in tie when both players reveal holes but board incomplete", async () => {
         const { commits, sigs, myHole, mySalts, oppHole, oppSalts } = await setup();
+        const window = await escrow.revealWindow();
 
         const holeCommits = commits.slice(0, 4); // only hole cards
         const holeSigs = sigs.slice(0, 8);
@@ -350,7 +352,7 @@ describe("Commit Verification - revealCards", function () {
             .connect(player1)
             .revealCards(channelId, holeCommits, holeSigs, codes, salts);
 
-        await ethers.provider.send("evm_increaseTime", [3601]);
+        await ethers.provider.send("evm_increaseTime", [Number(window) + 1]); // 1 hour reveal window + 1 second
         await ethers.provider.send("evm_mine");
 
         const [initialBalance,] = await escrow.stacks(channelId);
@@ -418,7 +420,7 @@ describe("Commit Verification - revealCards", function () {
         ).to.be.revertedWithCustomError(escrow, "NotPlayer");
     });
 
-    it("rejects commit override with different hash", async () => {
+    it("ignore commit override", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1, dom } = await setup();
 
         // Initiate showdown by settling to showdown
@@ -460,40 +462,6 @@ describe("Commit Verification - revealCards", function () {
         expect(Number(sd.lockedCommitMask)).to.equal(0x1F3);
     });
 
-    it("allows resubmitting identical commit", async () => {
-        const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
-
-        // Initiate showdown by settling to showdown
-        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
-
-        // Start showdown with initial commits
-        await escrow
-            .connect(player1)
-            .revealCards(channelId, commits, sigs, startCodesP1, startSaltsP1);
-
-        let sd = await escrow.getShowdown(channelId);
-        expect(Number(sd.lockedCommitMask)).to.equal(0x1F3); // Player1 slots + board are committed
-
-        // Resubmit the exact same commit for slot 0
-        const originalCommit = commits[0];
-        const originalSigs = [sigs[0], sigs[1]];
-
-        // This should succeed because locked commits are ignored
-        await escrow
-            .connect(player1)
-            .revealCards(
-                channelId,
-                [originalCommit],
-                originalSigs,
-                [startCodesP1[0]],
-                [startSaltsP1[0]]
-            );
-
-        // Verify the state is unchanged
-        sd = await escrow.getShowdown(channelId);
-        expect(Number(sd.lockedCommitMask)).to.equal(0x1F3);
-    });
-
     it("reverts when no showdown is in progress", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
 
@@ -503,32 +471,5 @@ describe("Commit Verification - revealCards", function () {
                 .connect(player1)
                 .revealCards(channelId, commits, sigs, startCodesP1, startSaltsP1)
         ).to.be.revertedWithCustomError(escrow, "NoShowdownInProgress");
-    });
-
-    it("should result in tie when both players reveal holes but board incomplete", async () => {
-        const { commits, sigs, myHole, mySalts, oppHole, oppSalts } = await setup();
-
-        const holeCommits = commits.slice(0, 4); // only hole cards
-        const holeSigs = sigs.slice(0, 8);
-        const codes = [...myHole, ...oppHole];
-        const salts = [...mySalts, ...oppSalts];
-
-        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
-
-        await escrow
-            .connect(player1)
-            .revealCards(channelId, holeCommits, holeSigs, codes, salts);
-
-        await ethers.provider.send("evm_increaseTime", [3601]);
-        await ethers.provider.send("evm_mine");
-
-        const [initialBalance,] = await escrow.stacks(channelId);
-
-        await escrow.finalizeShowdown(channelId);
-
-        const [finalBalance,] = await escrow.stacks(channelId);
-
-        // Should be unchanged (tie) since both revealed holes but no board
-        expect(finalBalance).to.equal(initialBalance);
     });
 });

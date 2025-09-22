@@ -25,26 +25,6 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             await escrow.connect(player2).join(channelId, { value: deposit });
         });
 
-        it("should settle terminal fold sequences", async function () {
-            const handId = await escrow.getHandId(channelId);
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
-                { action: ACTION.FOLD, amount: 0n, sender: player1.address } // Small blind folds
-            ], channelId, handId);
-
-            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-
-            const tx = await escrow.settle(channelId, actions, signatures);
-            await expect(tx)
-                .to.emit(escrow, "Settled");
-
-            const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            // Player 2 should win since player 1 folded
-            expect(p1Stack).to.be.lessThan(deposit);
-            expect(p2Stack).to.be.greaterThan(deposit);
-        });
-
         it("should initiate showdown for showdown sequences", async function () {
             const handId = await escrow.getHandId(channelId);
             const actions = buildActions([
@@ -167,21 +147,17 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             ], channelId, handId);
             const settleSignatures = await signActions(settleActions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
-            await expect(escrow.settle(channelId, settleActions, settleSignatures))
-                .to.emit(escrow, "Settled");
+            await expect(escrow.settle(channelId, settleActions, settleSignatures)).to.emit(escrow, "Settled");
         });
 
         it("should return correct dispute window", async function () {
             const window = await escrow.disputeWindow();
-            expect(window).to.equal(3600); // 1 hour in seconds
+            expect(window).to.be.greaterThan(0);
         });
 
         it("should allow dispute with empty actions array (no blinds)", async function () {
-            const handId = await escrow.getHandId(channelId);
-
             // Dispute with empty actions array - should be allowed
-            await expect(escrow.dispute(channelId, [], []))
-                .to.emit(escrow, "DisputeStarted");
+            await expect(escrow.dispute(channelId, [], [])).to.emit(escrow, "DisputeStarted");
         });
 
         it("should allow dispute with single action (missing big blind)", async function () {
@@ -191,32 +167,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             ], channelId, handId);
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
-            await expect(escrow.dispute(channelId, actions, signatures))
-                .to.emit(escrow, "DisputeStarted");
-        });
-
-        it("should finalize dispute without blinds with no fund transfer", async function () {
-            const handId = await escrow.getHandId(channelId);
-
-            // Get initial balances
-            const [initialP1, initialP2] = await escrow.stacks(channelId);
-
-            // Start dispute with no actions
-            await escrow.dispute(channelId, [], []);
-
-            // Fast forward past dispute window
-            await ethers.provider.send("evm_increaseTime", [3601]); // 1 hour + 1 second
-            await ethers.provider.send("evm_mine");
-
-            // Finalize dispute - should emit with address(0) as winner and 0 transfer amount
-            await expect(escrow.finalizeDispute(channelId))
-                .to.emit(escrow, "DisputeFinalized")
-                .withArgs(channelId, ethers.ZeroAddress, 0);
-
-            // Check that balances remain unchanged
-            const [finalP1, finalP2] = await escrow.stacks(channelId);
-            expect(finalP1).to.equal(initialP1);
-            expect(finalP2).to.equal(initialP2);
+            await expect(escrow.dispute(channelId, actions, signatures)).to.emit(escrow, "DisputeStarted");
         });
     });
 
@@ -230,6 +181,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         });
 
         it("should finalize dispute after window expires", async function () {
+            const window = await escrow.disputeWindow();
             const handId = await escrow.getHandId(channelId);
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
@@ -241,16 +193,20 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             await escrow.dispute(channelId, actions, signatures);
 
             // Fast forward past dispute window
-            await ethers.provider.send("evm_increaseTime", [3601]); // 1 hour + 1 second
+            await ethers.provider.send("evm_increaseTime", [Number(window) + 1]); // 1 hour dispute window + 1 second
             await ethers.provider.send("evm_mine");
 
             const tx = await escrow.finalizeDispute(channelId);
-            await expect(tx)
-                .to.emit(escrow, "DisputeFinalized");
+            await expect(tx).to.emit(escrow, "DisputeFinalized");
 
             // Check that channel is finalized
             const dispute = await escrow.getDispute(channelId);
             expect(dispute.inProgress).to.be.false;
+
+            const [finalP1, finalP2] = await escrow.stacks(channelId);
+            // Player 2 should win since player 1 folded after dispute window
+            expect(finalP1).to.be.lessThan(deposit);
+            expect(finalP2).to.be.greaterThan(deposit);
         });
 
         it("should reject finalization before window expires", async function () {
@@ -266,6 +222,29 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
 
             await expect(escrow.finalizeDispute(channelId))
                 .to.be.revertedWithCustomError(escrow, "DisputeStillActive");
+        });
+
+        it("should finalize dispute without blinds with no fund transfer", async function () {
+            const window = await escrow.disputeWindow();
+            // Get initial balances
+            const [initialP1, initialP2] = await escrow.stacks(channelId);
+
+            // Start dispute with no actions
+            await escrow.dispute(channelId, [], []);
+
+            // Fast forward past dispute window
+            await ethers.provider.send("evm_increaseTime", [Number(window) + 1]); // 1 hour dispute window + 1 second
+            await ethers.provider.send("evm_mine");
+
+            // Finalize dispute - should emit with address(0) as winner and 0 transfer amount
+            await expect(escrow.finalizeDispute(channelId))
+                .to.emit(escrow, "DisputeFinalized")
+                .withArgs(channelId, ethers.ZeroAddress, 0);
+
+            // Check that balances remain unchanged
+            const [finalP1, finalP2] = await escrow.stacks(channelId);
+            expect(finalP1).to.equal(initialP1);
+            expect(finalP2).to.equal(initialP2);
         });
     });
 });

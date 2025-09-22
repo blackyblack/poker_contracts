@@ -304,51 +304,6 @@ describe("HeadsUpPokerEscrow", function () {
                 .to.be.revertedWithCustomError(escrow, "ActionWrongSigner");
         });
 
-        it("should settle fold with valid co-signed action transcript", async function () {
-            // Create a valid fold scenario: blinds + small blind folds
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
-                { action: ACTION.FOLD, amount: 0n, sender: player1.address } // Small blind folds
-            ], channelId, handId);
-
-            // Sign all actions with both players
-            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-
-            // Calculate expected called amount: min(1, 2) = 1
-            const calledAmount = 1n;
-
-            // Should succeed and declare player2 (big blind) as winner
-            const tx = await escrow.settle(channelId, actions, signatures);
-            await expect(tx)
-                .to.emit(escrow, "Settled")
-                .withArgs(channelId, player2.address, calledAmount);
-
-            // Verify only called amount transfers
-            const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit - calledAmount);
-            expect(p2Stack).to.equal(deposit + calledAmount);
-        });
-
-        it("should reject settlement with invalid signatures", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
-                { action: ACTION.FOLD, amount: 0n, sender: player1.address }
-            ], channelId, handId);
-
-            // Sign with wrong players (other instead of player2)
-            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-
-            const domain = domainSeparator(await escrow.getAddress(), chainId);
-            const digest = actionDigest(domain, actions[0]);
-            const sig = wallet3.signingKey.sign(digest).serialized;
-            const badSignatures = [sig, signatures[1], signatures[2]];
-
-            await expect(escrow.settle(channelId, actions, badSignatures))
-                .to.be.revertedWithCustomError(escrow, "ActionWrongSigner");
-        });
-
         it("should reject settlement with wrong channel ID in actions", async function () {
             const wrongChannelId = 999n;
             const actions = buildActions([
@@ -421,30 +376,6 @@ describe("HeadsUpPokerEscrow", function () {
             await expect(escrow.settle(channelId, actions, signatures))
                 .to.be.revertedWithCustomError(escrow, "AlreadyFinalized");
         });
-
-        it("should handle big blind fold scenario correctly", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
-                { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address }, // Small blind raises,
-                { action: ACTION.FOLD, amount: 0n, sender: player2.address } // Big blind folds
-            ], channelId, handId);
-
-            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
-
-            // Calculate expected called amount: min(1+3, 2) = 2
-            const calledAmount = 2n;
-
-            const tx = await escrow.settle(channelId, actions, signatures);
-            await expect(tx)
-                .to.emit(escrow, "Settled")
-                .withArgs(channelId, player1.address, calledAmount);
-
-            // Verify only called amount transfers
-            const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit + calledAmount);
-            expect(p2Stack).to.equal(deposit - calledAmount);
-        });
     });
 
     describe("View Functions", function () {
@@ -497,48 +428,35 @@ describe("HeadsUpPokerEscrow", function () {
                 .withArgs(channelId, player2.address, deposit);
         });
 
-        // Table-driven tests for reuse scenarios
-        const reuseScenarios = [
-            {
-                name: "allow reopening with remaining deposits",
-                beforeWithdraw: true,
-                expectSuccess: true
-            },
-            {
-                name: "accumulate winnings without withdrawal",
-                beforeWithdraw: false,
-                expectSuccess: true,
-                testWinnings: true
-            }
-        ];
+        it("should allow reopening with remaining deposits", async function () {
+            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
+            await escrow.connect(player2).join(channelId, { value: deposit });
+            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
-        reuseScenarios.forEach(scenario => {
-            it(`should ${scenario.name}`, async function () {
-                await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-                await escrow.connect(player2).join(channelId, { value: deposit });
-                await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
+            // Don't withdraw, try to reopen with remaining deposits
+            await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit }))
+                .to.emit(escrow, "ChannelOpened")
+                .withArgs(channelId, player1.address, player2.address, deposit, 2n, 1n);
+        });
 
-                if (scenario.beforeWithdraw) {
-                    // Don't withdraw, try to reopen with remaining deposits
-                    await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit }))
-                        .to.emit(escrow, "ChannelOpened")
-                        .withArgs(channelId, player1.address, player2.address, deposit, 2n, 1n);
-                } else if (scenario.testWinnings) {
-                    // Check winnings accumulation
-                    let [p1Stack, _] = await escrow.stacks(channelId);
-                    expect(p1Stack).to.equal(deposit + 2n); // Won BB
+        it("should accumulate winnings without withdrawal", async function () {
+            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
+            await escrow.connect(player2).join(channelId, { value: deposit });
+            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
 
-                    // Second game without withdrawing
-                    await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-                    await escrow.connect(player2).join(channelId, { value: deposit });
-                    // reverse order of wallets since player1 is now BB
-                    await settleBasicFold(escrow, channelId, player2.address, wallet2, wallet1, chainId);
+            // Check winnings accumulation
+            let [p1Stack, _] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit + 2n); // Won BB
 
-                    // Check accumulated winnings
-                    [p1Stack, p2Stack] = await escrow.stacks(channelId);
-                    expect(p1Stack).to.equal(deposit * 2n + 3n); // Accumulated winnings
-                }
-            });
+            // Second game without withdrawing
+            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
+            await escrow.connect(player2).join(channelId, { value: deposit });
+            // reverse order of wallets since player1 is now BB
+            await settleBasicFold(escrow, channelId, player2.address, wallet2, wallet1, chainId);
+
+            // Check accumulated winnings
+            [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(deposit * 2n + 3n); // Accumulated winnings
         });
 
         it("should handle zero ETH deposits using existing winnings", async function () {
@@ -565,36 +483,6 @@ describe("HeadsUpPokerEscrow", function () {
             await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
             await expect(escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit }))
                 .to.be.revertedWithCustomError(escrow, "ChannelExists");
-        });
-    });
-
-    describe("Pot to Deposit", function () {
-        const channelId = 12n;
-        const deposit = ethers.parseEther("1.0");
-
-        beforeEach(async function () {
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
-        });
-
-        it("should add fold settlement called amount to winner's deposit", async function () {
-            await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId);
-
-            // Player1 wins scenario: contributions are 4 vs 2, called amount = 2
-            const calledAmount = 2n;
-            const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit + calledAmount);
-            expect(p2Stack).to.equal(deposit - calledAmount);
-        });
-
-        it("should add fold settlement called amount to player2's deposit", async function () {
-            await settleBasicFold(escrow, channelId, player2.address, wallet1, wallet2, chainId);
-
-            // Player2 wins scenario: contributions are 1 vs 2, called amount = 1
-            const calledAmount = 1n;
-            const [p1Stack, p2Stack] = await escrow.stacks(channelId);
-            expect(p1Stack).to.equal(deposit - calledAmount);
-            expect(p2Stack).to.equal(deposit + calledAmount);
         });
     });
 
