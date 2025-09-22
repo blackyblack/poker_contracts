@@ -24,12 +24,12 @@ function buildActions(specs, channelId = 1n, handId = 1n) {
     let seq = 0;
     let prevHash = handGenesis(channelId, handId);
     const actions = [];
-    
+
     for (const spec of specs) {
         if (!spec.sender) {
             throw new Error(`Action at index ${seq} must have an explicit sender address`);
         }
-        
+
         const act = {
             channelId,
             handId,
@@ -46,76 +46,6 @@ function buildActions(specs, channelId = 1n, handId = 1n) {
 }
 
 /**
- * Helper to build standard blinds actions
- * @param {bigint} sbAmount - Small blind amount
- * @param {bigint} bbAmount - Big blind amount  
- * @param {address} player1 - Player 1 address (small blind for handId % 2 == 1)
- * @param {address} player2 - Player 2 address
- * @param {bigint} handId - Hand ID to determine dealer position (default: 1n)
- * @param {bigint} channelId - Channel ID (default: 1n)
- * @returns {Array} Array of blind actions
- */
-function buildBlinds(sbAmount, bbAmount, player1, player2, handId = 1n, channelId = 1n) {
-    // In heads-up, dealer is small blind
-    // handId % 2 determines dealer: 1 = player1, 0 = player2
-    const isPlayer1Dealer = handId % 2n === 1n;
-    const sbPlayer = isPlayer1Dealer ? player1 : player2;
-    const bbPlayer = isPlayer1Dealer ? player2 : player1;
-    
-    return buildActions([
-        { action: ACTION.SMALL_BLIND, amount: sbAmount, sender: sbPlayer },
-        { action: ACTION.BIG_BLIND, amount: bbAmount, sender: bbPlayer }
-    ], channelId, handId);
-}
-
-/**
- * Helper to build a basic fold sequence (blinds + fold)
- * @param {address} folder - Address of the player who folds
- * @param {address} player1 - Player 1 address
- * @param {address} player2 - Player 2 address
- * @param {bigint} handId - Hand ID (default: 1n)
- * @param {bigint} channelId - Channel ID (default: 1n)
- * @returns {Array} Array of actions ending in fold
- */
-function buildFoldSequence(folder, player1, player2, handId = 1n, channelId = 1n) {
-    const blinds = buildBlinds(1n, 2n, player1, player2, handId, channelId);
-    const foldAction = buildActions([
-        { action: ACTION.FOLD, amount: 0n, sender: folder }
-    ], channelId, handId);
-    foldAction[0].seq = 2;
-    foldAction[0].prevHash = blinds[1] ? actionHash(blinds[1]) : blinds[0] ? actionHash(blinds[0]) : handGenesis(channelId, handId);
-    
-    return [...blinds, ...foldAction];
-}
-
-/**
- * Helper to build a check-down sequence (blinds + checks to showdown)
- * @param {address} player1 - Player 1 address
- * @param {address} player2 - Player 2 address
- * @param {bigint} handId - Hand ID (default: 1n) 
- * @param {bigint} channelId - Channel ID (default: 1n)
- * @returns {Array} Array of actions leading to showdown
- */
-function buildCheckDownSequence(player1, player2, handId = 1n, channelId = 1n) {
-    // Start with blinds
-    const isPlayer1Dealer = handId % 2n === 1n;
-    const sbPlayer = isPlayer1Dealer ? player1 : player2;
-    const bbPlayer = isPlayer1Dealer ? player2 : player1;
-    
-    return buildActions([
-        { action: ACTION.SMALL_BLIND, amount: 1n, sender: sbPlayer },
-        { action: ACTION.BIG_BLIND, amount: 2n, sender: bbPlayer },
-        { action: ACTION.CHECK_CALL, amount: 0n, sender: sbPlayer }, // SB calls
-        { action: ACTION.CHECK_CALL, amount: 0n, sender: bbPlayer }, // BB checks (flop)
-        { action: ACTION.CHECK_CALL, amount: 0n, sender: bbPlayer }, // BB checks (first to act postflop)
-        { action: ACTION.CHECK_CALL, amount: 0n, sender: sbPlayer }, // SB checks
-        { action: ACTION.CHECK_CALL, amount: 0n, sender: bbPlayer }, // BB checks (turn)
-        { action: ACTION.CHECK_CALL, amount: 0n, sender: sbPlayer }, // SB checks  
-        { action: ACTION.CHECK_CALL, amount: 0n, sender: bbPlayer }  // BB checks (river -> showdown)
-    ], channelId, handId);
-}
-
-/**
  * Helper to sign actions
  * @param {Array} actions - Array of actions to sign
  * @param {Array} signers - Array of wallet signers  
@@ -129,7 +59,7 @@ async function signActions(actions, signers, contractAddress, chainId) {
 
     for (const action of actions) {
         const digest = actionDigest(domain, action);
-        
+
         // Find which signer matches the action sender
         let signer = null;
         for (const s of signers) {
@@ -138,11 +68,11 @@ async function signActions(actions, signers, contractAddress, chainId) {
                 break;
             }
         }
-        
+
         if (!signer) {
             throw new Error(`No signer found for sender ${action.sender}`);
         }
-        
+
         const sig = signer.signingKey.sign(digest).serialized;
         signatures.push(sig);
     }
@@ -219,9 +149,6 @@ module.exports = {
     wallet2,
     wallet3,
     buildActions,
-    buildBlinds,
-    buildFoldSequence,
-    buildCheckDownSequence,
     signActions,
     signCardCommit,
     buildCardCommit,

@@ -44,6 +44,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error NotOpponent();
     error AlreadyJoined();
     error AlreadyFinalized();
+    error DepositExceedsOpponent();
     error ShowdownInProgress();
     error NotPlayer();
     error SignatureLengthMismatch();
@@ -129,6 +130,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 minSmallBlind
     );
     event ChannelJoined(
+        uint256 indexed channelId,
+        address indexed player,
+        uint256 amount
+    );
+    event ChannelTopUp(
         uint256 indexed channelId,
         address indexed player,
         uint256 amount
@@ -275,11 +281,27 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit ChannelJoined(channelId, msg.sender, msg.value);
     }
 
+    /// @notice Allows player1 to top up their deposit after player2 has joined
+    /// @dev Player1's total deposit after top up cannot exceed player2's total deposit
+    function topUp(uint256 channelId) external payable nonReentrant {
+        Channel storage ch = channels[channelId];
+        if (ch.player1 == address(0)) revert NoChannel();
+        if (msg.sender != ch.player1) revert NotPlayer();
+        if (ch.finalized) revert AlreadyFinalized();
+        if (!ch.player2Joined) revert ChannelNotReady();
+        if (msg.value == 0) revert NoDeposit();
+        if (ch.deposit1 + msg.value > ch.deposit2) revert DepositExceedsOpponent();
+
+        ch.deposit1 += msg.value;
+
+        emit ChannelTopUp(channelId, msg.sender, msg.value);
+    }
+
     /// @notice Settles terminal action sequences (Fold or Showdown)
-    /// @dev Currently only supports Fold endings. Showdown endings redirect to showdown mechanism.
+    /// @dev Showdown endings redirect to showdown mechanism.
     /// @param channelId The channel identifier
-    /// @param actions Array of co-signed actions representing the poker hand
-    /// @param signatures Array of signatures (2 per action: player1, player2)
+    /// @param actions Array of actions representing the poker hand
+    /// @param signatures Array of signatures for corresponding actions (signed by the sender of each action)
     function settle(
         uint256 channelId,
         Action[] calldata actions,
@@ -333,8 +355,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     /// @notice Start or extend a dispute with a non-terminal action sequence
     /// @dev Verifies signatures and projects end state. Longer sequences reset the timer.
     /// @param channelId The channel identifier
-    /// @param actions Array of co-signed actions representing the poker hand
-    /// @param signatures Array of signatures (2 per action: player1, player2)
+    /// @param actions Array of actions representing the poker hand
+    /// @param signatures Array of signatures for corresponding actions (signed by the sender of each action)
     function dispute(
         uint256 channelId,
         Action[] calldata actions,
@@ -351,11 +373,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         // Verify signatures for all actions
         _verifyActionSignatures(channelId, ch.handId, actions, signatures, ch.player1, ch.player2);
         
-        // Check if this is starting a new dispute or extending an existing one
-        if (ds.inProgress) {
-            // Must provide a longer sequence to extend dispute
-            if (actions.length <= ds.actionCount) revert SequenceNotLonger();
-        }
+        // Must provide a longer sequence to extend dispute
+        if (ds.inProgress && actions.length <= ds.actionCount) revert SequenceNotLonger();
         
         // Replay actions to get projected end state (handles both terminal and non-terminal)
         (HeadsUpPokerReplay.End endType, uint8 folder, uint256 calledAmount) = replay.replayIncompleteGame(
@@ -448,11 +467,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (digest.recover(sigB) != addrB) revert CommitWrongSignerB(slot);
     }
 
-    /// @notice Verifies that all actions are co-signed by both players
+    /// @notice Verifies that all actions are signed by the action sender
     /// @param channelId The channel identifier 
     /// @param handId The hand identifier
     /// @param actions Array of actions to verify
-    /// @param signatures Array of signatures (2 per action: player1, player2)
+    /// @param signatures Array of signatures of the corresponding actions (signed by the sender of each action)
     /// @param player1 Address of player1
     /// @param player2 Address of player2
     function _verifyActionSignatures(
@@ -486,11 +505,12 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     // Applies a batch of card commits/openings.
-    function _applyCardCommitUpdate(
+    /// @param signatures Array of signatures of cards (signed by player1 and player2)
+    function _applyCardCommit(
         uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata commits,
-        bytes[] calldata sigs,
-        uint8[] calldata cardCodes,
+        HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
+        bytes[] calldata signatures,
+        uint8[] calldata cards,
         bytes32[] calldata cardSalts
     ) internal {
         Channel storage ch = channels[channelId];
@@ -499,16 +519,16 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address addrA = ch.player1;
         address addrB = ch.player2;
 
-        if (commits.length * 2 != sigs.length) revert SignatureLengthMismatch();
-        if (commits.length != cardCodes.length) revert CardsLengthMismatch();
-        if (commits.length != cardSalts.length) revert CardSaltsLengthMismatch();
+        if (cardCommits.length * 2 != signatures.length) revert SignatureLengthMismatch();
+        if (cardCommits.length != cards.length) revert CardsLengthMismatch();
+        if (cardCommits.length != cardSalts.length) revert CardSaltsLengthMismatch();
 
         bytes32 domainSeparator = _domainSeparatorV4();
 
         uint16 mask = sd.lockedCommitMask;
         uint16 seenMask;
-        for (uint256 i = 0; i < commits.length; i++) {
-            HeadsUpPokerEIP712.CardCommit calldata cc = commits[i];
+        for (uint256 i = 0; i < cardCommits.length; i++) {
+            HeadsUpPokerEIP712.CardCommit calldata cc = cardCommits[i];
             uint8 slot = cc.slot;
             uint16 bit = uint16(1) << slot;
 
@@ -516,7 +536,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             if ((seenMask & bit) == bit) revert CommitDuplicate(slot);
             seenMask |= bit;
 
-            uint8 code = cardCodes[i];
+            uint8 code = cards[i];
             if (code == 0xFF) continue;
 
             if (mask & bit == bit) continue; // already locked, skip
@@ -527,8 +547,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             _checkSigners(
                 slot,
                 digest,
-                sigs[i * 2],
-                sigs[i * 2 + 1],
+                signatures[i * 2],
+                signatures[i * 2 + 1],
                 addrA,
                 addrB
             );
@@ -626,11 +646,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return disputes[channelId];
     }
 
-    /// @notice Get the dispute window duration
-    function getDisputeWindow() external pure returns (uint256) {
-        return disputeWindow;
-    }
-
     /// @notice Initiates showdown state
     /// @dev Sets up showdown state without requiring initial card commits
     /// @param channelId The channel identifier
@@ -654,31 +669,31 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     /// @notice Reveal additional cards and/or commits during reveal window
     function revealCards(
         uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata commits,
-        bytes[] calldata sigs,
-        uint8[] calldata cardCodes,
+        HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
+        bytes[] calldata signatures,
+        uint8[] calldata cards,
         bytes32[] calldata cardSalts
     ) external nonReentrant {
-        revealCardsInternal(channelId, commits, sigs, cardCodes, cardSalts, msg.sender);
+        revealCardsInternal(channelId, cardCommits, signatures, cards, cardSalts, msg.sender);
     }
 
     /// @notice Reveal cards on behalf of a player
     function revealCardsOnBehalfOf(
         uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata commits,
-        bytes[] calldata sigs,
-        uint8[] calldata cardCodes,
+        HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
+        bytes[] calldata signatures,
+        uint8[] calldata cards,
         bytes32[] calldata cardSalts,
         address onBehalfOf
     ) external nonReentrant {
-        revealCardsInternal(channelId, commits, sigs, cardCodes, cardSalts, onBehalfOf);
+        revealCardsInternal(channelId, cardCommits, signatures, cards, cardSalts, onBehalfOf);
     }
 
     function revealCardsInternal(
         uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata commits,
-        bytes[] calldata sigs,
-        uint8[] calldata cardCodes,
+        HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
+        bytes[] calldata signatures,
+        uint8[] calldata cards,
         bytes32[] calldata cardSalts,
         address onBehalfOf
     ) internal {
@@ -691,11 +706,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         if (block.timestamp > sd.deadline) revert Expired();
 
-        _applyCardCommitUpdate(
+        _applyCardCommit(
             channelId,
-            commits,
-            sigs,
-            cardCodes,
+            cardCommits,
+            signatures,
+            cards,
             cardSalts
         );
         emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask);

@@ -474,6 +474,8 @@ contract HeadsUpPokerReplay {
         return (End.SHOWDOWN, 0, calledAmount);
     }
 
+    // NOTE: this is a copy of hashing of the Action from HeadsUpPokerEIP712.digestAction.
+    //       We do not reuse it since it's too small to inherit from the EIP712 contract to access it.
     function _hashAction(Action calldata act) private pure returns (bytes32) {
         return
             keccak256(

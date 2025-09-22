@@ -3,12 +3,11 @@ const { ethers } = require("hardhat");
 const { ACTION } = require("../helpers/actions");
 const { actionHash } = require("../helpers/hashes");
 const { buildActions } = require("../helpers/test-utils");
-const { send } = require("process");
 
 describe("HeadsUpPokerReplay", function () {
     let replay;
 
-    // Default test player addresses (matching test-utils.js defaults)
+    // Default test player addresses
     const player1 = "0x1000000000000000000000000000000000000001";
     const player2 = "0x2000000000000000000000000000000000000002";
 
