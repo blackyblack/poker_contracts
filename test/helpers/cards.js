@@ -78,17 +78,17 @@ const CARD = {
     KC: makeCard(0, 13), // King of Clubs
     QC: makeCard(0, 12), // Queen of Clubs
     JC: makeCard(0, 11), // Jack of Clubs
-    
+
     AD: makeCard(1, 1), // Ace of Diamonds
     KD: makeCard(1, 13), // King of Diamonds
     QD: makeCard(1, 12), // Queen of Diamonds
     JD: makeCard(1, 11), // Jack of Diamonds
-    
+
     AH: makeCard(2, 1), // Ace of Hearts
     KH: makeCard(2, 13), // King of Hearts
     QH: makeCard(2, 12), // Queen of Hearts
     JH: makeCard(2, 11), // Jack of Hearts
-    
+
     AS: makeCard(3, 1), // Ace of Spades
     KS: makeCard(3, 13), // King of Spades
     QS: makeCard(3, 12), // Queen of Spades

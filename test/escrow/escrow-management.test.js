@@ -180,6 +180,54 @@ describe("HeadsUpPokerEscrow", function () {
         });
     });
 
+    describe("Channel Top Up", function () {
+        const channelId = 5n;
+        const player1Deposit = ethers.parseEther("1.0");
+        const player2Deposit = ethers.parseEther("2.0");
+        const topUpAmount = ethers.parseEther("1.0");
+
+        beforeEach(async function () {
+            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: player1Deposit });
+            await escrow.connect(player2).join(channelId, { value: player2Deposit });
+        });
+
+        it("should allow player1 to top up to match player2's deposit", async function () {
+            await expect(escrow.connect(player1).topUp(channelId, { value: topUpAmount }))
+                .to.emit(escrow, "ChannelTopUp")
+                .withArgs(channelId, player1.address, topUpAmount);
+
+            const [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(player1Deposit + topUpAmount);
+            expect(p2Stack).to.equal(player2Deposit);
+        });
+
+        it("should revert when top up would exceed player2 deposit", async function () {
+            const excessiveTopUp = ethers.parseEther("1.1");
+            await expect(escrow.connect(player1).topUp(channelId, { value: excessiveTopUp }))
+                .to.be.revertedWithCustomError(escrow, "DepositExceedsOpponent");
+        });
+
+        it("should revert when player2 has not joined yet", async function () {
+            const newChannelId = 6n;
+            await escrow
+                .connect(player1)
+                .open(newChannelId, player2.address, 1n, { value: player1Deposit });
+
+            await expect(escrow.connect(player1).topUp(newChannelId, { value: topUpAmount }))
+                .to.be.revertedWithCustomError(escrow, "ChannelNotReady");
+        });
+
+        it("should revert when non-player1 tries to top up", async function () {
+            await expect(escrow.connect(player2).topUp(channelId, { value: topUpAmount }))
+                .to.be.revertedWithCustomError(escrow, "NotPlayer");
+        });
+
+        it("should revert when zero value top up provided", async function () {
+            await expect(escrow.connect(player1).topUp(channelId))
+                .to.be.revertedWithCustomError(escrow, "NoDeposit");
+        });
+    });
+
     describe("Fold Settlement", function () {
         const channelId = 3n;
         const handId = 1n; // Use the handId from the channel

@@ -172,7 +172,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         });
 
         it("should return correct dispute window", async function () {
-            const window = await escrow.getDisputeWindow();
+            const window = await escrow.disputeWindow();
             expect(window).to.equal(3600); // 1 hour in seconds
         });
 
