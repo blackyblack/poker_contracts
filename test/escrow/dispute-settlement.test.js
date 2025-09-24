@@ -243,6 +243,8 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
             await ethers.provider.send("evm_increaseTime", [nearExpirationDelay]);
             await ethers.provider.send("evm_mine");
 
+            // Note that this dispute extension can continue till the end of the game,
+            // so the worst case dispute resolution can take hours if players keep extending.
             const extendedActions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
                 { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
