@@ -224,6 +224,57 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
                 .to.be.revertedWithCustomError(escrow, "DisputeStillActive");
         });
 
+        it("should handle last-minute dispute extensions before finalization", async function () {
+            const window = await escrow.disputeWindow();
+            const handId = await escrow.getHandId(channelId);
+
+            const initialActions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address }
+            ], channelId, handId);
+            const initialSignatures = await signActions(initialActions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+
+            await escrow.dispute(channelId, initialActions, initialSignatures);
+
+            const initialDispute = await escrow.getDispute(channelId);
+            const initialDeadline = initialDispute.deadline;
+
+            const nearExpirationDelay = Math.max(Number(window) - 5, 1);
+            await ethers.provider.send("evm_increaseTime", [nearExpirationDelay]);
+            await ethers.provider.send("evm_mine");
+
+            // Note that this dispute extension can continue till the end of the game,
+            // so the worst case dispute resolution can take hours if players keep extending.
+            const extendedActions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+                { action: ACTION.BET_RAISE, amount: 3n, sender: player1.address },
+                { action: ACTION.FOLD, amount: 0n, sender: player2.address }
+            ], channelId, handId);
+            const extendedSignatures = await signActions(extendedActions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+
+            const extendTx = await escrow.dispute(channelId, extendedActions, extendedSignatures);
+            await expect(extendTx)
+                .to.emit(escrow, "DisputeExtended")
+                .withArgs(channelId, player1.address, extendedActions.length);
+
+            const extendedDispute = await escrow.getDispute(channelId);
+            expect(extendedDispute.actionCount).to.equal(extendedActions.length);
+            expect(extendedDispute.deadline).to.be.gt(initialDeadline);
+
+            await expect(escrow.finalizeDispute(channelId))
+                .to.be.revertedWithCustomError(escrow, "DisputeStillActive");
+
+            await ethers.provider.send("evm_increaseTime", [Number(window) + 1]);
+            await ethers.provider.send("evm_mine");
+
+            const finalizeTx = await escrow.finalizeDispute(channelId);
+            await expect(finalizeTx).to.emit(escrow, "DisputeFinalized");
+
+            const postDispute = await escrow.getDispute(channelId);
+            expect(postDispute.inProgress).to.be.false;
+        });
+
         it("should finalize dispute without blinds with no fund transfer", async function () {
             const window = await escrow.disputeWindow();
             // Get initial balances
