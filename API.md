@@ -15,7 +15,7 @@ This is the primary contract that tracks channel balances, enforces signed actio
 
 ### Constants
 - `revealWindow` – duration players have to reveal cards during a showdown (currently 1 hour).
-- `disputeWindow` – time allowed for submitting longer action histories in a dispute (currently 1 hour).【F:src/HeadsUpPokerEscrow.sol†L24-L25】
+- `disputeWindow` – time allowed for submitting longer action histories in a dispute (currently 1 hour).
 
 ### Events
 Backends can subscribe to these topics to react to state transitions:
@@ -23,43 +23,43 @@ Backends can subscribe to these topics to react to state transitions:
 - `Settled`, `ShowdownStarted`, `ShowdownFinalized`, `CommitsUpdated`
 - `DisputeStarted`, `DisputeExtended`, `DisputeFinalized`
 - `Withdrawn`
-Each event carries the channel id and relevant payload such as participant, amount, or the updated commit mask.【F:src/HeadsUpPokerEscrow.sol†L121-L177】
+Each event carries the channel id and relevant payload such as participant, amount, or the updated commit mask.
 
 ### Read-only helpers
-- `stacks(channelId)` → `(uint256 p1, uint256 p2)`: returns current escrowed balances for both seats.【F:src/HeadsUpPokerEscrow.sol†L182-L187】
-- `getHandId(channelId)` → `uint256`: current hand counter used to salt commitments and action chains.【F:src/HeadsUpPokerEscrow.sol†L189-L192】
-- `getMinSmallBlind(channelId)` → `uint256`: minimum small blind enforced for the channel.【F:src/HeadsUpPokerEscrow.sol†L194-L199】
-- `getShowdown(channelId)` → `ShowdownState`: inspect reveal deadlines, board/hole cards revealed so far, and the commit bitmask.【F:src/HeadsUpPokerEscrow.sol†L680-L689】
-- `getDispute(channelId)` → `DisputeState`: view current dispute deadlines and projected outcomes.【F:src/HeadsUpPokerEscrow.sol†L680-L689】
+- `stacks(channelId)` -> `(uint256 p1, uint256 p2)`: returns current escrowed balances for both seats.
+- `getHandId(channelId)` -> `uint256`: current hand counter used to salt commitments and action chains.
+- `getMinSmallBlind(channelId)` -> `uint256`: minimum small blind enforced for the channel.
+- `getShowdown(channelId)` -> `ShowdownState`: inspect reveal deadlines, board/hole cards revealed so far, and the commit bitmask.
+- `getDispute(channelId)` -> `DisputeState`: view current dispute deadlines and projected outcomes.
 
 ### Channel lifecycle
-- `open(channelId, opponent, minSmallBlind)` (payable): seat player 1, set the opponent address, optionally deposit ETH, and start a new hand id. Reuses existing balances when reopening a finished channel and resets showdown/dispute state.【F:src/HeadsUpPokerEscrow.sol†L227-L276】
-- `join(channelId)` (payable): opponent matches deposits to activate the channel. Allows zero value only if previous winnings already left funds in escrow.【F:src/HeadsUpPokerEscrow.sol†L278-L292】
-- `topUp(channelId)` (payable): lets player 1 add funds after player 2 has joined, but never beyond player 2’s total escrowed balance.【F:src/HeadsUpPokerEscrow.sol†L294-L309】
+- `open(channelId, opponent, minSmallBlind)` (payable): seat player 1, set the opponent address, optionally deposit ETH, and start a new hand id. Reuses existing balances when reopening a finished channel and resets showdown/dispute state.
+- `join(channelId)` (payable): opponent deposits ETH to activate the channel. Allows zero value only if previous winnings already left funds in escrow.
+- `topUp(channelId)` (payable): lets player 1 add funds after player 2 has joined, but never beyond player 2’s total escrowed balance.
 
 ### Settlement and disputes
-- `settle(channelId, actions, signatures)`: verifies a fully signed terminal action history. Fold endings settle immediately; showdown endings transition into the reveal phase with a locked called amount.【F:src/HeadsUpPokerEscrow.sol†L311-L375】
-- `dispute(channelId, actions, signatures)`: submit or extend a non-terminal history to keep funds safe while players continue the game off-chain. Longer histories reset the dispute timer and store the projected result derived from `HeadsUpPokerReplay`.【F:src/HeadsUpPokerEscrow.sol†L377-L437】
-- `finalizeDispute(channelId)`: after the dispute window expires, materialize the stored projection—either finalize a fold payout or trigger the showdown reveal flow for incomplete games.【F:src/HeadsUpPokerEscrow.sol†L439-L485】
+- `settle(channelId, actions, signatures)`: verifies a fully signed terminal action history. Fold endings settle immediately; showdown endings transition into the reveal phase with a locked called amount.
+- `dispute(channelId, actions, signatures)`: submit or extend a non-terminal history to force stale players continue the game off-chain. Longer histories reset the dispute timer and store the projected result derived from `HeadsUpPokerReplay`.
+- `finalizeDispute(channelId)`: after the dispute window expires finalize a fold payout or trigger the showdown reveal flow for incomplete games.
 
 ### Showdown management
-- `revealCards(channelId, cardCommits, signatures, cards, cardSalts)` / `revealCardsOnBehalfOf(...)`: during the reveal window, submit batched card openings signed by both players. Successfully verified openings update the commit mask and may auto-finalize when all nine slots are revealed.【F:src/HeadsUpPokerEscrow.sol†L715-L771】
-- `finalizeShowdown(channelId)`: once the reveal window elapses, pay the pot to whichever player revealed while the other did not, or declare a tie if neither side showed valid cards.【F:src/HeadsUpPokerEscrow.sol†L774-L799】
+- `revealCards(channelId, cardCommits, signatures, cards, cardSalts)` / `revealCardsOnBehalfOf(...)`: during the reveal window, submit batched card openings signed by both players. Successfully verified openings update the commit mask and may auto-finalize when all nine slots are revealed.
+- `finalizeShowdown(channelId)`: once the reveal window elapses, pay the pot to whichever player revealed while the other did not, or declare a tie if neither side showed valid cards.
 
 ### Withdrawals
-- `withdraw(channelId)`: after a hand has been finalized, each player can pull their remaining escrow. The function zeroes their stored balance and emits `Withdrawn` on success.【F:src/HeadsUpPokerEscrow.sol†L201-L221】
+- `withdraw(channelId)`: after a hand has been finalized, each player can pull their remaining escrow. The function zeroes their stored balance and emits `Withdrawn` on success.
 
 ## `HeadsUpPokerEIP712`
 This helper contract exposes EIP-712 hash builders so the backend can mirror the exact digests used on-chain:
-- `DOMAIN_SEPARATOR()` returns the live EIP-712 domain separator.【F:src/HeadsUpPokerEIP712.sol†L54-L55】
-- `digestAction(Action act)` produces the typed-data hash for an action before signing.【F:src/HeadsUpPokerEIP712.sol†L61-L75】
-- `digestCardCommit(CardCommit cc)` produces the typed-data hash for a card commitment.【F:src/HeadsUpPokerEIP712.sol†L77-L91】
-- `recoverActionSigner(Action act, bytes sig)` and `recoverCommitSigner(CardCommit cc, bytes sig)` are convenience views that recover the signer from a provided signature, mirroring how the escrow verifies them.【F:src/HeadsUpPokerEIP712.sol†L96-L108】
+- `DOMAIN_SEPARATOR()` returns the live EIP-712 domain separator.
+- `digestAction(Action act)` produces the typed-data hash for an action before signing.
+- `digestCardCommit(CardCommit cc)` produces the typed-data hash for a card commitment.
+- `recoverActionSigner(Action act, bytes sig)` and `recoverCommitSigner(CardCommit cc, bytes sig)` are convenience views that recover the signer from a provided signature, mirroring how the escrow verifies them.
 
 ## `HeadsUpPokerReplay`
 `HeadsUpPokerReplay` deterministically replays signed action sequences to classify outcomes and compute the called amount that should change hands. It is deployed from `HeadsUpPokerEscrow` and can also be used off-chain to validate transcripts.
 
-- `replayGame(actions, stackA, stackB, minSmallBlind, player1, player2)` → `(End end, uint8 folder, uint256 calledAmount)`: fully validates a complete hand, requiring the sequence to include blinds and terminate (fold or showdown). It returns the ending type, the folder index when applicable, and the amount that moved into the pot.【F:src/HeadsUpPokerReplay.sol†L412-L438】
-- `replayIncompleteGame(actions, stackA, stackB, minSmallBlind, player1, player2)` → `(End end, uint8 folder, uint256 calledAmount)`: accepts prefixes of a hand, determines whether the current state implies a fold or pending showdown, and returns the same metadata plus the minimum contributed amount per player. Used to project outcomes during disputes.【F:src/HeadsUpPokerReplay.sol†L440-L475】
+- `replayGame(actions, stackA, stackB, minSmallBlind, player1, player2)` -> `(End end, uint8 folder, uint256 calledAmount)`: fully validates a complete hand, requiring the sequence to include blinds and terminate (fold or showdown). It returns the ending type, the folder index when applicable, and the amount that moved into the pot.
+- `replayIncompleteGame(actions, stackA, stackB, minSmallBlind, player1, player2)` -> `(End end, uint8 folder, uint256 calledAmount)`: accepts prefixes of a hand, determines whether the current state implies a fold or pending showdown, and returns the same metadata plus the minimum contributed amount per player. Used to project outcomes during disputes.
 
-The `End` enum enumerates the possible end states (`FOLD`, `SHOWDOWN`, `NO_BLINDS`), which backend code can use to branch its settlement logic.【F:src/HeadsUpPokerReplay.sol†L7-L24】
+The `End` enum enumerates the possible end states (`FOLD`, `SHOWDOWN`, `NO_BLINDS`), which backend code can use to branch its settlement logic.
