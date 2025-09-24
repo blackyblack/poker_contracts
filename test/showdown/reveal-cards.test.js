@@ -409,6 +409,7 @@ describe("Showdown - revealCards", function () {
             sigsP2.push(sigs[i * 2], sigs[i * 2 + 1]);
         });
 
+        // player1 reveals first but only one hole card, then player2 reveals both holes
         await escrow
             .connect(player2)
             .revealCards(channelId, commitsP2, sigsP2, codesP2, saltsP2);
