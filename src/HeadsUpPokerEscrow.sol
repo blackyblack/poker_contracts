@@ -729,14 +729,18 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bool aRevealed = sd.cards[SLOT_A1] != 0xFF && sd.cards[SLOT_A2] != 0xFF;
         bool bRevealed = sd.cards[SLOT_B1] != 0xFF && sd.cards[SLOT_B2] != 0xFF;
 
-        uint256 wonAmount = sd.calledAmount;
         address winner = ch.player1;
+        uint256 wonAmount;
+
         if (aRevealed && bRevealed) {
             wonAmount = 0; // tie if both revealed but failed to provide board cards
         } else if (aRevealed) {
-            winner = ch.player1;
+            wonAmount = sd.calledAmount;
         } else if (bRevealed) {
             winner = ch.player2;
+            wonAmount = sd.calledAmount;
+        } else {
+            wonAmount = 0; // neither player revealed any cards
         }
 
         _rewardWinner(channelId, winner, wonAmount);

@@ -337,6 +337,24 @@ describe("Showdown - revealCards", function () {
         expect(finalBalance).to.be.greaterThan(initialBalance);
     });
 
+    it("should result in tie when no cards are revealed", async () => {
+        const window = await escrow.revealWindow();
+
+        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
+
+        const [initialBalance1, initialBalance2] = await escrow.stacks(channelId);
+
+        await ethers.provider.send("evm_increaseTime", [Number(window) + 1]);
+        await ethers.provider.send("evm_mine");
+
+        await escrow.finalizeShowdown(channelId);
+
+        const [finalBalance1, finalBalance2] = await escrow.stacks(channelId);
+
+        expect(finalBalance1).to.equal(initialBalance1);
+        expect(finalBalance2).to.equal(initialBalance2);
+    });
+
     it("should result in tie when both players reveal holes but board incomplete", async () => {
         const { commits, sigs, myHole, mySalts, oppHole, oppSalts } = await setup();
         const window = await escrow.revealWindow();
@@ -361,6 +379,51 @@ describe("Showdown - revealCards", function () {
 
         const [finalBalance,] = await escrow.stacks(channelId);
         expect(finalBalance).to.be.equal(initialBalance);
+    });
+
+    it("should reward opponent when only they reveal both hole cards", async () => {
+        const { commits, sigs, startCodesP1, startSaltsP1, startCodesP2, startSaltsP2 } = await setup();
+        const window = await escrow.revealWindow();
+
+        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
+
+        const revealIndicesP1 = [0, 4, 5, 6, 7, 8];
+        const commitsP1 = revealIndicesP1.map(i => commits[i]);
+        const codesP1 = revealIndicesP1.map(i => startCodesP1[i]);
+        const saltsP1 = revealIndicesP1.map(i => startSaltsP1[i]);
+        const sigsP1 = [];
+        revealIndicesP1.forEach(i => {
+            sigsP1.push(sigs[i * 2], sigs[i * 2 + 1]);
+        });
+
+        await escrow
+            .connect(player1)
+            .revealCards(channelId, commitsP1, sigsP1, codesP1, saltsP1);
+
+        const revealIndicesP2 = [2, 3];
+        const commitsP2 = revealIndicesP2.map(i => commits[i]);
+        const codesP2 = revealIndicesP2.map(i => startCodesP2[i]);
+        const saltsP2 = revealIndicesP2.map(i => startSaltsP2[i]);
+        const sigsP2 = [];
+        revealIndicesP2.forEach(i => {
+            sigsP2.push(sigs[i * 2], sigs[i * 2 + 1]);
+        });
+
+        await escrow
+            .connect(player2)
+            .revealCards(channelId, commitsP2, sigsP2, codesP2, saltsP2);
+
+        await ethers.provider.send("evm_increaseTime", [Number(window) + 1]);
+        await ethers.provider.send("evm_mine");
+
+        const [initialBalance1, initialBalance2] = await escrow.stacks(channelId);
+
+        await escrow.finalizeShowdown(channelId);
+
+        const [finalBalance1, finalBalance2] = await escrow.stacks(channelId);
+
+        expect(finalBalance2).to.be.greaterThan(initialBalance2);
+        expect(finalBalance1).to.be.lessThan(initialBalance1);
     });
 
     it("allows third party to submit additional commits on behalf of player", async () => {
