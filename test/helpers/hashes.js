@@ -1,4 +1,5 @@
 const { ethers } = require("ethers");
+const crypto = require("crypto");
 
 const ZERO32 = "0x" + "00".repeat(32);
 
@@ -103,6 +104,40 @@ function actionDigest(dom, action) {
     );
 }
 
+/**
+ * Derive A-specific cryptographic parameters from handKey and cardId
+ * @param {string} handKeyA - 32-byte hex string hand key for player A
+ * @param {number} cardId - Card identifier (0-51 for standard deck)
+ * @returns {Object} Object containing { uid, label, kA, nonceA }
+ */
+function deriveA(handKeyA, cardId) {
+    // Ensure handKeyA is a proper hex string
+    const keyBuffer = Buffer.from(handKeyA.replace('0x', ''), 'hex');
+    
+    // uid = HMAC(handKeyA, "uid|"+cardId)
+    const uidMessage = `uid|${cardId}`;
+    const uid = crypto.createHmac('sha256', keyBuffer).update(uidMessage, 'utf8').digest();
+    
+    // label = SHA256(uid) (32B)
+    const label = crypto.createHash('sha256').update(uid).digest();
+    
+    // kA = HMAC(handKeyA, "Akey|"+label) (32B)
+    const kAMessage = Buffer.concat([Buffer.from('Akey|', 'utf8'), label]);
+    const kA = crypto.createHmac('sha256', keyBuffer).update(kAMessage).digest();
+    
+    // nonceA = HMAC(handKeyA, "Anon|"+label)[0..11] (12B)
+    const nonceMessage = Buffer.concat([Buffer.from('Anon|', 'utf8'), label]);
+    const nonceFullHmac = crypto.createHmac('sha256', keyBuffer).update(nonceMessage).digest();
+    const nonceA = nonceFullHmac.subarray(0, 12);
+    
+    return {
+        uid: '0x' + uid.toString('hex'),
+        label: '0x' + label.toString('hex'),
+        kA: '0x' + kA.toString('hex'),
+        nonceA: '0x' + nonceA.toString('hex')
+    };
+}
+
 module.exports = {
     DOMAIN_TYPEHASH,
     ACTION_TYPEHASH,
@@ -116,5 +151,6 @@ module.exports = {
     cardCommitDigest,
     actionHash,
     actionDigest,
-    handGenesis
+    handGenesis,
+    deriveA
 };
