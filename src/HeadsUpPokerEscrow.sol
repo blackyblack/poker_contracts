@@ -110,6 +110,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 handId;
         bool player2Joined; // Track if player2 joined current hand
         uint256 minSmallBlind; // Minimum small blind amount for this channel
+        address player1Signer; // Optional additional signing address for player1
+        address player2Signer; // Optional additional signing address for player2
     }
 
     mapping(uint256 => Channel) private channels;
@@ -198,6 +200,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return channels[channelId].minSmallBlind;
     }
 
+    /// @notice Get the optional signing addresses for a channel
+    function getSigners(
+        uint256 channelId
+    ) external view returns (address player1Signer, address player2Signer) {
+        Channel storage ch = channels[channelId];
+        return (ch.player1Signer, ch.player2Signer);
+    }
+
     /// @notice Player withdraws their deposit from a finalized channel
     function withdraw(uint256 channelId) external nonReentrant {
         Channel storage ch = channels[channelId];
@@ -230,6 +240,16 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address opponent,
         uint256 minSmallBlind
     ) external payable nonReentrant returns (uint256 handId) {
+        return openWithSigner(channelId, opponent, minSmallBlind, address(0));
+    }
+
+    /// @notice Player1 opens a channel with an opponent by depositing ETH, optionally setting a signing address
+    function openWithSigner(
+        uint256 channelId,
+        address opponent,
+        uint256 minSmallBlind,
+        address player1Signer
+    ) public payable nonReentrant returns (uint256 handId) {
         Channel storage ch = channels[channelId];
         if (ch.player1 != address(0) && !ch.finalized) revert ChannelExists();
         if (opponent == address(0) || opponent == msg.sender)
@@ -248,6 +268,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ch.finalized = false;
         ch.player2Joined = false;
         ch.minSmallBlind = minSmallBlind;
+        ch.player1Signer = player1Signer;
 
         // Reset showdown state when reusing channel
         ShowdownState storage sd = showdowns[channelId];
@@ -277,6 +298,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     /// @notice Opponent joins an open channel by matching deposit
     function join(uint256 channelId) external payable nonReentrant {
+        joinWithSigner(channelId, address(0));
+    }
+
+    /// @notice Opponent joins an open channel by matching deposit, optionally setting a signing address
+    function joinWithSigner(uint256 channelId, address player2Signer) public payable nonReentrant {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.player2 != msg.sender) revert NotOpponent();
@@ -287,6 +313,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         ch.deposit2 += msg.value; // Add to existing deposit instead of overwriting
         ch.player2Joined = true;
+        ch.player2Signer = player2Signer;
 
         emit ChannelJoined(channelId, msg.sender, msg.value);
     }
@@ -501,6 +528,46 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (digest.recover(sigB) != addrB) revert CommitWrongSignerB(slot);
     }
 
+    // New signer checks that support optional signing addresses
+    function _checkSignersWithOptional(
+        uint256 channelId,
+        uint8 slot,
+        bytes32 digest,
+        bytes calldata sigA,
+        bytes calldata sigB,
+        address playerA,
+        address playerB
+    ) private view {
+        address actualSignerA = digest.recover(sigA);
+        address actualSignerB = digest.recover(sigB);
+        
+        if (!_isAuthorizedSigner(channelId, playerA, actualSignerA)) 
+            revert CommitWrongSignerA(slot);
+        if (!_isAuthorizedSigner(channelId, playerB, actualSignerB)) 
+            revert CommitWrongSignerB(slot);
+    }
+
+    /// @notice Check if signer is authorized to sign for a player
+    /// @param channelId The channel identifier
+    /// @param player The player address
+    /// @param signer The signer address
+    /// @return True if signer is authorized to sign for the player
+    function _isAuthorizedSigner(
+        uint256 channelId,
+        address player,
+        address signer
+    ) private view returns (bool) {
+        Channel storage ch = channels[channelId];
+        
+        if (player == ch.player1) {
+            return signer == ch.player1 || (ch.player1Signer != address(0) && signer == ch.player1Signer);
+        } else if (player == ch.player2) {
+            return signer == ch.player2 || (ch.player2Signer != address(0) && signer == ch.player2Signer);
+        }
+        
+        return false;
+    }
+
     /// @notice Verifies that all actions are signed by the action sender
     /// @param channelId The channel identifier
     /// @param handId The hand identifier
@@ -533,10 +600,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             // Get EIP712 digest for this action
             bytes32 digest = digestAction(action);
 
-            // Verify the sender signed this action
+            // Verify the sender signed this action OR an authorized signer signed it
             bytes calldata sig = signatures[i];
+            address actualSigner = digest.recover(sig);
 
-            if (digest.recover(sig) != action.sender)
+            if (!_isAuthorizedSigner(channelId, action.sender, actualSigner))
                 revert ActionWrongSigner();
         }
     }
@@ -583,7 +651,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             if (cc.channelId != channelId) revert CommitWrongChannel(slot);
 
             bytes32 digest = digestCardCommit(cc);
-            _checkSigners(
+            _checkSignersWithOptional(
+                channelId,
                 slot,
                 digest,
                 signatures[i * 2],
