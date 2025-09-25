@@ -1,4 +1,6 @@
 const { ethers } = require("ethers");
+const { hkdf } = require("@noble/hashes/hkdf");
+const { sha256 } = require("@noble/hashes/sha256");
 
 const ZERO32 = "0x" + "00".repeat(32);
 
@@ -103,6 +105,27 @@ function actionDigest(dom, action) {
     );
 }
 
+function ctx(chainId, contract, channelId, handId) {
+    return ethers.keccak256(
+        ethers.solidityPacked(
+            ["uint256", "address", "uint256", "uint256", "string"],
+            [chainId, contract, channelId, handId, "mp/ctx/v1"]
+        )
+    );
+}
+
+function deriveHandKey(master, ctx, who) {
+    if (who !== "A" && who !== "B") {
+        throw new Error('who parameter must be "A" or "B"');
+    }
+    
+    const info = ethers.toUtf8Bytes(`mp/${who}/hand`);
+    const salt = ethers.getBytes(ctx);
+    const masterBytes = ethers.getBytes(master);
+    
+    return hkdf(sha256, masterBytes, salt, info, 32);
+}
+
 module.exports = {
     DOMAIN_TYPEHASH,
     ACTION_TYPEHASH,
@@ -116,5 +139,7 @@ module.exports = {
     cardCommitDigest,
     actionHash,
     actionDigest,
-    handGenesis
+    handGenesis,
+    ctx,
+    deriveHandKey
 };
