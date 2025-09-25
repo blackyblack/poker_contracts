@@ -238,18 +238,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     function open(
         uint256 channelId,
         address opponent,
-        uint256 minSmallBlind
-    ) external payable nonReentrant returns (uint256 handId) {
-        return openWithSigner(channelId, opponent, minSmallBlind, address(0));
-    }
-
-    /// @notice Player1 opens a channel with an opponent by depositing ETH, optionally setting a signing address
-    function openWithSigner(
-        uint256 channelId,
-        address opponent,
         uint256 minSmallBlind,
         address player1Signer
-    ) public payable nonReentrant returns (uint256 handId) {
+    ) external payable nonReentrant returns (uint256 handId) {
         Channel storage ch = channels[channelId];
         if (ch.player1 != address(0) && !ch.finalized) revert ChannelExists();
         if (opponent == address(0) || opponent == msg.sender)
@@ -297,12 +288,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     /// @notice Opponent joins an open channel by matching deposit
-    function join(uint256 channelId) external payable nonReentrant {
-        joinWithSigner(channelId, address(0));
-    }
-
-    /// @notice Opponent joins an open channel by matching deposit, optionally setting a signing address
-    function joinWithSigner(uint256 channelId, address player2Signer) public payable nonReentrant {
+    function join(uint256 channelId, address player2Signer) external payable nonReentrant {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.player2 != msg.sender) revert NotOpponent();
@@ -528,25 +514,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (digest.recover(sigB) != addrB) revert CommitWrongSignerB(slot);
     }
 
-    // New signer checks that support optional signing addresses
-    function _checkSignersWithOptional(
-        uint256 channelId,
-        uint8 slot,
-        bytes32 digest,
-        bytes calldata sigA,
-        bytes calldata sigB,
-        address playerA,
-        address playerB
-    ) private view {
-        address actualSignerA = digest.recover(sigA);
-        address actualSignerB = digest.recover(sigB);
-        
-        if (!_isAuthorizedSigner(channelId, playerA, actualSignerA)) 
-            revert CommitWrongSignerA(slot);
-        if (!_isAuthorizedSigner(channelId, playerB, actualSignerB)) 
-            revert CommitWrongSignerB(slot);
-    }
-
     /// @notice Check if signer is authorized to sign for a player
     /// @param channelId The channel identifier
     /// @param player The player address
@@ -566,6 +533,25 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
         
         return false;
+    }
+
+    // New signer checks that support optional signing addresses
+    function _checkSignersWithOptional(
+        uint256 channelId,
+        uint8 slot,
+        bytes32 digest,
+        bytes calldata sigA,
+        bytes calldata sigB,
+        address playerA,
+        address playerB
+    ) private view {
+        address actualSignerA = digest.recover(sigA);
+        address actualSignerB = digest.recover(sigB);
+        
+        if (!_isAuthorizedSigner(channelId, playerA, actualSignerA)) 
+            revert CommitWrongSignerA(slot);
+        if (!_isAuthorizedSigner(channelId, playerB, actualSignerB)) 
+            revert CommitWrongSignerB(slot);
     }
 
     /// @notice Verifies that all actions are signed by the action sender

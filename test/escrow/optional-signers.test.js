@@ -22,7 +22,7 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
         it("should allow opening channel with optional signer for player1", async function () {
             const signerAddress = wallet3.address;
             
-            const handId = await escrow.connect(player1).openWithSigner.staticCall(
+            const handId = await escrow.connect(player1).open.staticCall(
                 channelId,
                 player2.address,
                 1n, // minSmallBlind
@@ -30,7 +30,7 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
             );
 
             await expect(
-                escrow.connect(player1).openWithSigner(
+                escrow.connect(player1).open(
                     channelId,
                     player2.address,
                     1n,
@@ -48,11 +48,11 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
 
         it("should allow joining channel with optional signer for player2", async function () {
             // Player1 opens channel first
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: 10n });
+            await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: 10n });
 
             const signerAddress = wallet3.address;
             await expect(
-                escrow.connect(player2).joinWithSigner(channelId, signerAddress, { value: 10n })
+                escrow.connect(player2).join(channelId, signerAddress, { value: 10n })
             ).to.emit(escrow, "ChannelJoined")
                 .withArgs(channelId, player2.address, 10n);
 
@@ -64,15 +64,15 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
 
         it("should work with traditional open/join without signers", async function () {
             // This should still work as before
-            const handId = await escrow.connect(player1).open.staticCall(channelId, player2.address, 1n);
+            const handId = await escrow.connect(player1).open.staticCall(channelId, player2.address, 1n, ethers.ZeroAddress);
 
             await expect(
-                escrow.connect(player1).open(channelId, player2.address, 1n, { value: 10n })
+                escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: 10n })
             ).to.emit(escrow, "ChannelOpened")
                 .withArgs(channelId, player1.address, player2.address, 10n, handId, 1n);
 
             await expect(
-                escrow.connect(player2).join(channelId, { value: 10n })
+                escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: 10n })
             ).to.emit(escrow, "ChannelJoined")
                 .withArgs(channelId, player2.address, 10n);
 
@@ -89,13 +89,13 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
 
         beforeEach(async function () {
             // Open channel with player1 having wallet3 as optional signer
-            handId = await escrow.connect(player1).openWithSigner.staticCall(
+            handId = await escrow.connect(player1).open.staticCall(
                 channelId,
                 player2.address,
                 1n,
                 wallet3.address
             );
-            await escrow.connect(player1).openWithSigner(
+            await escrow.connect(player1).open(
                 channelId,
                 player2.address,
                 1n,
@@ -104,7 +104,7 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
             );
 
             // Join without optional signer for player2
-            await escrow.connect(player2).join(channelId, { value: 10n });
+            await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: 10n });
         });
 
         it("should accept actions signed by players themselves", async function () {
