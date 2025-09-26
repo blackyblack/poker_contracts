@@ -3,7 +3,10 @@
     "version": "1.0.0",
     "scripts": {
         "compile": "hardhat compile",
-        "test": "hardhat test"
+        "test": "hardhat test",
+        "typechain": "hardhat typechain",
+        "build": "npm run compile && npm run typechain",
+        "build:ts": "tsc"
     },
     "devDependencies": {
         "@nomicfoundation/hardhat-chai-matchers": "^2.1.0",

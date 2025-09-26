@@ -24,3 +24,22 @@ npm install
 npm run compile
 npm test
 ```
+
+## TypeScript Integration
+
+This project includes full TypeScript support with generated type-safe wrappers for all contracts using TypeChain.
+
+### Generate TypeScript wrappers
+
+```bash
+npm run build        # Compile contracts and generate TypeScript wrappers
+npm run typechain    # Generate TypeScript wrappers only
+```
+
+The generated TypeScript wrappers provide:
+- Full type safety for contract interactions
+- Auto-completion in IDEs
+- Compile-time error checking
+- Ethers.js v6 compatibility
+
+See [TYPESCRIPT_INTEGRATION.md](./TYPESCRIPT_INTEGRATION.md) for detailed usage examples and documentation.

@@ -1,4 +1,6 @@
 require("@nomicfoundation/hardhat-toolbox");
+require("@typechain/hardhat");
+require("@typechain/ethers-v6");
 
 module.exports = {
     solidity: {
@@ -10,5 +12,11 @@ module.exports = {
     },
     paths: {
         sources: "src"
+    },
+    typechain: {
+        outDir: "typechain-types",
+        target: "ethers-v6",
+        alwaysGenerateOverloads: false,
+        externalArtifacts: ["node_modules/@openzeppelin/contracts/build/contracts/*.json"]
     }
 };

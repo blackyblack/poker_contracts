@@ -2,6 +2,9 @@ node_modules/
 artifacts/
 cache/
 build/
+dist/
+# TypeChain generated types (optional - you may want to commit these)
+# typechain-types/
 # Temporary files
 /tmp/
 *_tmp_*
