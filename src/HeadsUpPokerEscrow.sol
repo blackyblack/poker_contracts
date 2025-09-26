@@ -288,7 +288,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     /// @notice Opponent joins an open channel by matching deposit
-    function join(uint256 channelId, address player2Signer) external payable nonReentrant {
+    function join(
+        uint256 channelId,
+        address player2Signer
+    ) external payable nonReentrant {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.player2 != msg.sender) revert NotOpponent();
@@ -503,15 +506,21 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     // Reduce stack pressure: move signer checks into a small helper.
     function _checkSigners(
+        uint256 channelId,
         uint8 slot,
         bytes32 digest,
         bytes calldata sigA,
         bytes calldata sigB,
-        address addrA,
-        address addrB
-    ) private pure {
-        if (digest.recover(sigA) != addrA) revert CommitWrongSignerA(slot);
-        if (digest.recover(sigB) != addrB) revert CommitWrongSignerB(slot);
+        address playerA,
+        address playerB
+    ) private view {
+        address actualSignerA = digest.recover(sigA);
+        address actualSignerB = digest.recover(sigB);
+
+        if (!_isAuthorizedSigner(channelId, playerA, actualSignerA))
+            revert CommitWrongSignerA(slot);
+        if (!_isAuthorizedSigner(channelId, playerB, actualSignerB))
+            revert CommitWrongSignerB(slot);
     }
 
     /// @notice Check if signer is authorized to sign for a player
@@ -525,33 +534,19 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address signer
     ) private view returns (bool) {
         Channel storage ch = channels[channelId];
-        
-        if (player == ch.player1) {
-            return signer == ch.player1 || (ch.player1Signer != address(0) && signer == ch.player1Signer);
-        } else if (player == ch.player2) {
-            return signer == ch.player2 || (ch.player2Signer != address(0) && signer == ch.player2Signer);
-        }
-        
-        return false;
-    }
 
-    // New signer checks that support optional signing addresses
-    function _checkSignersWithOptional(
-        uint256 channelId,
-        uint8 slot,
-        bytes32 digest,
-        bytes calldata sigA,
-        bytes calldata sigB,
-        address playerA,
-        address playerB
-    ) private view {
-        address actualSignerA = digest.recover(sigA);
-        address actualSignerB = digest.recover(sigB);
-        
-        if (!_isAuthorizedSigner(channelId, playerA, actualSignerA)) 
-            revert CommitWrongSignerA(slot);
-        if (!_isAuthorizedSigner(channelId, playerB, actualSignerB)) 
-            revert CommitWrongSignerB(slot);
+        if (player == ch.player1) {
+            return
+                signer == ch.player1 ||
+                (ch.player1Signer != address(0) && signer == ch.player1Signer);
+        }
+        if (player == ch.player2) {
+            return
+                signer == ch.player2 ||
+                (ch.player2Signer != address(0) && signer == ch.player2Signer);
+        }
+
+        return false;
     }
 
     /// @notice Verifies that all actions are signed by the action sender
@@ -595,6 +590,18 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
     }
 
+    // helper function to reduce stack pressure
+    function _validateCardCommitLengths(
+        uint256 commitCount,
+        uint256 sigCount,
+        uint256 cardCount,
+        uint256 saltCount
+    ) private pure {
+        if (commitCount * 2 != sigCount) revert SignatureLengthMismatch();
+        if (commitCount != cardCount) revert CardsLengthMismatch();
+        if (commitCount != saltCount) revert CardSaltsLengthMismatch();
+    }
+
     // Applies a batch of card commits/openings.
     /// @param signatures Array of signatures of cards (signed by player1 and player2)
     function _applyCardCommit(
@@ -607,19 +614,16 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         Channel storage ch = channels[channelId];
         ShowdownState storage sd = showdowns[channelId];
 
-        address addrA = ch.player1;
-        address addrB = ch.player2;
-
-        if (cardCommits.length * 2 != signatures.length)
-            revert SignatureLengthMismatch();
-        if (cardCommits.length != cards.length) revert CardsLengthMismatch();
-        if (cardCommits.length != cardSalts.length)
-            revert CardSaltsLengthMismatch();
-
-        bytes32 domainSeparator = _domainSeparatorV4();
+        _validateCardCommitLengths(
+            cardCommits.length,
+            signatures.length,
+            cards.length,
+            cardSalts.length
+        );
 
         uint16 mask = sd.lockedCommitMask;
         uint16 seenMask;
+
         for (uint256 i = 0; i < cardCommits.length; i++) {
             HeadsUpPokerEIP712.CardCommit calldata cc = cardCommits[i];
             uint8 slot = cc.slot;
@@ -629,43 +633,41 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             if ((seenMask & bit) == bit) revert CommitDuplicate(slot);
             seenMask |= bit;
 
-            uint8 code = cards[i];
-            if (code == 0xFF) continue;
+            if (cards[i] == 0xFF) continue;
 
             if (mask & bit == bit) continue; // already locked, skip
 
             if (cc.channelId != channelId) revert CommitWrongChannel(slot);
 
-            bytes32 digest = digestCardCommit(cc);
-            _checkSignersWithOptional(
+            _checkSigners(
                 channelId,
                 slot,
-                digest,
+                digestCardCommit(cc),
                 signatures[i * 2],
                 signatures[i * 2 + 1],
-                addrA,
-                addrB
+                ch.player1,
+                ch.player2
             );
 
-            bytes32 h = keccak256(
-                abi.encodePacked(
-                    domainSeparator,
-                    channelId,
-                    slot,
-                    code,
-                    cardSalts[i]
-                )
-            );
-            if (h != cc.commitHash) revert HashMismatch();
+            if (
+                keccak256(
+                    abi.encodePacked(
+                        _domainSeparatorV4(),
+                        channelId,
+                        slot,
+                        cards[i],
+                        cardSalts[i]
+                    )
+                ) != cc.commitHash
+            ) revert HashMismatch();
 
-            sd.cards[slot] = code;
-
-            mask = mask | bit;
+            sd.cards[slot] = cards[i];
+            mask |= bit;
         }
         sd.lockedCommitMask = mask;
 
         // finalize automatically if all cards revealed and commits present
-        if (sd.lockedCommitMask == MASK_ALL) {
+        if (mask == MASK_ALL) {
             _rewardShowdown(channelId);
         }
     }

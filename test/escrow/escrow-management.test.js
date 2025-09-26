@@ -168,7 +168,7 @@ describe("HeadsUpPokerEscrow", function () {
                 const setup = test.setup();
                 const player = setup.player === "player2" ? player2 : other;
 
-                await expect(escrow.connect(player).join(setup.channelId, { value: setup.deposit }))
+                await expect(escrow.connect(player).join(setup.channelId, ethers.ZeroAddress, { value: setup.deposit }))
                     .to.be.revertedWithCustomError(escrow, test.error);
             });
         });

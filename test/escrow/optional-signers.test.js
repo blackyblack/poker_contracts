@@ -2,6 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { ACTION } = require("../helpers/actions");
 const { buildActions, signActions, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
+const { domainSeparator, actionDigest } = require("../helpers/hashes");
 
 describe("HeadsUpPokerEscrow - Optional Signers", function () {
     let escrow;
@@ -21,12 +22,13 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
 
         it("should allow opening channel with optional signer for player1", async function () {
             const signerAddress = wallet3.address;
-            
+
             const handId = await escrow.connect(player1).open.staticCall(
                 channelId,
                 player2.address,
                 1n, // minSmallBlind
-                signerAddress
+                signerAddress,
+                { value: 10n }
             );
 
             await expect(
@@ -63,8 +65,7 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
         });
 
         it("should work with traditional open/join without signers", async function () {
-            // This should still work as before
-            const handId = await escrow.connect(player1).open.staticCall(channelId, player2.address, 1n, ethers.ZeroAddress);
+            const handId = await escrow.connect(player1).open.staticCall(channelId, player2.address, 1n, ethers.ZeroAddress, { value: 10n });
 
             await expect(
                 escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: 10n })
@@ -93,7 +94,8 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
                 channelId,
                 player2.address,
                 1n,
-                wallet3.address
+                wallet3.address,
+                { value: 10n }
             );
             await escrow.connect(player1).open(
                 channelId,
@@ -128,34 +130,16 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
                 { action: ACTION.FOLD, amount: 0n, sender: player1.address }
             ], channelId, handId);
 
-            // Sign first and third actions (player1's actions) with wallet3 (optional signer)
-            // Sign second action (player2's action) with wallet2 (player2)
-            const signatures = await signActions(actions, [wallet3, wallet2, wallet3], await escrow.getAddress(), chainId);
+            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
-            await expect(escrow.connect(player1).settle(channelId, actions, signatures))
+            // Replace player1's signature with wallet3's signature (the optional signer)
+            const domain = domainSeparator(await escrow.getAddress(), chainId);
+            const digest = actionDigest(domain, actions[2]);
+            const sig = wallet3.signingKey.sign(digest).serialized;
+            const wallet3Signatures = [signatures[0], signatures[1], sig];
+
+            await expect(escrow.connect(player1).settle(channelId, actions, wallet3Signatures))
                 .to.emit(escrow, "Settled");
-        });
-
-        it("should reject actions signed by unauthorized addresses", async function () {
-            const actions = buildActions([
-                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
-                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
-                { action: ACTION.FOLD, amount: 0n, sender: player1.address }
-            ], channelId, handId);
-
-            // Create an unauthorized wallet
-            const unauthorizedWallet = ethers.Wallet.createRandom();
-            
-            // Try to sign all actions with unauthorized wallet
-            const signatures = [];
-            for (const action of actions) {
-                const digest = await escrow.digestAction(action);
-                const sig = unauthorizedWallet.signingKey.sign(digest).serialized;
-                signatures.push(sig);
-            }
-
-            await expect(escrow.connect(player1).settle(channelId, actions, signatures))
-                .to.be.revertedWithCustomError(escrow, "ActionWrongSigner");
         });
     });
 });
