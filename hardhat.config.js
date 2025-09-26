@@ -1,4 +1,4 @@
-// Basic Hardhat v3 configuration without plugins for now
+// Basic Hardhat v3 configuration
 export default {
     solidity: {
         version: "0.8.24",

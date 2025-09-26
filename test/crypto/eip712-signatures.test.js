@@ -1,8 +1,8 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { ACTION } = require("../helpers/actions");
-const { domainSeparator, cardCommitDigest, actionDigest, handGenesis } = require("../helpers/hashes");
-const { SLOT } = require("../helpers/slots");
+import { expect } from "chai";
+import { ethers } from "hardhat";
+import { ACTION } from "../helpers/actions.js";
+import { domainSeparator, cardCommitDigest, actionDigest, handGenesis } from "../helpers/hashes.js";
+import { SLOT } from "../helpers/slots.js";
 
 describe("HeadsUpPokerEIP712", function () {
     let contract;
