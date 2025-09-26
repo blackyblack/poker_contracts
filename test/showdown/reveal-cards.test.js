@@ -427,7 +427,7 @@ describe("Showdown - revealCards", function () {
         expect(finalBalance1).to.be.lessThan(initialBalance1);
     });
 
-    it("allows third party to submit additional commits on behalf of player", async () => {
+    it("allows third party to submit additional commits", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1 } = await setup();
         const [, , thirdParty] = await ethers.getSigners();
 
@@ -444,44 +444,22 @@ describe("Showdown - revealCards", function () {
             .connect(player1)
             .revealCards(channelId, partialCommits, partialSigs, partialCodes, partialSalts);
 
-        // Third party submits additional commit for river card on behalf of player2
+        // Third party submits additional commit for river card
         const riverCommit = commits[8]; // River card commit
         const riverSigs = [sigs[16], sigs[17]]; // River card signatures
 
         await escrow
             .connect(thirdParty)
-            .revealCardsOnBehalfOf(
+            .revealCards(
                 channelId,
                 [riverCommit],
                 [...riverSigs],
                 [startCodesP1[8]],
-                [startSaltsP1[8]],
-                player2.address
+                [startSaltsP1[8]]
             );
 
         const sd = await escrow.getShowdown(channelId);
         expect(Number(sd.lockedCommitMask)).to.equal(0x1F3); // All slots now committed
-    });
-
-    it("reverts when third party tries to submit commits for invalid player", async () => {
-        const [, , thirdParty] = await ethers.getSigners();
-
-        // Initiate showdown by settling to showdown
-        await playPlayer1WinsShowdown(escrow, channelId, player1, wallet1, wallet2);
-
-        // Third party tries to submit for invalid player
-        await expect(
-            escrow
-                .connect(thirdParty)
-                .revealCardsOnBehalfOf(
-                    channelId,
-                    [],
-                    [],
-                    [...EMPTY_CODES],
-                    [...EMPTY_SALTS],
-                    thirdParty.address
-                )
-        ).to.be.revertedWithCustomError(escrow, "NotPlayer");
     });
 
     it("ignore commit override", async () => {

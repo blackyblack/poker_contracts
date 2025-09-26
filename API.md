@@ -44,8 +44,7 @@ Each event carries the channel id and relevant payload such as participant, amou
 - `finalizeDispute(channelId)`: after the dispute window expires finalize a fold payout or trigger the showdown reveal flow for incomplete games.
 
 ### Showdown management
-- `revealCards(channelId, cardCommits, signatures, cards, cardSalts)`: during the reveal window, submit batched card openings signed by both players. Each card commitment must be signed by both players (or their designated optional signers). Successfully verified openings update the commit mask and may auto-finalize when all nine slots are revealed.
-- `revealCardsOnBehalfOf(channelId, cardCommits, signatures, cards, cardSalts, onBehalfOf)`: submit card revelations on behalf of a specific player during the reveal window. This allows third parties (such as automated services) to reveal cards for players. The `onBehalfOf` parameter must be one of the channel participants. Card commitments must still be signed by both players (or their optional signers).
+- `revealCards(channelId, cardCommits, signatures, cards, cardSalts)`: during the reveal window, anyone can submit batched card openings signed by both players. Each card commitment must be signed by both players (or their designated optional signers). Successfully verified openings update the commit mask and may auto-finalize when all nine slots are revealed.
 - `finalizeShowdown(channelId)`: once the reveal window elapses, pay the pot to whichever player revealed while the other did not, or declare a tie if neither side showed valid cards.
 
 ### Withdrawals
