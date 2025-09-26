@@ -1,10 +1,10 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { ACTION } = require("../helpers/actions");
-const { SLOT } = require("../helpers/slots");
-const { CARD } = require("../helpers/cards");
-const { buildActions, signActions, wallet1, wallet2, buildCardCommit } = require("../helpers/test-utils");
-const { domainSeparator } = require("../helpers/hashes");
+import { expect } from "chai";
+import { ethers } from "hardhat";
+import { ACTION } from "../helpers/actions.js";
+import { SLOT } from "../helpers/slots.js";
+import { CARD } from "../helpers/cards.js";
+import { buildActions, signActions, wallet1, wallet2, buildCardCommit } from "../helpers/test-utils.js";
+import { domainSeparator } from "../helpers/hashes.js";
 
 describe("Settle to Showdown", function () {
     let escrow, player1, player2;

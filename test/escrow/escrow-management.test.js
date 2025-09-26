@@ -1,8 +1,8 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { ACTION } = require("../helpers/actions");
-const { domainSeparator, actionDigest } = require("../helpers/hashes");
-const { buildActions, signActions, wallet1, wallet2, wallet3 } = require("../helpers/test-utils");
+import { expect } from "chai";
+import { ethers } from "hardhat";
+import { ACTION } from "../helpers/actions.js";
+import { domainSeparator, actionDigest } from "../helpers/hashes.js";
+import { buildActions, signActions, wallet1, wallet2, wallet3 } from "../helpers/test-utils.js";
 
 // Helper to settle fold scenario in tests
 async function settleBasicFold(escrow, channelId, winner, wallet1, wallet2, chainId) {

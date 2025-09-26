@@ -1,6 +1,6 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { CARD } = require("../helpers/cards");
+import { expect } from "chai";
+import { ethers } from "hardhat";
+import { CARD } from "../helpers/cards.js";
 
 describe("PokerEvaluator", function () {
     let evaluator;
