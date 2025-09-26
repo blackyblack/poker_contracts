@@ -16,10 +16,7 @@
   },
   "include": [
     "./src/**/*",
-    "./typechain-types/**/*",
-    "./scripts/**/*",
-    "./test/**/*",
-    "./examples/**/*"
+    "./test/**/*"
   ],
   "exclude": [
     "node_modules",
