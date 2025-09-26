@@ -141,5 +141,27 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
             await expect(escrow.connect(player1).settle(channelId, actions, wallet3Signatures))
                 .to.emit(escrow, "Settled");
         });
+
+        it("should reject actions signed by unauthorized addresses", async function () {
+            const actions = buildActions([
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
+                { action: ACTION.FOLD, amount: 0n, sender: player1.address }
+            ], channelId, handId);
+
+            // Create an unauthorized wallet
+            const unauthorizedWallet = ethers.Wallet.createRandom();
+
+            const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+
+            // Replace player1's signature with wallet3's signature (the optional signer)
+            const domain = domainSeparator(await escrow.getAddress(), chainId);
+            const digest = actionDigest(domain, actions[2]);
+            const sig = unauthorizedWallet.signingKey.sign(digest).serialized;
+            const unauthorizedSignatures = [signatures[0], signatures[1], sig];
+
+            await expect(escrow.connect(player1).settle(channelId, actions, unauthorizedSignatures))
+                .to.be.revertedWithCustomError(escrow, "ActionWrongSigner");
+        });
     });
 });
