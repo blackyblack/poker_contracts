@@ -776,24 +776,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint8[] calldata cards,
         bytes32[] calldata cardSalts
     ) external nonReentrant {
-        revealCardsInternal(
-            channelId,
-            cardCommits,
-            signatures,
-            cards,
-            cardSalts
-        );
-    }
-
-
-
-    function revealCardsInternal(
-        uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
-        bytes[] calldata signatures,
-        uint8[] calldata cards,
-        bytes32[] calldata cardSalts
-    ) internal {
         ShowdownState storage sd = showdowns[channelId];
         if (!sd.inProgress) revert NoShowdownInProgress();
 

@@ -444,7 +444,7 @@ describe("Showdown - revealCards", function () {
             .connect(player1)
             .revealCards(channelId, partialCommits, partialSigs, partialCodes, partialSalts);
 
-        // Third party submits additional commit for river card (no onBehalfOf needed)
+        // Third party submits additional commit for river card
         const riverCommit = commits[8]; // River card commit
         const riverSigs = [sigs[16], sigs[17]]; // River card signatures
 
@@ -461,8 +461,6 @@ describe("Showdown - revealCards", function () {
         const sd = await escrow.getShowdown(channelId);
         expect(Number(sd.lockedCommitMask)).to.equal(0x1F3); // All slots now committed
     });
-
-
 
     it("ignore commit override", async () => {
         const { commits, sigs, startCodesP1, startSaltsP1, dom } = await setup();
