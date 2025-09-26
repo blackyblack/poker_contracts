@@ -149,7 +149,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     );
     event CommitsUpdated(
         uint256 indexed channelId,
-        address indexed submitter,
         uint16 newMask
     );
     event Withdrawn(
@@ -782,50 +781,26 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             cardCommits,
             signatures,
             cards,
-            cardSalts,
-            msg.sender
+            cardSalts
         );
     }
 
-    /// @notice Reveal cards on behalf of a player
-    function revealCardsOnBehalfOf(
-        uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
-        bytes[] calldata signatures,
-        uint8[] calldata cards,
-        bytes32[] calldata cardSalts,
-        address onBehalfOf
-    ) external nonReentrant {
-        revealCardsInternal(
-            channelId,
-            cardCommits,
-            signatures,
-            cards,
-            cardSalts,
-            onBehalfOf
-        );
-    }
+
 
     function revealCardsInternal(
         uint256 channelId,
         HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
         bytes[] calldata signatures,
         uint8[] calldata cards,
-        bytes32[] calldata cardSalts,
-        address onBehalfOf
+        bytes32[] calldata cardSalts
     ) internal {
-        Channel storage ch = channels[channelId];
-
-        if (onBehalfOf != ch.player1 && onBehalfOf != ch.player2)
-            revert NotPlayer();
-
         ShowdownState storage sd = showdowns[channelId];
         if (!sd.inProgress) revert NoShowdownInProgress();
 
         if (block.timestamp > sd.deadline) revert Expired();
 
         _applyCardCommit(channelId, cardCommits, signatures, cards, cardSalts);
-        emit CommitsUpdated(channelId, onBehalfOf, sd.lockedCommitMask);
+        emit CommitsUpdated(channelId, sd.lockedCommitMask);
     }
 
     /// @notice Finalize showdown after reveal window has passed
