@@ -31,19 +31,21 @@ Each event carries the channel id and relevant payload such as participant, amou
 - `getMinSmallBlind(channelId)` -> `uint256`: minimum small blind enforced for the channel.
 - `getShowdown(channelId)` -> `ShowdownState`: inspect reveal deadlines, board/hole cards revealed so far, and the commit bitmask.
 - `getDispute(channelId)` -> `DisputeState`: view current dispute deadlines and projected outcomes.
+- `getSigners(channelId)` -> `(address player1Signer, address player2Signer)`: returns the optional signing addresses for both players. Returns `address(0)` if no optional signer is set.
 
 ### Channel lifecycle
-- `open(channelId, opponent, minSmallBlind)` (payable): seat player 1, set the opponent address, optionally deposit ETH, and start a new hand id. Reuses existing balances when reopening a finished channel and resets showdown/dispute state.
-- `join(channelId)` (payable): opponent deposits ETH to activate the channel. Allows zero value only if previous winnings already left funds in escrow.
+- `open(channelId, opponent, minSmallBlind, player1Signer)` (payable): seat player 1, set the opponent address, optionally deposit ETH, and start a new hand id. The `player1Signer` parameter allows setting an optional additional signer address that can sign actions and card commits on behalf of player 1. Pass `address(0)` if no additional signer is needed. Reuses existing balances when reopening a finished channel and resets showdown/dispute state.
+- `join(channelId, player2Signer)` (payable): opponent deposits ETH to activate the channel. The `player2Signer` parameter allows setting an optional additional signer address that can sign actions and card commits on behalf of player 2. Pass `address(0)` if no additional signer is needed. Allows zero value only if previous winnings already left funds in escrow.
 - `topUp(channelId)` (payable): lets player 1 add funds after player 2 has joined, but never beyond player 2’s total escrowed balance.
 
 ### Settlement and disputes
-- `settle(channelId, actions, signatures)`: verifies a fully signed terminal action history. Fold endings settle immediately; showdown endings transition into the reveal phase with a locked called amount.
-- `dispute(channelId, actions, signatures)`: submit or extend a non-terminal history to force stale players continue the game off-chain. Longer histories reset the dispute timer and store the projected result derived from `HeadsUpPokerReplay`.
+- `settle(channelId, actions, signatures)`: verifies a fully signed terminal action history. Each action must be signed by either the player themselves or their designated optional signer (if set). Fold endings settle immediately; showdown endings transition into the reveal phase with a locked called amount.
+- `dispute(channelId, actions, signatures)`: submit or extend a non-terminal history to force stale players continue the game off-chain. Actions must be signed by either the players themselves or their designated optional signers. Longer histories reset the dispute timer and store the projected result derived from `HeadsUpPokerReplay`.
 - `finalizeDispute(channelId)`: after the dispute window expires finalize a fold payout or trigger the showdown reveal flow for incomplete games.
 
 ### Showdown management
-- `revealCards(channelId, cardCommits, signatures, cards, cardSalts)` / `revealCardsOnBehalfOf(...)`: during the reveal window, submit batched card openings signed by both players. Successfully verified openings update the commit mask and may auto-finalize when all nine slots are revealed.
+- `revealCards(channelId, cardCommits, signatures, cards, cardSalts)`: during the reveal window, submit batched card openings signed by both players. Each card commitment must be signed by both players (or their designated optional signers). Successfully verified openings update the commit mask and may auto-finalize when all nine slots are revealed.
+- `revealCardsOnBehalfOf(channelId, cardCommits, signatures, cards, cardSalts, onBehalfOf)`: submit card revelations on behalf of a specific player during the reveal window. This allows third parties (such as automated services) to reveal cards for players. The `onBehalfOf` parameter must be one of the channel participants. Card commitments must still be signed by both players (or their optional signers).
 - `finalizeShowdown(channelId)`: once the reveal window elapses, pay the pot to whichever player revealed while the other did not, or declare a tie if neither side showed valid cards.
 
 ### Withdrawals
