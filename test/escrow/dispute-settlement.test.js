@@ -21,8 +21,8 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         const deposit = ethers.parseEther("1.0");
 
         beforeEach(async function () {
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
+            await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
         });
 
         it("should initiate showdown for showdown sequences", async function () {
@@ -51,8 +51,8 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         const deposit = ethers.parseEther("1.0");
 
         beforeEach(async function () {
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
+            await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
         });
 
         it("should start dispute with non-terminal sequence", async function () {
@@ -176,8 +176,8 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         const deposit = ethers.parseEther("1.0");
 
         beforeEach(async function () {
-            await escrow.connect(player1).open(channelId, player2.address, 1n, { value: deposit });
-            await escrow.connect(player2).join(channelId, { value: deposit });
+            await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
+            await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
         });
 
         it("should finalize dispute after window expires", async function () {
