@@ -10,23 +10,6 @@ This document summarizes the externally visible interface of the on-chain contra
 ### Card commit slots and `CardCommit`
 The showdown flow relies on EIP-712 card commitment messages. Card slots are numbered as constants (`SLOT_A1`, `SLOT_A2`, `SLOT_B1`, `SLOT_B2`, `SLOT_FLOP1`, `SLOT_FLOP2`, `SLOT_FLOP3`, `SLOT_TURN`, `SLOT_RIVER`). A `CardCommit` message fixes the channel, hand, slot, and the commitment hash that was previously exchanged off-chain. [`CardCommit` and the slot constants live in `HeadsUpPokerEIP712.sol`.](src/HeadsUpPokerEIP712.sol)
 
-## Optional Signers
-
-The contract system supports optional additional signers for enhanced flexibility and automation. Each player can designate an optional signer address during channel creation (`open` for player 1, `join` for player 2) that can sign actions and card commitments on their behalf.
-
-**Key features:**
-- **Dual authorization**: Both the original player address AND the optional signer address (if set) can sign actions and card commits
-- **Flexible setup**: Players can choose to set an optional signer (`address(0x...)`) or skip it (`address(0)`)
-- **Action signing**: Optional signers can sign poker actions (bets, calls, folds, etc.) with the same authority as the original player
-- **Card commitment signing**: Optional signers can sign card commitments during showdown reveals
-- **Third-party reveals**: Anyone can call `revealCardsOnBehalfOf()` to submit card revelations for players (useful for automated services)
-
-**Use cases:**
-- Automated gameplay services that can act on behalf of players
-- Backup signing keys for enhanced security
-- Delegation to trusted third parties
-- Integration with external wallet systems or smart contracts
-
 ## `HeadsUpPokerEscrow`
 This is the primary contract that tracks channel balances, enforces signed action sequences, and pays out results. It exposes the following integration points.
 
