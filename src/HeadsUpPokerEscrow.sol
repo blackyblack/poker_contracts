@@ -199,12 +199,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return channels[channelId].minSmallBlind;
     }
 
-    /// @notice Get the optional signing addresses for a channel
-    function getSigners(
+    /// @notice Get the complete channel information
+    function getChannel(
         uint256 channelId
-    ) external view returns (address player1Signer, address player2Signer) {
-        Channel storage ch = channels[channelId];
-        return (ch.player1Signer, ch.player2Signer);
+    ) external view returns (Channel memory) {
+        return channels[channelId];
     }
 
     /// @notice Player withdraws their deposit from a finalized channel

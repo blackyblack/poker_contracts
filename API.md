@@ -31,7 +31,7 @@ Each event carries the channel id and relevant payload such as participant, amou
 - `getMinSmallBlind(channelId)` -> `uint256`: minimum small blind enforced for the channel.
 - `getShowdown(channelId)` -> `ShowdownState`: inspect reveal deadlines, board/hole cards revealed so far, and the commit bitmask.
 - `getDispute(channelId)` -> `DisputeState`: view current dispute deadlines and projected outcomes.
-- `getSigners(channelId)` -> `(address player1Signer, address player2Signer)`: returns the optional signing addresses for both players. Returns `address(0)` if no optional signer is set.
+- `getChannel(channelId)` -> `Channel`: returns the complete channel information including player addresses, deposits, finalization status, hand ID, join status, minimum small blind, and optional signing addresses for both players. Returns `address(0)` for optional signers if no optional signer is set.
 
 ### Channel lifecycle
 - `open(channelId, opponent, minSmallBlind, player1Signer)` (payable): seat player 1, set the opponent address, optionally deposit ETH, and start a new hand id. The `player1Signer` parameter allows setting an optional additional signer address that can sign actions and card commits on behalf of player 1. Pass `address(0)` if no additional signer is needed. Reuses existing balances when reopening a finished channel and resets showdown/dispute state.
