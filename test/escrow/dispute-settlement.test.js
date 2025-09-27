@@ -1,7 +1,9 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { network } from "hardhat";
 import { ACTION } from "../helpers/actions.js";
 import { buildActions, signActions, wallet1, wallet2 } from "../helpers/test-utils.js";
+
+const { ethers } = await network.connect();
 
 describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
     let escrow;

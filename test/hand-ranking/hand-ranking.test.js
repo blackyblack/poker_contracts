@@ -1,6 +1,8 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { network } from "hardhat";
 import { CARD } from "../helpers/cards.js";
+
+const { ethers } = await network.connect();
 
 describe("PokerEvaluator", function () {
     let evaluator;

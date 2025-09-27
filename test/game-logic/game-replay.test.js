@@ -1,8 +1,10 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { network } from "hardhat";
 import { ACTION } from "../helpers/actions.js";
 import { actionHash } from "../helpers/hashes.js";
 import { buildActions } from "../helpers/test-utils.js";
+
+const { ethers } = await network.connect();
 
 describe("HeadsUpPokerReplay", function () {
     let replay;

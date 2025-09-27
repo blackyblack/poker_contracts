@@ -6,3 +6,4 @@ build/
 /tmp/
 *_tmp_*
 *.bin
+typechain/

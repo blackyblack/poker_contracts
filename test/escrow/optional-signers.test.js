@@ -1,8 +1,10 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { network } from "hardhat";
 import { ACTION } from "../helpers/actions.js";
 import { buildActions, signActions, wallet1, wallet2, wallet3 } from "../helpers/test-utils.js";
 import { domainSeparator, actionDigest } from "../helpers/hashes.js";
+
+const { ethers } = await network.connect();
 
 describe("HeadsUpPokerEscrow - Optional Signers", function () {
     let escrow;

@@ -1,10 +1,12 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { network } from "hardhat";
 import { ACTION } from "../helpers/actions.js";
 import { SLOT } from "../helpers/slots.js";
 import { CARD } from "../helpers/cards.js";
 import { buildActions, signActions, wallet1, wallet2, buildCardCommit } from "../helpers/test-utils.js";
 import { domainSeparator } from "../helpers/hashes.js";
+
+const { ethers } = await network.connect();
 
 describe("Settle to Showdown", function () {
     let escrow, player1, player2;

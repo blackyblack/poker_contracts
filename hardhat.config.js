@@ -1,4 +1,5 @@
-// Basic Hardhat v3 configuration
+import hardhatToolboxMochaEthers from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
+
 export default {
     solidity: {
         version: "0.8.24",
@@ -9,5 +10,9 @@ export default {
     },
     paths: {
         sources: "src"
-    }
+    },
+    typechain: {
+        outDir: "typechain",
+    },
+    plugins: [hardhatToolboxMochaEthers],
 };

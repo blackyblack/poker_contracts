@@ -1,8 +1,10 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { network } from "hardhat";
 import { ACTION } from "../helpers/actions.js";
 import { domainSeparator, actionDigest } from "../helpers/hashes.js";
 import { buildActions, signActions, wallet1, wallet2, wallet3 } from "../helpers/test-utils.js";
+
+const { ethers } = await network.connect();
 
 // Helper to settle fold scenario in tests
 async function settleBasicFold(escrow, channelId, winner, wallet1, wallet2, chainId) {
@@ -455,7 +457,7 @@ describe("HeadsUpPokerEscrow", function () {
             await settleBasicFold(escrow, channelId, player2.address, wallet2, wallet1, chainId);
 
             // Check accumulated winnings
-            [p1Stack, p2Stack] = await escrow.stacks(channelId);
+            [p1Stack, _] = await escrow.stacks(channelId);
             expect(p1Stack).to.equal(deposit * 2n + 3n); // Accumulated winnings
         });
 
