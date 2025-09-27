@@ -83,6 +83,16 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
             const channel = await escrow.getChannel(channelId);
             expect(channel.player1Signer).to.equal(ethers.ZeroAddress);
             expect(channel.player2Signer).to.equal(ethers.ZeroAddress);
+
+            // Verify additional channel information is available
+            expect(channel.player1).to.equal(player1.address);
+            expect(channel.player2).to.equal(player2.address);
+            expect(channel.deposit1).to.equal(10n);
+            expect(channel.deposit2).to.equal(10n);
+            expect(channel.finalized).to.equal(false);
+            expect(channel.handId).to.equal(handId);
+            expect(channel.player2Joined).to.equal(true);
+            expect(channel.minSmallBlind).to.equal(1n);
         });
     });
 
