@@ -11,7 +11,7 @@ function makeCard(suit, rank) {
     return (suit << 4) | rank;
 }
 
-const CARD = {
+export const CARD = {
     // Clubs (suit = 0)
     ACE_CLUBS: makeCard(0, 1),
     TWO_CLUBS: makeCard(0, 2),
@@ -94,5 +94,3 @@ const CARD = {
     QS: makeCard(3, 12), // Queen of Spades
     JS: makeCard(3, 11), // Jack of Spades
 };
-
-module.exports = { CARD };

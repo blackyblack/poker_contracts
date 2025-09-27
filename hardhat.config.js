@@ -1,6 +1,6 @@
-require("@nomicfoundation/hardhat-toolbox");
+import hardhatToolboxMochaEthers from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
 
-module.exports = {
+export default {
     solidity: {
         version: "0.8.24",
         settings: {
@@ -10,5 +10,9 @@ module.exports = {
     },
     paths: {
         sources: "src"
-    }
+    },
+    typechain: {
+        outDir: "typechain",
+    },
+    plugins: [hardhatToolboxMochaEthers],
 };

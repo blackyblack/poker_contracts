@@ -1,9 +1,11 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { domainSeparator, ZERO32 } = require("../helpers/hashes");
-const { SLOT } = require("../helpers/slots");
-const { CARD } = require("../helpers/cards");
-const { buildCardCommit, wallet1, wallet2, playPlayer1WinsShowdown } = require("../helpers/test-utils");
+import { expect } from "chai";
+import { network } from "hardhat";
+import { domainSeparator, ZERO32 } from "../helpers/hashes.js";
+import { SLOT } from "../helpers/slots.js";
+import { CARD } from "../helpers/cards.js";
+import { buildCardCommit, wallet1, wallet2, playPlayer1WinsShowdown } from "../helpers/test-utils.js";
+
+const { ethers } = await network.connect();
 
 describe("HeadsUpPokerEscrow - Poker Hand Ranking Integration", function () {
     let escrow, player1, player2;

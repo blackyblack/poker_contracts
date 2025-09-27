@@ -1,4 +1,4 @@
-const SLOT = {
+export const SLOT = {
     A1: 0,
     A2: 1,
     B1: 2,
@@ -9,5 +9,3 @@ const SLOT = {
     TURN: 7,
     RIVER: 8
 };
-
-module.exports = { SLOT };

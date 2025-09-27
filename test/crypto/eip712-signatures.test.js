@@ -1,8 +1,10 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { ACTION } = require("../helpers/actions");
-const { domainSeparator, cardCommitDigest, actionDigest, handGenesis } = require("../helpers/hashes");
-const { SLOT } = require("../helpers/slots");
+import { expect } from "chai";
+import { network } from "hardhat";
+import { ACTION } from "../helpers/actions.js";
+import { domainSeparator, cardCommitDigest, actionDigest, handGenesis } from "../helpers/hashes.js";
+import { SLOT } from "../helpers/slots.js";
+
+const { ethers } = await network.connect();
 
 describe("HeadsUpPokerEIP712", function () {
     let contract;
@@ -28,7 +30,6 @@ describe("HeadsUpPokerEIP712", function () {
     }
 
     beforeEach(async function () {
-        [player1, player2] = await ethers.getSigners();
         const Helper = await ethers.getContractFactory("HeadsUpPokerEIP712");
         contract = await Helper.deploy();
     });

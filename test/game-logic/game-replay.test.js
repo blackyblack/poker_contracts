@@ -1,8 +1,10 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { ACTION } = require("../helpers/actions");
-const { actionHash } = require("../helpers/hashes");
-const { buildActions } = require("../helpers/test-utils");
+import { expect } from "chai";
+import { network } from "hardhat";
+import { ACTION } from "../helpers/actions.js";
+import { actionHash } from "../helpers/hashes.js";
+import { buildActions } from "../helpers/test-utils.js";
+
+const { ethers } = await network.connect();
 
 describe("HeadsUpPokerReplay", function () {
     let replay;

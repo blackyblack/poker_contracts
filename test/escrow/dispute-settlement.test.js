@@ -1,7 +1,9 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { ACTION } = require("../helpers/actions");
-const { buildActions, signActions, wallet1, wallet2 } = require("../helpers/test-utils");
+import { expect } from "chai";
+import { network } from "hardhat";
+import { ACTION } from "../helpers/actions.js";
+import { buildActions, signActions, wallet1, wallet2 } from "../helpers/test-utils.js";
+
+const { ethers } = await network.connect();
 
 describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
     let escrow;

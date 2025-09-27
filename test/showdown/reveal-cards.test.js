@@ -1,8 +1,10 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
-const { ZERO32, domainSeparator, cardCommitDigest } = require("../helpers/hashes");
-const { SLOT } = require("../helpers/slots");
-const { buildCardCommit, wallet1, wallet2, wallet3, playPlayer1WinsShowdown } = require("../helpers/test-utils");
+import { expect } from "chai";
+import { network } from "hardhat";
+import { ZERO32, domainSeparator, cardCommitDigest } from "../helpers/hashes.js";
+import { SLOT } from "../helpers/slots.js";
+import { buildCardCommit, wallet1, wallet2, wallet3, playPlayer1WinsShowdown } from "../helpers/test-utils.js";
+
+const { ethers } = await network.connect();
 
 const EMPTY_CODES = Array(9).fill(0xff);
 const EMPTY_SALTS = Array(9).fill(ZERO32);
