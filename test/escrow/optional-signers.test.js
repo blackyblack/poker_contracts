@@ -45,9 +45,9 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
                 .withArgs(channelId, player1.address, player2.address, 10n, handId, 1n);
 
             // Verify signer was set
-            const [p1Signer, p2Signer] = await escrow.getSigners(channelId);
-            expect(p1Signer).to.equal(signerAddress);
-            expect(p2Signer).to.equal(ethers.ZeroAddress);
+            const channel = await escrow.getChannel(channelId);
+            expect(channel.player1Signer).to.equal(signerAddress);
+            expect(channel.player2Signer).to.equal(ethers.ZeroAddress);
         });
 
         it("should allow joining channel with optional signer for player2", async function () {
@@ -61,9 +61,9 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
                 .withArgs(channelId, player2.address, 10n);
 
             // Verify signer was set
-            const [p1Signer, p2Signer] = await escrow.getSigners(channelId);
-            expect(p1Signer).to.equal(ethers.ZeroAddress);
-            expect(p2Signer).to.equal(signerAddress);
+            const channel = await escrow.getChannel(channelId);
+            expect(channel.player1Signer).to.equal(ethers.ZeroAddress);
+            expect(channel.player2Signer).to.equal(signerAddress);
         });
 
         it("should work with traditional open/join without signers", async function () {
@@ -80,9 +80,19 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
                 .withArgs(channelId, player2.address, 10n);
 
             // Verify no signers were set
-            const [p1Signer, p2Signer] = await escrow.getSigners(channelId);
-            expect(p1Signer).to.equal(ethers.ZeroAddress);
-            expect(p2Signer).to.equal(ethers.ZeroAddress);
+            const channel = await escrow.getChannel(channelId);
+            expect(channel.player1Signer).to.equal(ethers.ZeroAddress);
+            expect(channel.player2Signer).to.equal(ethers.ZeroAddress);
+
+            // Verify additional channel information is available
+            expect(channel.player1).to.equal(player1.address);
+            expect(channel.player2).to.equal(player2.address);
+            expect(channel.deposit1).to.equal(10n);
+            expect(channel.deposit2).to.equal(10n);
+            expect(channel.finalized).to.equal(false);
+            expect(channel.handId).to.equal(handId);
+            expect(channel.player2Joined).to.equal(true);
+            expect(channel.minSmallBlind).to.equal(1n);
         });
     });
 
