@@ -11,8 +11,5 @@ export default {
     paths: {
         sources: "src"
     },
-    typechain: {
-        outDir: "typechain",
-    },
     plugins: [hardhatToolboxMochaEthers],
 };
