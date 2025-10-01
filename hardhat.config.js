@@ -9,7 +9,8 @@ export default {
         }
     },
     paths: {
-        sources: "src"
+        sources: "src",
+        tests: "test",
     },
     typechain: {
         outDir: "typechain",
