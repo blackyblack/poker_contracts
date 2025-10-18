@@ -23,6 +23,9 @@ library Bn254 {
 
     /// @notice Verify a partial decryption using BN254 pairing
     /// @dev Checks e(U, pkG2) == e(Y, G2_BASE) via precompile 0x08
+    /// Precompile format: Takes pairs of (G1, G2) points, returns 1 if product of pairings equals 1
+    /// Input format for each pair: G1 (64 bytes: x||y), G2 (128 bytes: x.a||x.b||y.a||y.b)
+    /// Total input: 384 bytes for 2 pairs (2 * (64 + 128))
     /// @param U G1 point U (64 bytes uncompressed: x||y big-endian)
     /// @param Y G1 point Y (64 bytes uncompressed: x||y big-endian)
     /// @param pkG2 G2 public key (128 bytes uncompressed: x.a||x.b||y.a||y.b big-endian)
