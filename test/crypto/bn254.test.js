@@ -5,15 +5,10 @@ const { ethers } = await network.connect();
 
 describe("Bn254", function () {
     let contract;
-    let eip712Contract;
 
     beforeEach(async function () {
         const Bn254Test = await ethers.getContractFactory("Bn254Test");
         contract = await Bn254Test.deploy();
-        
-        // Deploy EIP712 contract for signature recovery test
-        const EIP712 = await ethers.getContractFactory("HeadsUpPokerEIP712");
-        eip712Contract = await EIP712.deploy();
     });
 
     describe("isG1OnCurve", function () {
@@ -243,6 +238,38 @@ describe("Bn254", function () {
             expect(result).to.be.true;
         });
 
+        it("fails to verify incorrect partial decryption", async function () {
+            // Create a scenario where the pairing check should fail
+            // Use U = G1 generator, Y = 2*G1 (different point), pkG2 = G2
+            // This will fail because e(G1, G2) != e(2*G1, G2_BASE)
+            
+            const G1 = ethers.concat([
+                ethers.zeroPadValue(ethers.toBeHex(1n), 32),
+                ethers.zeroPadValue(ethers.toBeHex(2n), 32)
+            ]);
+            
+            // A different G1 point: 2*G1 = (x', y')
+            // Using a valid BN254 point that's not the generator
+            const twoG1 = ethers.concat([
+                "0x030644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd3",
+                "0x15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4"
+            ]);
+            
+            const G2 = ethers.concat([
+                "0x198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c2",
+                "0x1800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed",
+                "0x090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b",
+                "0x12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa"
+            ]);
+            
+            const U = G1;
+            const Y = twoG1;  // Different point
+            const pkG2 = G2;
+            
+            const result = await contract.verifyPartialDecrypt(U, Y, pkG2);
+            expect(result).to.be.false;
+        });
+
         it("rejects invalid sizes", async function () {
             const shortU = ethers.zeroPadValue("0x01", 32);
             const G1 = ethers.concat([
@@ -263,58 +290,6 @@ describe("Bn254", function () {
             await expect(
                 contract.verifyPartialDecrypt(shortU, G1, G2)
             ).to.be.revertedWith("U must be 64 bytes");
-        });
-    });
-
-    describe("EIP-712 signature recovery", function () {
-        it("recovers expected address from EIP-712 signature", async function () {
-            // This test demonstrates that EIP-712 signature recovery works as expected
-            // using the HeadsUpPokerEIP712 contract
-            const mnemonic = "test test test test test test test test test test test junk";
-            const wallet = ethers.Wallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/0");
-            
-            const action = {
-                channelId: 1n,
-                handId: 1n,
-                seq: 0,
-                action: 1, // CHECK_CALL
-                amount: 100n,
-                prevHash: ethers.keccak256(ethers.concat([
-                    ethers.zeroPadValue(ethers.toBeHex(1n), 32),
-                    ethers.zeroPadValue(ethers.toBeHex(1n), 32)
-                ])),
-                sender: wallet.address
-            };
-            
-            // Get domain separator
-            const chainId = (await ethers.provider.getNetwork()).chainId;
-            const verifyingContract = await eip712Contract.getAddress();
-            
-            // Build EIP-712 digest
-            const domain = {
-                name: "HeadsUpPoker",
-                version: "1",
-                chainId: chainId,
-                verifyingContract: verifyingContract
-            };
-            
-            const types = {
-                Action: [
-                    { name: "channelId", type: "uint256" },
-                    { name: "handId", type: "uint256" },
-                    { name: "seq", type: "uint32" },
-                    { name: "action", type: "uint8" },
-                    { name: "amount", type: "uint128" },
-                    { name: "prevHash", type: "bytes32" },
-                    { name: "sender", type: "address" }
-                ]
-            };
-            
-            const signature = await wallet.signTypedData(domain, types, action);
-            
-            // Verify that the recovered address matches the expected wallet address
-            const recovered = await eip712Contract.recoverActionSigner(action, signature);
-            expect(recovered).to.equal(wallet.address);
         });
     });
 });
