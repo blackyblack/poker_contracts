@@ -22,6 +22,7 @@ Backends can subscribe to these topics to react to state transitions:
 - `ChannelOpened`, `ChannelJoined`, `ChannelTopUp`
 - `Settled`, `ShowdownStarted`, `ShowdownFinalized`, `CommitsUpdated`
 - `DisputeStarted`, `DisputeExtended`, `DisputeFinalized`
+- `DeckAFixed`, `DeckBFixed`
 - `Withdrawn`
 Each event carries the channel id and relevant payload such as participant, amount, or the updated commit mask.
 
@@ -32,6 +33,8 @@ Each event carries the channel id and relevant payload such as participant, amou
 - `getShowdown(channelId)` -> `ShowdownState`: inspect reveal deadlines, board/hole cards revealed so far, and the commit bitmask.
 - `getDispute(channelId)` -> `DisputeState`: view current dispute deadlines and projected outcomes.
 - `getChannel(channelId)` -> `Channel`: returns the complete channel information including player addresses, deposits, finalization status, hand ID, join status, minimum small blind, and optional signing addresses for both players. Returns `address(0)` for optional signers if no optional signer is set.
+- `getDeckFixA(channelId, handId)` -> `DeckFix`: returns the deck fix data for player A including deckHash, merkleRoot (merkleRootA), pkG1 (public key in G1), and isSet flag.
+- `getDeckFixB(channelId, handId)` -> `DeckFix`: returns the deck fix data for player B including deckHash, merkleRoot (merkleRootB), pkG1 (public key in G1), and isSet flag.
 
 ### Channel lifecycle
 - `open(channelId, opponent, minSmallBlind, player1Signer)` (payable): seat player 1, set the opponent address, optionally deposit ETH, and start a new hand id. The `player1Signer` parameter allows setting an optional additional signer address that can sign actions and card commits on behalf of player 1. Pass `address(0)` if no additional signer is needed. Reuses existing balances when reopening a finished channel and resets showdown/dispute state.
@@ -46,6 +49,12 @@ Each event carries the channel id and relevant payload such as participant, amou
 ### Showdown management
 - `revealCards(channelId, cardCommits, signatures, cards, cardSalts)`: during the reveal window, anyone can submit batched card openings signed by both players. Each card commitment must be signed by both players (or their designated optional signers). Successfully verified openings update the commit mask and may auto-finalize when all nine slots are revealed.
 - `finalizeShowdown(channelId)`: once the reveal window elapses, pay the pot to whichever player revealed while the other did not, or declare a tie if neither side showed valid cards.
+
+### Deck fixing
+- `fixDeckA(channelId, handId, deckHash, merkleRootA, pkA)`: stores the deck parameters for player A including the deck hash, Merkle root for A's deck, and public key pkA (a G1 point, 64 bytes). The public key must be a valid point on the BN254 curve. Can be called before or after `fixDeckB`. Emits `DeckAFixed` event.
+- `fixDeckB(channelId, handId, deckHash, merkleRootB, pkB)`: stores the deck parameters for player B including the deck hash (must match the hash from `fixDeckA` if already set), Merkle root for B's deck, and public key pkB (a G1 point, 64 bytes). The public key must be a valid point on the BN254 curve. Can be called before or after `fixDeckA`. Emits `DeckBFixed` event.
+- `getDeckFixA(channelId, handId)` -> `DeckFix`: returns the stored deck fix data for player A including deckHash, merkleRoot, pkG1, and isSet flag.
+- `getDeckFixB(channelId, handId)` -> `DeckFix`: returns the stored deck fix data for player B including deckHash, merkleRoot, pkG1, and isSet flag.
 
 ### Withdrawals
 - `withdraw(channelId)`: after a hand has been finalized, each player can pull their remaining escrow. The function zeroes their stored balance and emits `Withdrawn` on success.
