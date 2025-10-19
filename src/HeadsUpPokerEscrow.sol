@@ -8,6 +8,7 @@ import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
 import {PokerEvaluator} from "./PokerEvaluator.sol";
 import {HeadsUpPokerReplay} from "./HeadsUpPokerReplay.sol";
 import {Action} from "./HeadsUpPokerActions.sol";
+import {Bn254} from "./Bn254.sol";
 
 /// @title HeadsUpPokerEscrow - Simple escrow contract for heads up poker matches using ETH only
 /// @notice Supports opening channels, joining, settling on fold and basic showdown flow
@@ -71,6 +72,23 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error DisputeStillActive();
     error SequenceTooShort();
     error SequenceNotLonger();
+    error DeckHashMismatch();
+    error DeckAlreadyFixed();
+    error InvalidPublicKey();
+
+    // ------------------------------------------------------------------
+    // Deck fixing state
+    // ------------------------------------------------------------------
+    struct DeckFix {
+        bytes32 deckHash;
+        bytes32 merkleRoot;
+        bytes pkG1; // Public key in G1 (64 bytes: x||y)
+        bool isSet;
+    }
+
+    // Mapping: channelId => handId => DeckFix
+    mapping(uint256 => mapping(uint256 => DeckFix)) private deckFixA;
+    mapping(uint256 => mapping(uint256 => DeckFix)) private deckFixB;
 
     // ------------------------------------------------------------------
     // Dispute state
@@ -175,6 +193,18 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 indexed channelId,
         address indexed winner,
         uint256 amount
+    );
+    event DeckAFixed(
+        uint256 indexed channelId,
+        uint256 indexed handId,
+        bytes32 deckHash,
+        bytes32 merkleRootA
+    );
+    event DeckBFixed(
+        uint256 indexed channelId,
+        uint256 indexed handId,
+        bytes32 deckHash,
+        bytes32 merkleRootB
     );
 
     // ---------------------------------------------------------------------
@@ -744,6 +774,28 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return disputes[channelId];
     }
 
+    /// @notice Get deck fix data for player A
+    /// @param channelId The channel identifier
+    /// @param handId The hand identifier
+    /// @return DeckFix data for player A
+    function getDeckFixA(
+        uint256 channelId,
+        uint256 handId
+    ) external view returns (DeckFix memory) {
+        return deckFixA[channelId][handId];
+    }
+
+    /// @notice Get deck fix data for player B
+    /// @param channelId The channel identifier
+    /// @param handId The hand identifier
+    /// @return DeckFix data for player B
+    function getDeckFixB(
+        uint256 channelId,
+        uint256 handId
+    ) external view returns (DeckFix memory) {
+        return deckFixB[channelId][handId];
+    }
+
     /// @notice Initiates showdown state
     /// @dev Sets up showdown state without requiring initial card commits
     /// @param channelId The channel identifier
@@ -782,6 +834,73 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
         _applyCardCommit(channelId, cardCommits, signatures, cards, cardSalts);
         emit CommitsUpdated(channelId, sd.lockedCommitMask);
+    }
+
+    /// @notice Fix deck parameters for player A
+    /// @param channelId The channel identifier
+    /// @param handId The hand identifier
+    /// @param deckHash Hash of the deck
+    /// @param merkleRootA Merkle root for player A's deck
+    /// @param pkA Public key of player A in G1 (64 bytes: x||y)
+    function fixDeckA(
+        uint256 channelId,
+        uint256 handId,
+        bytes32 deckHash,
+        bytes32 merkleRootA,
+        bytes memory pkA
+    ) external nonReentrant {
+        Channel storage ch = channels[channelId];
+        if (ch.player1 == address(0)) revert NoChannel();
+        
+        // Validate public key is on curve
+        if (!Bn254.isG1OnCurve(pkA)) revert InvalidPublicKey();
+        
+        DeckFix storage fixA = deckFixA[channelId][handId];
+        if (fixA.isSet) revert DeckAlreadyFixed();
+        
+        fixA.deckHash = deckHash;
+        fixA.merkleRoot = merkleRootA;
+        fixA.pkG1 = pkA;
+        fixA.isSet = true;
+        
+        emit DeckAFixed(channelId, handId, deckHash, merkleRootA);
+    }
+
+    /// @notice Fix deck parameters for player B
+    /// @param channelId The channel identifier
+    /// @param handId The hand identifier
+    /// @param deckHash Hash of the deck (must match fixDeckA)
+    /// @param merkleRootB Merkle root for player B's deck
+    /// @param pkB Public key of player B in G1 (64 bytes: x||y)
+    function fixDeckB(
+        uint256 channelId,
+        uint256 handId,
+        bytes32 deckHash,
+        bytes32 merkleRootB,
+        bytes memory pkB
+    ) external nonReentrant {
+        Channel storage ch = channels[channelId];
+        if (ch.player1 == address(0)) revert NoChannel();
+        
+        // Validate public key is on curve
+        if (!Bn254.isG1OnCurve(pkB)) revert InvalidPublicKey();
+        
+        DeckFix storage fixA = deckFixA[channelId][handId];
+        DeckFix storage fixB = deckFixB[channelId][handId];
+        
+        if (fixB.isSet) revert DeckAlreadyFixed();
+        
+        // If deck A is already fixed, verify deckHash matches
+        if (fixA.isSet && fixA.deckHash != deckHash) {
+            revert DeckHashMismatch();
+        }
+        
+        fixB.deckHash = deckHash;
+        fixB.merkleRoot = merkleRootB;
+        fixB.pkG1 = pkB;
+        fixB.isSet = true;
+        
+        emit DeckBFixed(channelId, handId, deckHash, merkleRootB);
     }
 
     /// @notice Finalize showdown after reveal window has passed
