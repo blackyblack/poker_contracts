@@ -1,6 +1,7 @@
 import { network } from "hardhat";
 import { actionHash, actionDigest, handGenesis, domainSeparator, commitHash, cardCommitDigest } from "./hashes.js";
 import { ACTION } from "./actions.js";
+import { ZeroHash } from "ethers";
 
 const { ethers } = await network.connect();
 
@@ -123,11 +124,11 @@ export async function buildCardCommit(a, b, dom, channelId, slot, card, handId =
 
 /**
  * Helper to start a game by having both players submit the same deck hash
- * @param {Object} escrow - The escrow contract
- * @param {bigint} channelId - Channel ID
- * @param {Object} player1 - Player 1 signer
- * @param {Object} player2 - Player 2 signer
- * @param {string} deckHash - Optional deck hash (defaults to keccak256 of "test_deck"))
+ * @param escrow - The escrow contract
+ * @param channelId - Channel ID
+ * @param player1 - Player 1 signer
+ * @param player2 - Player 2 signer
+ * @param deckHash - Optional deck hash (defaults to keccak256 of "test_deck"))
  */
 export async function startGameWithDeckHash(escrow, channelId, player1, player2, deckHash = null) {
     if (!deckHash) {
