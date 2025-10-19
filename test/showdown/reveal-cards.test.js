@@ -2,7 +2,7 @@ import { expect } from "chai";
 import { network } from "hardhat";
 import { ZERO32, domainSeparator, cardCommitDigest } from "../helpers/hashes.js";
 import { SLOT } from "../helpers/slots.js";
-import { buildCardCommit, wallet1, wallet2, wallet3, playPlayer1WinsShowdown } from "../helpers/test-utils.js";
+import { buildCardCommit, wallet1, wallet2, wallet3, playPlayer1WinsShowdown, startGameWithDeckHash } from "../helpers/test-utils.js";
 
 const { ethers } = await network.connect();
 
@@ -21,6 +21,7 @@ describe("Showdown - revealCards", function () {
         escrow = await Escrow.deploy();
         await escrow.open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
         await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
+        await startGameWithDeckHash(escrow, channelId, player1, player2);
     });
 
     async function setup() {

@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { network } from "hardhat";
 import { ACTION } from "../helpers/actions.js";
-import { buildActions, signActions, wallet1, wallet2, wallet3 } from "../helpers/test-utils.js";
+import { buildActions, signActions, wallet1, wallet2, wallet3, startGameWithDeckHash } from "../helpers/test-utils.js";
 import { domainSeparator, actionDigest } from "../helpers/hashes.js";
 
 const { ethers } = await network.connect();
@@ -119,6 +119,9 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
 
             // Join without optional signer for player2
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: 10n });
+            
+            // Start the game
+            await startGameWithDeckHash(escrow, channelId, player1, player2);
         });
 
         it("should accept actions signed by players themselves", async function () {

@@ -3,7 +3,7 @@ import { network } from "hardhat";
 import { ACTION } from "../helpers/actions.js";
 import { SLOT } from "../helpers/slots.js";
 import { CARD } from "../helpers/cards.js";
-import { buildActions, signActions, wallet1, wallet2, buildCardCommit } from "../helpers/test-utils.js";
+import { buildActions, signActions, wallet1, wallet2, buildCardCommit, startGameWithDeckHash } from "../helpers/test-utils.js";
 import { domainSeparator } from "../helpers/hashes.js";
 
 const { ethers } = await network.connect();
@@ -24,6 +24,7 @@ describe("Settle to Showdown", function () {
         // Open channel and join
         await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
         await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
+        await startGameWithDeckHash(escrow, channelId, player1, player2);
     });
 
     it("should initiate showdown when settle resolves to showdown", async function () {
