@@ -7,10 +7,7 @@ import { buildActions, signActions, wallet1, wallet2, wallet3, startGameWithDeck
 const { ethers } = await network.connect();
 
 // Helper to settle fold scenario in tests
-async function settleBasicFold(escrow, channelId, winner, wallet1, wallet2, chainId, player1, player2) {
-    // Start the game first
-    await startGameWithDeckHash(escrow, channelId, player1, player2);
-    
+async function settleBasicFold(escrow, channelId, winner, wallet1, wallet2, chainId) {
     const handId = await escrow.getHandId(channelId);
 
     if (handId % 2n === 0n) {
@@ -548,6 +545,7 @@ describe("HeadsUpPokerEscrow", function () {
             // First game
             await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
+            await startGameWithDeckHash(escrow, channelId, player1, player2);
             await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId, player1, player2);
             await escrow.connect(player1).withdraw(channelId);
 
@@ -564,6 +562,7 @@ describe("HeadsUpPokerEscrow", function () {
         it("should allow reopening with remaining deposits", async function () {
             await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
+            await startGameWithDeckHash(escrow, channelId, player1, player2);
             await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId, player1, player2);
 
             // Don't withdraw, try to reopen with remaining deposits
@@ -575,6 +574,7 @@ describe("HeadsUpPokerEscrow", function () {
         it("should accumulate winnings without withdrawal", async function () {
             await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
+            await startGameWithDeckHash(escrow, channelId, player1, player2);
             await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId, player1, player2);
 
             // Check winnings accumulation
@@ -584,6 +584,7 @@ describe("HeadsUpPokerEscrow", function () {
             // Second game without withdrawing
             await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
+            await startGameWithDeckHash(escrow, channelId, player1, player2);
             // reverse order of wallets since player1 is now BB
             await settleBasicFold(escrow, channelId, player2.address, wallet2, wallet1, chainId, player2, player1);
 
@@ -596,6 +597,7 @@ describe("HeadsUpPokerEscrow", function () {
             // First game
             await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
+            await startGameWithDeckHash(escrow, channelId, player1, player2);
             await settleBasicFold(escrow, channelId, player1.address, wallet1, wallet2, chainId, player1, player2);
 
             // Second game using existing winnings (0 ETH)

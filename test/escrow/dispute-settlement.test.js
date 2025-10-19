@@ -182,6 +182,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         beforeEach(async function () {
             await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
+            await startGameWithDeckHash(escrow, channelId, player1, player2);
         });
 
         it("should finalize dispute after window expires", async function () {
