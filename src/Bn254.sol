@@ -35,41 +35,36 @@ library Bn254 {
         require(Y.length == 64, "Y must be 64 bytes");
         require(pkG2.length == 128, "pkG2 must be 128 bytes");
 
-        // Build pairing input for e(U, pkG2) * e(-Y, G2_BASE) == 1
-        // Format: [a1_x, a1_y, b1_x.a, b1_x.b, b1_y.a, b1_y.b, a2_x, a2_y, b2_x.a, b2_x.b, b2_y.a, b2_y.b]
-        // where each element is 32 bytes
-        
-        bytes memory input = new bytes(384); // 12 * 32 = 384 bytes
-        
-        // First pairing: e(U, pkG2)
-        // Copy U (G1 point, 64 bytes)
-        for (uint256 i = 0; i < 64; i++) {
-            input[i] = U[i];
-        }
-        // Copy pkG2 (G2 point, 128 bytes)
-        for (uint256 i = 0; i < 128; i++) {
-            input[64 + i] = pkG2[i];
-        }
-        
-        // Second pairing: e(-Y, G2_BASE)
-        // Negate Y: (x, p - y)
         uint256 yX;
         uint256 yY;
+
         assembly {
             yX := mload(add(Y, 32))
             yY := mload(add(Y, 64))
         }
+
         uint256 negYY = P - yY;
-        
-        // Copy negated Y (G1 point)
+        bytes memory g2base = G2_BASE;
+
+        bytes memory input = new bytes(384);
+
         assembly {
-            mstore(add(input, 224), yX)      // offset 192 + 32
-            mstore(add(input, 256), negYY)   // offset 224 + 32
-        }
-        
-        // Copy G2_BASE (128 bytes)
-        for (uint256 i = 0; i < 128; i++) {
-            input[256 + i] = G2_BASE[i];
+            let inputPtr := add(input, 32)
+
+            mstore(inputPtr, mload(add(U, 32)))
+            mstore(add(inputPtr, 32), mload(add(U, 64)))
+
+            let pkPtr := add(pkG2, 32)
+            mstore(add(inputPtr, 64), mload(pkPtr))
+            mstore(add(inputPtr, 96), mload(add(pkPtr, 32)))
+            mstore(add(inputPtr, 128), mload(add(pkPtr, 64)))
+            mstore(add(inputPtr, 160), mload(add(pkPtr, 96)))
+            mstore(add(input, 224), yX)
+            mstore(add(input, 256), negYY)
+            mstore(add(input, 288), mload(add(g2base, 32)))
+            mstore(add(input, 320), mload(add(g2base, 64)))
+            mstore(add(input, 352), mload(add(g2base, 96)))
+            mstore(add(input, 384), mload(add(g2base, 128)))
         }
         
         // Call pairing precompile at 0x08
