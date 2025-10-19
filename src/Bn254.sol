@@ -2,7 +2,7 @@
 pragma solidity 0.8.24;
 
 /// @title Bn254
-/// @notice Stateless helper library for BN254 curve operations and Merkle proofs
+/// @notice Stateless helper library for BN254 curve operations
 /// @dev All functions are pure/view with no state storage
 library Bn254 {
     // BN254 curve parameters
@@ -83,82 +83,6 @@ library Bn254 {
         
         require(success, "Pairing precompile failed");
         return result[0] == 1;
-    }
-
-    /// @notice Verify inclusion of a deck element in Merkle tree
-    /// @dev Recomputes leaf = keccak256("Bdeck" || index || L || Y) and verifies Merkle proof
-    /// @param rootB Merkle root for deck
-    /// @param index Card index
-    /// @param L Commitment value (32 bytes)
-    /// @param Y G1 point (64 bytes)
-    /// @param proof Merkle proof (array of sibling hashes)
-    /// @return True if inclusion proof is valid
-    function verifyDeckInclusion(
-        bytes32 rootB,
-        uint256 index,
-        bytes32 L,
-        bytes memory Y,
-        bytes32[] memory proof
-    ) internal pure returns (bool) {
-        require(Y.length == 64, "Y must be 64 bytes");
-        
-        // Compute leaf: keccak256("Bdeck" || index || L || Y)
-        bytes32 leaf = keccak256(abi.encodePacked("Bdeck", index, L, Y));
-        
-        return verifyMerkleProof(proof, rootB, leaf, index);
-    }
-
-    /// @notice Verify inclusion of an A-map element in Merkle tree
-    /// @dev Checks keccak256("Amap" || cardId || R) against rootA
-    /// @param rootA Merkle root for A-map
-    /// @param cardId Card identifier (0-51 typically)
-    /// @param R G1 point (64 bytes)
-    /// @param proof Merkle proof (array of sibling hashes)
-    /// @return True if inclusion proof is valid
-    function verifyAmapInclusion(
-        bytes32 rootA,
-        uint8 cardId,
-        bytes memory R,
-        bytes32[] memory proof
-    ) internal pure returns (bool) {
-        require(R.length == 64, "R must be 64 bytes");
-        
-        // Compute leaf: keccak256("Amap" || cardId || R)
-        bytes32 leaf = keccak256(abi.encodePacked("Amap", cardId, R));
-        
-        return verifyMerkleProof(proof, rootA, leaf, cardId);
-    }
-
-    /// @notice Verify a Merkle proof
-    /// @dev Internal helper for Merkle verification
-    /// @param proof Array of sibling hashes
-    /// @param root Expected Merkle root
-    /// @param leaf Leaf hash to verify
-    /// @param index Leaf index for determining left/right position
-    /// @return True if proof is valid
-    function verifyMerkleProof(
-        bytes32[] memory proof,
-        bytes32 root,
-        bytes32 leaf,
-        uint256 index
-    ) private pure returns (bool) {
-        bytes32 computedHash = leaf;
-        
-        for (uint256 i = 0; i < proof.length; i++) {
-            bytes32 proofElement = proof[i];
-            
-            if (index % 2 == 0) {
-                // Current node is left child
-                computedHash = keccak256(abi.encodePacked(computedHash, proofElement));
-            } else {
-                // Current node is right child
-                computedHash = keccak256(abi.encodePacked(proofElement, computedHash));
-            }
-            
-            index = index / 2;
-        }
-        
-        return computedHash == root;
     }
 
     /// @notice Check if a G1 point lies on the BN254 curve

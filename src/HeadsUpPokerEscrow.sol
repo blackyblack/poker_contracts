@@ -71,6 +71,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     error DisputeStillActive();
     error SequenceTooShort();
     error SequenceNotLonger();
+    error GameNotStarted();
+    error DeckHashMismatch();
+    error GameAlreadyStarted();
 
     // ------------------------------------------------------------------
     // Dispute state
@@ -112,6 +115,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 minSmallBlind; // Minimum small blind amount for this channel
         address player1Signer; // Optional additional signing address for player1
         address player2Signer; // Optional additional signing address for player2
+        bytes32 deckHashPlayer1; // Deck hash submitted by player1
+        bytes32 deckHashPlayer2; // Deck hash submitted by player2
+        bool gameStarted; // True when both players have submitted matching deck hashes
     }
 
     mapping(uint256 => Channel) private channels;
@@ -175,6 +181,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 indexed channelId,
         address indexed winner,
         uint256 amount
+    );
+    event GameStarted(
+        uint256 indexed channelId,
+        bytes32 deckHash
     );
 
     // ---------------------------------------------------------------------
@@ -258,6 +268,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ch.player2Joined = false;
         ch.minSmallBlind = minSmallBlind;
         ch.player1Signer = player1Signer;
+        ch.deckHashPlayer1 = bytes32(0);
+        ch.deckHashPlayer2 = bytes32(0);
+        ch.gameStarted = false;
 
         // Reset showdown state when reusing channel
         ShowdownState storage sd = showdowns[channelId];
@@ -305,6 +318,32 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit ChannelJoined(channelId, msg.sender, msg.value);
     }
 
+    /// @notice Both players must call this function with matching deck hashes to start the game
+    /// @param channelId The channel identifier
+    /// @param deckHash The hash of the deck to be used for this game
+    function startGame(uint256 channelId, bytes32 deckHash) external nonReentrant {
+        Channel storage ch = channels[channelId];
+        if (ch.player1 == address(0)) revert NoChannel();
+        if (!ch.player2Joined) revert ChannelNotReady();
+        if (ch.gameStarted) revert GameAlreadyStarted();
+        if (msg.sender != ch.player1 && msg.sender != ch.player2) revert NotPlayer();
+
+        if (msg.sender == ch.player1) {
+            ch.deckHashPlayer1 = deckHash;
+        } else {
+            ch.deckHashPlayer2 = deckHash;
+        }
+
+        // Check if both players have submitted their deck hashes
+        if (ch.deckHashPlayer1 != bytes32(0) && ch.deckHashPlayer2 != bytes32(0)) {
+            // Verify that both hashes match
+            if (ch.deckHashPlayer1 != ch.deckHashPlayer2) revert DeckHashMismatch();
+            
+            ch.gameStarted = true;
+            emit GameStarted(channelId, deckHash);
+        }
+    }
+
     /// @notice Allows player1 to top up their deposit after player2 has joined
     /// @dev Player1's total deposit after top up cannot exceed player2's total deposit
     function topUp(uint256 channelId) external payable nonReentrant {
@@ -339,6 +378,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.player1 == address(0)) revert NoChannel();
         if (actions.length == 0) revert NoActionsProvided();
         if (ch.finalized) revert AlreadyFinalized();
+        if (!ch.gameStarted) revert GameNotStarted();
 
         // Verify signatures for all actions
         _verifyActionSignatures(
@@ -405,6 +445,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (sd.inProgress) revert ShowdownInProgress();
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
+        if (!ch.gameStarted) revert GameNotStarted();
 
         // Verify signatures for all actions
         _verifyActionSignatures(
