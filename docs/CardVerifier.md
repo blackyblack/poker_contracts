@@ -23,21 +23,23 @@ Verifies player A's hole cards (first two cards in the deck, at indices 0 and 1)
 ```solidity
 function verifyHoleA(
     bytes memory pkB,
-    bytes[] memory bDeckSigned,
+    bytes memory card1Encrypted,
     bytes memory card1Opener,
+    bytes memory card2Encrypted,
     bytes memory card2Opener
 ) internal view returns (bool)
 ```
 
 **Parameters:**
 - `pkB`: Player B's G2 public key (128 bytes)
-- `bDeckSigned`: The fully encrypted deck (array of G1 points, each 64 bytes)
+- `card1Encrypted`: First hole card encrypted by both players (G1 point, 64 bytes)
 - `card1Opener`: First hole card decrypted by player B (G1 point, 64 bytes)
+- `card2Encrypted`: Second hole card encrypted by both players (G1 point, 64 bytes)
 - `card2Opener`: Second hole card decrypted by player B (G1 point, 64 bytes)
 
 **Returns:** `true` if both cards are correctly decrypted
 
-**Verification:** Checks `e(bDeckSigned[i], pkB) == e(cardOpener[i], G2_BASE)` for i=0,1
+**Verification:** Checks `e(cardEncrypted, pkB) == e(cardOpener, G2_BASE)` for each hole card
 
 ### verifyHoleB
 
@@ -46,21 +48,23 @@ Verifies player B's hole cards (cards at indices 2 and 3 in the deck).
 ```solidity
 function verifyHoleB(
     bytes memory pkA,
-    bytes[] memory bDeckSigned,
+    bytes memory card1Encrypted,
     bytes memory card1Opener,
+    bytes memory card2Encrypted,
     bytes memory card2Opener
 ) internal view returns (bool)
 ```
 
 **Parameters:**
 - `pkA`: Player A's G2 public key (128 bytes)
-- `bDeckSigned`: The fully encrypted deck (array of G1 points, each 64 bytes)
-- `card1Opener`: Third card in deck decrypted by player A (G1 point, 64 bytes)
-- `card2Opener`: Fourth card in deck decrypted by player A (G1 point, 64 bytes)
+- `card1Encrypted`: Third card in deck encrypted by both players (G1 point, 64 bytes)
+- `card1Opener`: Third card decrypted by player A (G1 point, 64 bytes)
+- `card2Encrypted`: Fourth card in deck encrypted by both players (G1 point, 64 bytes)
+- `card2Opener`: Fourth card decrypted by player A (G1 point, 64 bytes)
 
 **Returns:** `true` if both cards are correctly decrypted
 
-**Verification:** Checks `e(bDeckSigned[i], pkA) == e(cardOpener[i], G2_BASE)` for i=2,3
+**Verification:** Checks `e(cardEncrypted, pkA) == e(cardOpener, G2_BASE)` for each hole card
 
 ### verifyPublic
 
@@ -70,31 +74,29 @@ Verifies a public card at a specified index in the deck (used for flop, turn, an
 function verifyPublic(
     bytes memory pkA,
     bytes memory pkB,
-    bytes[] memory bDeckSigned,
+    bytes memory cardEncrypted,
     bytes memory cardAOpener,
-    bytes memory cardBOpener,
-    uint256 cardIndex
+    bytes memory cardBOpener
 ) internal view returns (bool)
 ```
 
 **Parameters:**
 - `pkA`: Player A's G2 public key (128 bytes)
 - `pkB`: Player B's G2 public key (128 bytes)
-- `bDeckSigned`: The fully encrypted deck (array of G1 points, each 64 bytes)
+- `cardEncrypted`: Public card encrypted by both players (G1 point, 64 bytes)
 - `cardAOpener`: Card decrypted by player A (G1 point, 64 bytes)
 - `cardBOpener`: Card decrypted by player B (G1 point, 64 bytes)
-- `cardIndex`: Index of the card in the deck (e.g., 4-6 for flop, 7 for turn, 8 for river)
 
 **Returns:** `true` if the card is correctly decrypted by both players
 
-**Verification:** Both players independently decrypt from the encrypted deck:
-1. `e(bDeckSigned[cardIndex], pkA) == e(cardAOpener, G2_BASE)`
-2. `e(bDeckSigned[cardIndex], pkB) == e(cardBOpener, G2_BASE)`
+**Verification:** Both players independently decrypt the same encrypted card:
+1. `e(cardEncrypted, pkA) == e(cardAOpener, G2_BASE)`
+2. `e(cardEncrypted, pkB) == e(cardBOpener, G2_BASE)`
 
 **Usage Examples:**
-- Flop cards: `verifyPublic(pkA, pkB, deck, openerA, openerB, 4)` for first flop card
-- Turn card: `verifyPublic(pkA, pkB, deck, openerA, openerB, 7)`
-- River card: `verifyPublic(pkA, pkB, deck, openerA, openerB, 8)`
+- Flop cards: `verifyPublic(pkA, pkB, cardEncrypted, openerA, openerB)`
+- Turn card: `verifyPublic(pkA, pkB, cardEncrypted, openerA, openerB)`
+- River card: `verifyPublic(pkA, pkB, cardEncrypted, openerA, openerB)`
 
 ## Usage Example
 
@@ -104,22 +106,34 @@ import "./CardVerifier.sol";
 contract PokerGame {
     function verifyPlayerAHoles(
         bytes memory pkB,
-        bytes[] memory deck,
-        bytes memory card1,
-        bytes memory card2
+        bytes memory card1Encrypted,
+        bytes memory card1Opener,
+        bytes memory card2Encrypted,
+        bytes memory card2Opener
     ) public view returns (bool) {
-        return CardVerifier.verifyHoleA(pkB, deck, card1, card2);
+        return CardVerifier.verifyHoleA(
+            pkB,
+            card1Encrypted,
+            card1Opener,
+            card2Encrypted,
+            card2Opener
+        );
     }
-    
+
     function verifyFlopCard(
         bytes memory pkA,
         bytes memory pkB,
-        bytes[] memory deck,
+        bytes memory cardEncrypted,
         bytes memory aOpener,
-        bytes memory bOpener,
-        uint256 cardIndex
+        bytes memory bOpener
     ) public view returns (bool) {
-        return CardVerifier.verifyPublic(pkA, pkB, deck, aOpener, bOpener, cardIndex);
+        return CardVerifier.verifyPublic(
+            pkA,
+            pkB,
+            cardEncrypted,
+            aOpener,
+            bOpener
+        );
     }
 }
 ```
@@ -127,7 +141,7 @@ contract PokerGame {
 ## Security Considerations
 
 1. **Public Keys**: The G2 public keys must be generated correctly and kept consistent throughout the game
-2. **Deck Integrity**: The `bDeckSigned` array must be the result of proper sequential encryption by both players
+2. **Deck Integrity**: The encrypted card bytes must be sourced from the jointly encrypted deck
 3. **Verification Order**: For public cards, player A's partial decryption must be verified before player B's
 4. **Length Validation**: All functions include length checks to prevent incorrect data formats
 5. **Pairing Checks**: The library uses BN254 pairing precompiles for cryptographic verification

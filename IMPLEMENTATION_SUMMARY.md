@@ -42,42 +42,26 @@ Successfully implemented a Solidity library (`CardVerifier`) that verifies card 
 // Verify player A's hole cards (indices 0-1)
 function verifyHoleA(
     bytes memory pkB,
-    bytes[] memory bDeckSigned,
+    bytes memory card1Encrypted,
     bytes memory card1Opener,
+    bytes memory card2Encrypted,
     bytes memory card2Opener
 ) internal view returns (bool)
 
 // Verify player B's hole cards (indices 2-3)
 function verifyHoleB(
     bytes memory pkA,
-    bytes[] memory bDeckSigned,
+    bytes memory card1Encrypted,
     bytes memory card1Opener,
+    bytes memory card2Encrypted,
     bytes memory card2Opener
 ) internal view returns (bool)
 
-// Verify flop cards (indices 4-6)
-function verifyFlop(
+// Verify a public card
+function verifyPublic(
     bytes memory pkA,
     bytes memory pkB,
-    bytes[] memory bDeckSigned,
-    bytes[] memory cardAOpeners,
-    bytes[] memory cardBOpeners
-) internal view returns (bool)
-
-// Verify turn card (index 7)
-function verifyTurn(
-    bytes memory pkA,
-    bytes memory pkB,
-    bytes[] memory bDeckSigned,
-    bytes memory cardAOpener,
-    bytes memory cardBOpener
-) internal view returns (bool)
-
-// Verify river card (index 8)
-function verifyRiver(
-    bytes memory pkA,
-    bytes memory pkB,
-    bytes[] memory bDeckSigned,
+    bytes memory cardEncrypted,
     bytes memory cardAOpener,
     bytes memory cardBOpener
 ) internal view returns (bool)
@@ -106,13 +90,13 @@ The library verifies partial decryptions using BN254 pairing:
 
 **For hole cards:**
 ```
-e(bDeckSigned[i], pkOpponent) == e(opener[i], G2_BASE)
+e(cardEncrypted, pkOpponent) == e(opener, G2_BASE)
 ```
 
 **For public cards:**
 ```
-e(bDeckSigned[i], pkA) == e(openerA[i], G2_BASE) AND
-e(openerA[i], pkB) == e(openerB[i], G2_BASE)
+e(cardEncrypted, pkA) == e(openerA, G2_BASE) AND
+e(cardEncrypted, pkB) == e(openerB, G2_BASE)
 ```
 
 This ensures that:

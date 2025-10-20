@@ -9,32 +9,51 @@ contract CardVerifierTest {
     /// @notice Test wrapper for verifyHoleA
     function verifyHoleA(
         bytes memory pkB,
-        bytes[] memory bDeckSigned,
+        bytes memory card1Encrypted,
         bytes memory card1Opener,
+        bytes memory card2Encrypted,
         bytes memory card2Opener
     ) external view returns (bool) {
-        return CardVerifier.verifyHoleA(pkB, bDeckSigned, card1Opener, card2Opener);
+        return CardVerifier.verifyHoleA(
+            pkB,
+            card1Encrypted,
+            card1Opener,
+            card2Encrypted,
+            card2Opener
+        );
     }
 
     /// @notice Test wrapper for verifyHoleB
     function verifyHoleB(
         bytes memory pkA,
-        bytes[] memory bDeckSigned,
+        bytes memory card1Encrypted,
         bytes memory card1Opener,
+        bytes memory card2Encrypted,
         bytes memory card2Opener
     ) external view returns (bool) {
-        return CardVerifier.verifyHoleB(pkA, bDeckSigned, card1Opener, card2Opener);
+        return CardVerifier.verifyHoleB(
+            pkA,
+            card1Encrypted,
+            card1Opener,
+            card2Encrypted,
+            card2Opener
+        );
     }
 
     /// @notice Test wrapper for verifyPublic
     function verifyPublic(
         bytes memory pkA,
         bytes memory pkB,
-        bytes[] memory bDeckSigned,
+        bytes memory cardEncrypted,
         bytes memory cardAOpener,
-        bytes memory cardBOpener,
-        uint256 cardIndex
+        bytes memory cardBOpener
     ) external view returns (bool) {
-        return CardVerifier.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, cardIndex);
+        return CardVerifier.verifyPublic(
+            pkA,
+            pkB,
+            cardEncrypted,
+            cardAOpener,
+            cardBOpener
+        );
     }
 }

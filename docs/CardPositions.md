@@ -11,11 +11,11 @@ Index | Card          | Description           | Verification Function
 1     | Card 2        | Player A Hole Card 2  | verifyHoleA
 2     | Card 3        | Player B Hole Card 1  | verifyHoleB
 3     | Card 4        | Player B Hole Card 2  | verifyHoleB
-4     | Card 5        | Flop Card 1           | verifyPublic(*, *, *, *, *, 4)
-5     | Card 6        | Flop Card 2           | verifyPublic(*, *, *, *, *, 5)
-6     | Card 7        | Flop Card 3           | verifyPublic(*, *, *, *, *, 6)
-7     | Card 8        | Turn Card             | verifyPublic(*, *, *, *, *, 7)
-8     | Card 9        | River Card            | verifyPublic(*, *, *, *, *, 8)
+4     | Card 5        | Flop Card 1           | verifyPublic
+5     | Card 6        | Flop Card 2           | verifyPublic
+6     | Card 7        | Flop Card 3           | verifyPublic
+7     | Card 8        | Turn Card             | verifyPublic
+8     | Card 9        | River Card            | verifyPublic
 ```
 
 ## Verification Requirements
@@ -45,19 +45,19 @@ The verification uses BN254 elliptic curve pairing to ensure correct decryption.
 
 ### For Hole Cards (opponent only)
 ```
-e(bDeckSigned[i], pkOpponent) == e(opener[i], G2_BASE)
+e(cardEncrypted, pkOpponent) == e(opener, G2_BASE)
 ```
 
 ### For Public Cards (both players)
 ```
-e(bDeckSigned[i], pkA) == e(openerA[i], G2_BASE)
-e(bDeckSigned[i], pkB) == e(openerB[i], G2_BASE)
+e(cardEncrypted, pkA) == e(openerA, G2_BASE)
+e(cardEncrypted, pkB) == e(openerB, G2_BASE)
 ```
 
 ### Notation
-- `bDeckSigned` - fully encrypted deck (encrypted by both players)
 - `pkA`, `pkB` - public keys of players A and B (G2 points)
 - `opener` - partial decryption provided by a player (G1 point)
+- `cardEncrypted` - encrypted card bytes jointly produced by both players
 - `G2_BASE` - BN254 G2 generator point
 - `e()` - BN254 pairing function
 
