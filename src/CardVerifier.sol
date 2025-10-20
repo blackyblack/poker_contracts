@@ -8,7 +8,7 @@ import "./Bn254.sol";
 /// @dev Uses BN254 pairing to verify partial decryptions of encrypted cards.
 /// In mental poker, cards are encrypted by both players. To reveal:
 /// - Hole cards: opponent provides decryption (since the player already knows their own cards)
-/// - Public cards: both players provide decryptions in sequence
+/// - Public cards: both players provide decryptions
 library CardVerifier {
     /// @notice Verify hole cards for player A (first two cards in deck)
     /// @dev Verifies cards at positions 0 and 1 using BN254 pairing.

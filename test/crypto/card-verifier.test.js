@@ -387,6 +387,4 @@ describe("CardVerifier", function () {
             ).to.be.revertedWith("cardEncrypted must be 64 bytes");
         });
     });
-
-
 });
