@@ -1,37 +1,38 @@
-import { expect } from "chai";
-import { network } from "hardhat";
-import { ACTION } from "../helpers/actions.js";
-import { domainSeparator, cardCommitDigest, actionDigest, handGenesis } from "../helpers/hashes.js";
-import { SLOT } from "../helpers/slots.js";
-
-const { ethers } = await network.connect();
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+const { ACTION } = require("../helpers/actions.js");
+const { domainSeparator, cardCommitDigest, actionDigest, handGenesis } = require("../helpers/hashes.js");
+const { SLOT } = require("../helpers/slots.js");
 
 describe("HeadsUpPokerEIP712", function () {
     let contract;
 
     const channelId = 7n;
     const mnemonic = "test test test test test test test test test test test junk";
-    const wallet1 = ethers.Wallet.fromPhrase(mnemonic, "m/44'/60'/0'/0/0");
+    const wallet1 = ethers.Wallet.fromMnemonic(mnemonic, "m/44'/60'/0'/0/0");
 
     async function actionSign(wallet, action) {
         const chainId = (await ethers.provider.getNetwork()).chainId;
-        const verifyingContract = await contract.getAddress();
+        const verifyingContract = contract.address;
         const domSep = domainSeparator(verifyingContract, chainId);
         const digest = actionDigest(domSep, action);
-        return wallet.signingKey.sign(digest).serialized;
+        const sig = wallet._signingKey().signDigest(digest);
+        return ethers.utils.joinSignature(sig);
     }
 
     async function cardSign(wallet, cardCommit) {
         const chainId = (await ethers.provider.getNetwork()).chainId;
-        const verifyingContract = await contract.getAddress();
+        const verifyingContract = contract.address;
         const domSep = domainSeparator(verifyingContract, chainId);
         const digest = cardCommitDigest(domSep, cardCommit);
-        return wallet.signingKey.sign(digest).serialized;
+        const sig = wallet._signingKey().signDigest(digest);
+        return ethers.utils.joinSignature(sig);
     }
 
     beforeEach(async function () {
         const Helper = await ethers.getContractFactory("HeadsUpPokerEIP712");
         contract = await Helper.deploy();
+        await contract.deployed();
     });
 
     it("recovers signer for Action", async function () {
@@ -59,8 +60,8 @@ describe("HeadsUpPokerEIP712", function () {
             channelId,
             handId: 1n,
             slot: SLOT.A2,
-            commitHash: ethers.keccak256(ethers.toUtf8Bytes("commit")),
-            prevHash: ethers.ZeroHash
+            commitHash: ethers.utils.keccak256(ethers.utils.toUtf8Bytes("commit")),
+            prevHash: ethers.constants.HashZero
         };
 
         const sig = await cardSign(wallet1, commit);

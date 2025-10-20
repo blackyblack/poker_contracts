@@ -1,18 +1,17 @@
-import { network } from "hardhat";
-import { actionHash, actionDigest, handGenesis, domainSeparator, commitHash, cardCommitDigest } from "./hashes.js";
-import { ACTION } from "./actions.js";
-import { ZeroHash } from "ethers";
+const { ethers } = require("hardhat");
+const { actionHash, actionDigest, handGenesis, domainSeparator, commitHash, cardCommitDigest } = require("./hashes.js");
+const { ACTION } = require("./actions.js");
 
-const { ethers } = await network.connect();
+const ZeroHash = ethers.constants.HashZero;
 
 // Standard test wallet private keys
-export const wallet1 = new ethers.Wallet(
+const wallet1 = new ethers.Wallet(
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 );
-export const wallet2 = new ethers.Wallet(
+const wallet2 = new ethers.Wallet(
     "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
 );
-export const wallet3 = new ethers.Wallet(
+const wallet3 = new ethers.Wallet(
     "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
 );
 
@@ -23,7 +22,7 @@ export const wallet3 = new ethers.Wallet(
  * @param {bigint} handId - Hand ID (default: 1n)
  * @returns {Array} Array of action objects
  */
-export function buildActions(specs, channelId = 1n, handId = 1n) {
+function buildActions(specs, channelId = 1n, handId = 1n) {
     let seq = 0;
     let prevHash = handGenesis(channelId, handId);
     const actions = [];
@@ -56,7 +55,7 @@ export function buildActions(specs, channelId = 1n, handId = 1n) {
  * @param {bigint} chainId - Chain ID for domain separator
  * @returns {Array} Array of signatures
  */
-export async function signActions(actions, signers, contractAddress, chainId) {
+async function signActions(actions, signers, contractAddress, chainId) {
     const signatures = [];
     const domain = domainSeparator(contractAddress, chainId);
 
@@ -76,8 +75,9 @@ export async function signActions(actions, signers, contractAddress, chainId) {
             throw new Error(`No signer found for sender ${action.sender}`);
         }
 
-        const sig = signer.signingKey.sign(digest).serialized;
-        signatures.push(sig);
+        const sig = signer._signingKey().signDigest(digest);
+        const serialized = ethers.utils.joinSignature(sig);
+        signatures.push(serialized);
     }
     return signatures;
 }
@@ -90,11 +90,11 @@ export async function signActions(actions, signers, contractAddress, chainId) {
  * @param {Object} cc - Card commit object
  * @returns {Array} Array of two signatures [sigA, sigB]
  */
-export async function signCardCommit(a, b, dom, cc) {
+async function signCardCommit(a, b, dom, cc) {
     const digest = cardCommitDigest(dom, cc);
-    const sigA = a.signingKey.sign(digest).serialized;
-    const sigB = b.signingKey.sign(digest).serialized;
-    return [sigA, sigB];
+    const sigA = a._signingKey().signDigest(digest);
+    const sigB = b._signingKey().signDigest(digest);
+    return [ethers.utils.joinSignature(sigA), ethers.utils.joinSignature(sigB)];
 }
 
 /**
@@ -108,8 +108,8 @@ export async function signCardCommit(a, b, dom, cc) {
  * @param {bigint} handId - Hand ID (default: 1n)
  * @returns {Object} Commit object with signatures and metadata
  */
-export async function buildCardCommit(a, b, dom, channelId, slot, card, handId = 1n) {
-    const salt = ethers.hexlify(ethers.randomBytes(32));
+async function buildCardCommit(a, b, dom, channelId, slot, card, handId = 1n) {
+    const salt = ethers.utils.hexlify(ethers.utils.randomBytes(32));
     const cHash = commitHash(dom, channelId, slot, card, salt);
     const cc = {
         channelId,
@@ -130,9 +130,9 @@ export async function buildCardCommit(a, b, dom, channelId, slot, card, handId =
  * @param player2 - Player 2 signer
  * @param deckHash - Optional deck hash (defaults to keccak256 of "test_deck"))
  */
-export async function startGameWithDeckHash(escrow, channelId, player1, player2, deckHash = null) {
+async function startGameWithDeckHash(escrow, channelId, player1, player2, deckHash = null) {
     if (!deckHash) {
-        deckHash = ethers.keccak256(ethers.toUtf8Bytes("test_deck"));
+        deckHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes("test_deck"));
     }
     await escrow.connect(player1).startGame(channelId, deckHash);
     await escrow.connect(player2).startGame(channelId, deckHash);
@@ -141,7 +141,7 @@ export async function startGameWithDeckHash(escrow, channelId, player1, player2,
 /**
  * Helper to play a basic showdown game where player1 wins 2 chips
  */
-export async function playPlayer1WinsShowdown(escrow, channelId, player1, player1Wallet, player2Wallet) {
+async function playPlayer1WinsShowdown(escrow, channelId, player1, player1Wallet, player2Wallet) {
     // Simple sequence where both players put in 2 chips (blinds) and check down
     const actionSpecs = [
         { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1Wallet.address },
@@ -159,8 +159,19 @@ export async function playPlayer1WinsShowdown(escrow, channelId, player1, player
     const chainId = (await ethers.provider.getNetwork()).chainId;
     const handId = await escrow.getHandId(channelId);
     const actions = buildActions(actionSpecs, channelId, handId);
-    const signatures = await signActions(actions, [player1Wallet, player2Wallet], await escrow.getAddress(), chainId);
+    const signatures = await signActions(actions, [player1Wallet, player2Wallet], escrow.address, chainId);
     return await escrow.connect(player1).settle(channelId, actions, signatures);
 }
 
-
+module.exports = {
+    wallet1,
+    wallet2,
+    wallet3,
+    ZeroHash,
+    buildActions,
+    signActions,
+    signCardCommit,
+    buildCardCommit,
+    startGameWithDeckHash,
+    playPlayer1WinsShowdown
+};
