@@ -33,227 +33,358 @@ describe("CardVerifier", function () {
 
     describe("verifyHoleA", function () {
         it("should verify valid hole cards for player A", async function () {
-            // Create a deck with at least 2 cards where verification should pass
-            const bDeckSigned = [G1, G1];
+            const card1Encrypted = G1;
+            const card2Encrypted = G1;
             const card1Opener = G1;
             const card2Opener = G1;
             const pkB = G2;
 
-            const result = await contract.verifyHoleA(pkB, bDeckSigned, card1Opener, card2Opener);
+            const result = await contract.verifyHoleA(
+                pkB,
+                card1Encrypted,
+                card1Opener,
+                card2Encrypted,
+                card2Opener
+            );
             expect(result).to.be.true;
         });
 
         it("should reject invalid first hole card", async function () {
-            const bDeckSigned = [G1, G1];
+            const card1Encrypted = G1;
+            const card2Encrypted = G1;
             const card1Opener = twoG1; // Different point
             const card2Opener = G1;
             const pkB = G2;
 
-            const result = await contract.verifyHoleA(pkB, bDeckSigned, card1Opener, card2Opener);
+            const result = await contract.verifyHoleA(
+                pkB,
+                card1Encrypted,
+                card1Opener,
+                card2Encrypted,
+                card2Opener
+            );
             expect(result).to.be.false;
         });
 
         it("should reject invalid second hole card", async function () {
-            const bDeckSigned = [G1, G1];
+            const card1Encrypted = G1;
+            const card2Encrypted = G1;
             const card1Opener = G1;
             const card2Opener = twoG1; // Different point
             const pkB = G2;
 
-            const result = await contract.verifyHoleA(pkB, bDeckSigned, card1Opener, card2Opener);
+            const result = await contract.verifyHoleA(
+                pkB,
+                card1Encrypted,
+                card1Opener,
+                card2Encrypted,
+                card2Opener
+            );
             expect(result).to.be.false;
         });
 
-        it("should revert if deck has less than 2 cards", async function () {
-            const bDeckSigned = [G1];
+        it("should revert if card1Encrypted has invalid length", async function () {
+            const card1Encrypted = ethers.zeroPadValue("0x01", 32); // Only 32 bytes
+            const card2Encrypted = G1;
             const card1Opener = G1;
             const card2Opener = G1;
             const pkB = G2;
 
             await expect(
-                contract.verifyHoleA(pkB, bDeckSigned, card1Opener, card2Opener)
-            ).to.be.revertedWith("Deck must have at least 2 cards");
+                contract.verifyHoleA(
+                    pkB,
+                    card1Encrypted,
+                    card1Opener,
+                    card2Encrypted,
+                    card2Opener
+                )
+            ).to.be.revertedWith("card1Encrypted must be 64 bytes");
         });
 
         it("should revert if card1Opener has invalid length", async function () {
-            const bDeckSigned = [G1, G1];
+            const card1Encrypted = G1;
+            const card2Encrypted = G1;
             const card1Opener = ethers.zeroPadValue("0x01", 32); // Only 32 bytes
             const card2Opener = G1;
             const pkB = G2;
 
             await expect(
-                contract.verifyHoleA(pkB, bDeckSigned, card1Opener, card2Opener)
+                contract.verifyHoleA(
+                    pkB,
+                    card1Encrypted,
+                    card1Opener,
+                    card2Encrypted,
+                    card2Opener
+                )
             ).to.be.revertedWith("card1Opener must be 64 bytes");
         });
 
         it("should revert if card2Opener has invalid length", async function () {
-            const bDeckSigned = [G1, G1];
+            const card1Encrypted = G1;
+            const card2Encrypted = G1;
             const card1Opener = G1;
             const card2Opener = ethers.zeroPadValue("0x01", 32); // Only 32 bytes
             const pkB = G2;
 
             await expect(
-                contract.verifyHoleA(pkB, bDeckSigned, card1Opener, card2Opener)
+                contract.verifyHoleA(
+                    pkB,
+                    card1Encrypted,
+                    card1Opener,
+                    card2Encrypted,
+                    card2Opener
+                )
             ).to.be.revertedWith("card2Opener must be 64 bytes");
+        });
+
+        it("should revert if card2Encrypted has invalid length", async function () {
+            const card1Encrypted = G1;
+            const card2Encrypted = ethers.zeroPadValue("0x01", 32); // Only 32 bytes
+            const card1Opener = G1;
+            const card2Opener = G1;
+            const pkB = G2;
+
+            await expect(
+                contract.verifyHoleA(
+                    pkB,
+                    card1Encrypted,
+                    card1Opener,
+                    card2Encrypted,
+                    card2Opener
+                )
+            ).to.be.revertedWith("card2Encrypted must be 64 bytes");
         });
     });
 
     describe("verifyHoleB", function () {
         it("should verify valid hole cards for player B", async function () {
-            const bDeckSigned = [G1, G1, G1, G1];
+            const card1Encrypted = G1;
+            const card2Encrypted = G1;
             const card1Opener = G1;
             const card2Opener = G1;
             const pkA = G2;
 
-            const result = await contract.verifyHoleB(pkA, bDeckSigned, card1Opener, card2Opener);
+            const result = await contract.verifyHoleB(
+                pkA,
+                card1Encrypted,
+                card1Opener,
+                card2Encrypted,
+                card2Opener
+            );
             expect(result).to.be.true;
         });
 
         it("should reject invalid first hole card", async function () {
-            const bDeckSigned = [G1, G1, G1, G1];
+            const card1Encrypted = G1;
+            const card2Encrypted = G1;
             const card1Opener = twoG1; // Different point
             const card2Opener = G1;
             const pkA = G2;
 
-            const result = await contract.verifyHoleB(pkA, bDeckSigned, card1Opener, card2Opener);
+            const result = await contract.verifyHoleB(
+                pkA,
+                card1Encrypted,
+                card1Opener,
+                card2Encrypted,
+                card2Opener
+            );
             expect(result).to.be.false;
         });
 
         it("should reject invalid second hole card", async function () {
-            const bDeckSigned = [G1, G1, G1, G1];
+            const card1Encrypted = G1;
+            const card2Encrypted = G1;
             const card1Opener = G1;
             const card2Opener = twoG1; // Different point
             const pkA = G2;
 
-            const result = await contract.verifyHoleB(pkA, bDeckSigned, card1Opener, card2Opener);
+            const result = await contract.verifyHoleB(
+                pkA,
+                card1Encrypted,
+                card1Opener,
+                card2Encrypted,
+                card2Opener
+            );
             expect(result).to.be.false;
         });
 
-        it("should revert if deck has less than 4 cards", async function () {
-            const bDeckSigned = [G1, G1, G1];
+        it("should revert if card1Encrypted has invalid length", async function () {
+            const card1Encrypted = ethers.zeroPadValue("0x01", 32);
+            const card2Encrypted = G1;
             const card1Opener = G1;
             const card2Opener = G1;
             const pkA = G2;
 
             await expect(
-                contract.verifyHoleB(pkA, bDeckSigned, card1Opener, card2Opener)
-            ).to.be.revertedWith("Deck must have at least 4 cards");
+                contract.verifyHoleB(
+                    pkA,
+                    card1Encrypted,
+                    card1Opener,
+                    card2Encrypted,
+                    card2Opener
+                )
+            ).to.be.revertedWith("card1Encrypted must be 64 bytes");
         });
 
         it("should revert if card1Opener has invalid length", async function () {
-            const bDeckSigned = [G1, G1, G1, G1];
+            const card1Encrypted = G1;
+            const card2Encrypted = G1;
             const card1Opener = ethers.zeroPadValue("0x01", 32);
             const card2Opener = G1;
             const pkA = G2;
 
             await expect(
-                contract.verifyHoleB(pkA, bDeckSigned, card1Opener, card2Opener)
+                contract.verifyHoleB(
+                    pkA,
+                    card1Encrypted,
+                    card1Opener,
+                    card2Encrypted,
+                    card2Opener
+                )
             ).to.be.revertedWith("card1Opener must be 64 bytes");
         });
 
         it("should revert if card2Opener has invalid length", async function () {
-            const bDeckSigned = [G1, G1, G1, G1];
+            const card1Encrypted = G1;
+            const card2Encrypted = G1;
             const card1Opener = G1;
             const card2Opener = ethers.zeroPadValue("0x01", 32);
             const pkA = G2;
 
             await expect(
-                contract.verifyHoleB(pkA, bDeckSigned, card1Opener, card2Opener)
+                contract.verifyHoleB(
+                    pkA,
+                    card1Encrypted,
+                    card1Opener,
+                    card2Encrypted,
+                    card2Opener
+                )
             ).to.be.revertedWith("card2Opener must be 64 bytes");
+        });
+
+        it("should revert if card2Encrypted has invalid length", async function () {
+            const card1Encrypted = G1;
+            const card2Encrypted = ethers.zeroPadValue("0x01", 32);
+            const card1Opener = G1;
+            const card2Opener = G1;
+            const pkA = G2;
+
+            await expect(
+                contract.verifyHoleB(
+                    pkA,
+                    card1Encrypted,
+                    card1Opener,
+                    card2Encrypted,
+                    card2Opener
+                )
+            ).to.be.revertedWith("card2Encrypted must be 64 bytes");
         });
     });
 
     describe("verifyPublic", function () {
-        it("should verify valid public card at index 4 (flop card 1)", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1, G1];
+        it("should verify valid public card", async function () {
+            const cardEncrypted = G1;
             const cardAOpener = G1;
             const cardBOpener = G1;
             const pkA = G2;
             const pkB = G2;
 
-            const result = await contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 4);
-            expect(result).to.be.true;
-        });
-
-        it("should verify valid public card at index 7 (turn)", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpener = G1;
-            const cardBOpener = G1;
-            const pkA = G2;
-            const pkB = G2;
-
-            const result = await contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 7);
-            expect(result).to.be.true;
-        });
-
-        it("should verify valid public card at index 8 (river)", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpener = G1;
-            const cardBOpener = G1;
-            const pkA = G2;
-            const pkB = G2;
-
-            const result = await contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 8);
+            const result = await contract.verifyPublic(
+                pkA,
+                pkB,
+                cardEncrypted,
+                cardAOpener,
+                cardBOpener
+            );
             expect(result).to.be.true;
         });
 
         it("should reject invalid card from A", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1, G1];
+            const cardEncrypted = G1;
             const cardAOpener = twoG1; // Different point
             const cardBOpener = G1;
             const pkA = G2;
             const pkB = G2;
 
-            const result = await contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 4);
+            const result = await contract.verifyPublic(
+                pkA,
+                pkB,
+                cardEncrypted,
+                cardAOpener,
+                cardBOpener
+            );
             expect(result).to.be.false;
         });
 
         it("should reject invalid card from B", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1, G1];
+            const cardEncrypted = G1;
             const cardAOpener = G1;
             const cardBOpener = twoG1; // Different point
             const pkA = G2;
             const pkB = G2;
 
-            const result = await contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 4);
+            const result = await contract.verifyPublic(
+                pkA,
+                pkB,
+                cardEncrypted,
+                cardAOpener,
+                cardBOpener
+            );
             expect(result).to.be.false;
         });
 
-        it("should revert if card index is out of bounds", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1];
-            const cardAOpener = G1;
-            const cardBOpener = G1;
-            const pkA = G2;
-            const pkB = G2;
-
-            await expect(
-                contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 10)
-            ).to.be.revertedWith("Card index out of bounds");
-        });
-
         it("should revert if cardAOpener has invalid length", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1, G1];
+            const cardEncrypted = G1;
             const cardAOpener = ethers.zeroPadValue("0x01", 32);
             const cardBOpener = G1;
             const pkA = G2;
             const pkB = G2;
 
             await expect(
-                contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 4)
+                contract.verifyPublic(
+                    pkA,
+                    pkB,
+                    cardEncrypted,
+                    cardAOpener,
+                    cardBOpener
+                )
             ).to.be.revertedWith("cardAOpener must be 64 bytes");
         });
 
         it("should revert if cardBOpener has invalid length", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1, G1];
+            const cardEncrypted = G1;
             const cardAOpener = G1;
             const cardBOpener = ethers.zeroPadValue("0x01", 32);
             const pkA = G2;
             const pkB = G2;
 
             await expect(
-                contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 4)
+                contract.verifyPublic(
+                    pkA,
+                    pkB,
+                    cardEncrypted,
+                    cardAOpener,
+                    cardBOpener
+                )
             ).to.be.revertedWith("cardBOpener must be 64 bytes");
         });
+
+        it("should revert if cardEncrypted has invalid length", async function () {
+            const cardEncrypted = ethers.zeroPadValue("0x01", 32);
+            const cardAOpener = G1;
+            const cardBOpener = G1;
+            const pkA = G2;
+            const pkB = G2;
+
+            await expect(
+                contract.verifyPublic(
+                    pkA,
+                    pkB,
+                    cardEncrypted,
+                    cardAOpener,
+                    cardBOpener
+                )
+            ).to.be.revertedWith("cardEncrypted must be 64 bytes");
+        });
     });
-
-
 });
