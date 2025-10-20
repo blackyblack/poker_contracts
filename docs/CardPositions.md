@@ -42,23 +42,25 @@ Index | Card          | Description           | Verification Function
 
 ## Cryptographic Protocol
 
-The verification uses BN254 elliptic curve pairing to ensure correct decryption:
+The verification uses BN254 elliptic curve pairing to ensure correct decryption.
 
+### For Hole Cards (opponent only)
 ```
-For hole cards (opponent only):
-  e(bDeckSigned[i], pkOpponent) == e(opener[i], G2_BASE)
-
-For public cards (both players):
-  e(bDeckSigned[i], pkA) == e(openerA[i], G2_BASE)
-  e(openerA[i], pkB) == e(openerB[i], G2_BASE)
+e(bDeckSigned[i], pkOpponent) == e(opener[i], G2_BASE)
 ```
 
-Where:
-- `bDeckSigned` = fully encrypted deck (encrypted by both players)
-- `pkA`, `pkB` = public keys of players A and B
-- `opener` = partial decryption provided by a player
-- `G2_BASE` = BN254 G2 generator point
-- `e()` = BN254 pairing function
+### For Public Cards (both players)
+```
+e(bDeckSigned[i], pkA) == e(openerA[i], G2_BASE)
+e(openerA[i], pkB) == e(openerB[i], G2_BASE)
+```
+
+### Notation
+- `bDeckSigned` - fully encrypted deck (encrypted by both players)
+- `pkA`, `pkB` - public keys of players A and B (G2 points)
+- `opener` - partial decryption provided by a player (G1 point)
+- `G2_BASE` - BN254 G2 generator point
+- `e()` - BN254 pairing function
 
 ## Usage in Smart Contracts
 
