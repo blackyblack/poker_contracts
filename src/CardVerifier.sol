@@ -82,128 +82,40 @@ library CardVerifier {
         return card1Valid && card2Valid;
     }
 
-    /// @notice Verify flop cards (cards 5, 6, 7 in deck - indices 4, 5, 6)
-    /// @dev Verifies three flop cards using both players' public keys.
-    /// Both players must provide decryptions for public cards.
-    /// Checks: e(bDeckSigned[i], pkA) == e(cardAOpeners[i], G2_BASE) AND
-    ///         e(cardAOpeners[i], pkB) == e(cardBOpeners[i], G2_BASE)
+    /// @notice Verify public card(s) at specified index/indices
+    /// @dev Verifies public cards using both players' public keys with symmetric verification.
+    /// Both players must provide independent decryptions from the same encrypted deck.
+    /// Checks: e(bDeckSigned[cardIndex], pkA) == e(cardAOpener, G2_BASE) AND
+    ///         e(bDeckSigned[cardIndex], pkB) == e(cardBOpener, G2_BASE)
     /// @param pkA G2 public key of player A (128 bytes)
     /// @param pkB G2 public key of player B (128 bytes)
     /// @param bDeckSigned Final deck encrypted by both players (array of G1 points, each 64 bytes)
-    /// @param cardAOpeners Array of 3 G1 points representing cards partially decrypted by A (each 64 bytes)
-    /// @param cardBOpeners Array of 3 G1 points representing cards fully decrypted by B (each 64 bytes)
-    /// @return True if all three flop cards are correctly decrypted
-    function verifyFlop(
-        bytes memory pkA,
-        bytes memory pkB,
-        bytes[] memory bDeckSigned,
-        bytes[] memory cardAOpeners,
-        bytes[] memory cardBOpeners
-    ) internal view returns (bool) {
-        require(bDeckSigned.length >= 7, "Deck must have at least 7 cards");
-        require(cardAOpeners.length == 3, "cardAOpeners must have 3 elements");
-        require(cardBOpeners.length == 3, "cardBOpeners must have 3 elements");
-        
-        // Verify flop cards at positions 4, 5, 6
-        for (uint256 i = 0; i < 3; i++) {
-            require(cardAOpeners[i].length == 64, "cardAOpener must be 64 bytes");
-            require(cardBOpeners[i].length == 64, "cardBOpener must be 64 bytes");
-            
-            // Verify partial decrypt by A
-            bool validA = Bn254.verifyPartialDecrypt(
-                bDeckSigned[4 + i],
-                cardAOpeners[i],
-                pkA
-            );
-            
-            // Verify partial decrypt by B
-            bool validB = Bn254.verifyPartialDecrypt(
-                cardAOpeners[i],
-                cardBOpeners[i],
-                pkB
-            );
-            
-            if (!validA || !validB) {
-                return false;
-            }
-        }
-        
-        return true;
-    }
-
-    /// @notice Verify turn card (card 8 in deck - index 7)
-    /// @dev Verifies the turn card using both players' public keys.
-    /// Both players must provide decryptions for public cards.
-    /// Checks: e(bDeckSigned[7], pkA) == e(cardAOpener, G2_BASE) AND
-    ///         e(cardAOpener, pkB) == e(cardBOpener, G2_BASE)
-    /// @param pkA G2 public key of player A (128 bytes)
-    /// @param pkB G2 public key of player B (128 bytes)
-    /// @param bDeckSigned Final deck encrypted by both players (array of G1 points, each 64 bytes)
-    /// @param cardAOpener G1 point representing card partially decrypted by A (64 bytes)
-    /// @param cardBOpener G1 point representing card fully decrypted by B (64 bytes)
-    /// @return True if the turn card is correctly decrypted
-    function verifyTurn(
+    /// @param cardAOpener G1 point representing card decrypted by A (64 bytes)
+    /// @param cardBOpener G1 point representing card decrypted by B (64 bytes)
+    /// @param cardIndex Index of the card in the deck to verify
+    /// @return True if the card is correctly decrypted by both players
+    function verifyPublic(
         bytes memory pkA,
         bytes memory pkB,
         bytes[] memory bDeckSigned,
         bytes memory cardAOpener,
-        bytes memory cardBOpener
+        bytes memory cardBOpener,
+        uint256 cardIndex
     ) internal view returns (bool) {
-        require(bDeckSigned.length >= 8, "Deck must have at least 8 cards");
+        require(bDeckSigned.length > cardIndex, "Card index out of bounds");
         require(cardAOpener.length == 64, "cardAOpener must be 64 bytes");
         require(cardBOpener.length == 64, "cardBOpener must be 64 bytes");
         
-        // Verify turn card at position 7
-        // Verify partial decrypt by A
+        // Verify decrypt by A
         bool validA = Bn254.verifyPartialDecrypt(
-            bDeckSigned[7],
+            bDeckSigned[cardIndex],
             cardAOpener,
             pkA
         );
         
-        // Verify partial decrypt by B
+        // Verify decrypt by B
         bool validB = Bn254.verifyPartialDecrypt(
-            cardAOpener,
-            cardBOpener,
-            pkB
-        );
-        
-        return validA && validB;
-    }
-
-    /// @notice Verify river card (card 9 in deck - index 8)
-    /// @dev Verifies the river card using both players' public keys.
-    /// Both players must provide decryptions for public cards.
-    /// Checks: e(bDeckSigned[8], pkA) == e(cardAOpener, G2_BASE) AND
-    ///         e(cardAOpener, pkB) == e(cardBOpener, G2_BASE)
-    /// @param pkA G2 public key of player A (128 bytes)
-    /// @param pkB G2 public key of player B (128 bytes)
-    /// @param bDeckSigned Final deck encrypted by both players (array of G1 points, each 64 bytes)
-    /// @param cardAOpener G1 point representing card partially decrypted by A (64 bytes)
-    /// @param cardBOpener G1 point representing card fully decrypted by B (64 bytes)
-    /// @return True if the river card is correctly decrypted
-    function verifyRiver(
-        bytes memory pkA,
-        bytes memory pkB,
-        bytes[] memory bDeckSigned,
-        bytes memory cardAOpener,
-        bytes memory cardBOpener
-    ) internal view returns (bool) {
-        require(bDeckSigned.length >= 9, "Deck must have at least 9 cards");
-        require(cardAOpener.length == 64, "cardAOpener must be 64 bytes");
-        require(cardBOpener.length == 64, "cardBOpener must be 64 bytes");
-        
-        // Verify river card at position 8
-        // Verify partial decrypt by A
-        bool validA = Bn254.verifyPartialDecrypt(
-            bDeckSigned[8],
-            cardAOpener,
-            pkA
-        );
-        
-        // Verify partial decrypt by B
-        bool validB = Bn254.verifyPartialDecrypt(
-            cardAOpener,
+            bDeckSigned[cardIndex],
             cardBOpener,
             pkB
         );

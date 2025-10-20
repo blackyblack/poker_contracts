@@ -162,216 +162,72 @@ describe("CardVerifier", function () {
         });
     });
 
-    describe("verifyFlop", function () {
-        it("should verify valid flop cards", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpeners = [G1, G1, G1];
-            const cardBOpeners = [G1, G1, G1];
-            const pkA = G2;
-            const pkB = G2;
-
-            const result = await contract.verifyFlop(pkA, pkB, bDeckSigned, cardAOpeners, cardBOpeners);
-            expect(result).to.be.true;
-        });
-
-        it("should reject invalid first flop card from A", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpeners = [twoG1, G1, G1]; // First card invalid
-            const cardBOpeners = [G1, G1, G1];
-            const pkA = G2;
-            const pkB = G2;
-
-            const result = await contract.verifyFlop(pkA, pkB, bDeckSigned, cardAOpeners, cardBOpeners);
-            expect(result).to.be.false;
-        });
-
-        it("should reject invalid second flop card from B", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpeners = [G1, G1, G1];
-            const cardBOpeners = [G1, twoG1, G1]; // Second card invalid
-            const pkA = G2;
-            const pkB = G2;
-
-            const result = await contract.verifyFlop(pkA, pkB, bDeckSigned, cardAOpeners, cardBOpeners);
-            expect(result).to.be.false;
-        });
-
-        it("should revert if deck has less than 7 cards", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1];
-            const cardAOpeners = [G1, G1, G1];
-            const cardBOpeners = [G1, G1, G1];
-            const pkA = G2;
-            const pkB = G2;
-
-            await expect(
-                contract.verifyFlop(pkA, pkB, bDeckSigned, cardAOpeners, cardBOpeners)
-            ).to.be.revertedWith("Deck must have at least 7 cards");
-        });
-
-        it("should revert if cardAOpeners has wrong length", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpeners = [G1, G1]; // Only 2 cards
-            const cardBOpeners = [G1, G1, G1];
-            const pkA = G2;
-            const pkB = G2;
-
-            await expect(
-                contract.verifyFlop(pkA, pkB, bDeckSigned, cardAOpeners, cardBOpeners)
-            ).to.be.revertedWith("cardAOpeners must have 3 elements");
-        });
-
-        it("should revert if cardBOpeners has wrong length", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpeners = [G1, G1, G1];
-            const cardBOpeners = [G1, G1]; // Only 2 cards
-            const pkA = G2;
-            const pkB = G2;
-
-            await expect(
-                contract.verifyFlop(pkA, pkB, bDeckSigned, cardAOpeners, cardBOpeners)
-            ).to.be.revertedWith("cardBOpeners must have 3 elements");
-        });
-
-        it("should revert if cardAOpener has invalid length", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpeners = [ethers.zeroPadValue("0x01", 32), G1, G1];
-            const cardBOpeners = [G1, G1, G1];
-            const pkA = G2;
-            const pkB = G2;
-
-            await expect(
-                contract.verifyFlop(pkA, pkB, bDeckSigned, cardAOpeners, cardBOpeners)
-            ).to.be.revertedWith("cardAOpener must be 64 bytes");
-        });
-
-        it("should revert if cardBOpener has invalid length", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpeners = [G1, G1, G1];
-            const cardBOpeners = [G1, ethers.zeroPadValue("0x01", 32), G1];
-            const pkA = G2;
-            const pkB = G2;
-
-            await expect(
-                contract.verifyFlop(pkA, pkB, bDeckSigned, cardAOpeners, cardBOpeners)
-            ).to.be.revertedWith("cardBOpener must be 64 bytes");
-        });
-    });
-
-    describe("verifyTurn", function () {
-        it("should verify valid turn card", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpener = G1;
-            const cardBOpener = G1;
-            const pkA = G2;
-            const pkB = G2;
-
-            const result = await contract.verifyTurn(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener);
-            expect(result).to.be.true;
-        });
-
-        it("should reject invalid turn card from A", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpener = twoG1; // Different point
-            const cardBOpener = G1;
-            const pkA = G2;
-            const pkB = G2;
-
-            const result = await contract.verifyTurn(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener);
-            expect(result).to.be.false;
-        });
-
-        it("should reject invalid turn card from B", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpener = G1;
-            const cardBOpener = twoG1; // Different point
-            const pkA = G2;
-            const pkB = G2;
-
-            const result = await contract.verifyTurn(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener);
-            expect(result).to.be.false;
-        });
-
-        it("should revert if deck has less than 8 cards", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpener = G1;
-            const cardBOpener = G1;
-            const pkA = G2;
-            const pkB = G2;
-
-            await expect(
-                contract.verifyTurn(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener)
-            ).to.be.revertedWith("Deck must have at least 8 cards");
-        });
-
-        it("should revert if cardAOpener has invalid length", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpener = ethers.zeroPadValue("0x01", 32);
-            const cardBOpener = G1;
-            const pkA = G2;
-            const pkB = G2;
-
-            await expect(
-                contract.verifyTurn(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener)
-            ).to.be.revertedWith("cardAOpener must be 64 bytes");
-        });
-
-        it("should revert if cardBOpener has invalid length", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1];
-            const cardAOpener = G1;
-            const cardBOpener = ethers.zeroPadValue("0x01", 32);
-            const pkA = G2;
-            const pkB = G2;
-
-            await expect(
-                contract.verifyTurn(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener)
-            ).to.be.revertedWith("cardBOpener must be 64 bytes");
-        });
-    });
-
-    describe("verifyRiver", function () {
-        it("should verify valid river card", async function () {
+    describe("verifyPublic", function () {
+        it("should verify valid public card at index 4 (flop card 1)", async function () {
             const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1, G1];
             const cardAOpener = G1;
             const cardBOpener = G1;
             const pkA = G2;
             const pkB = G2;
 
-            const result = await contract.verifyRiver(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener);
+            const result = await contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 4);
             expect(result).to.be.true;
         });
 
-        it("should reject invalid river card from A", async function () {
+        it("should verify valid public card at index 7 (turn)", async function () {
+            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1, G1];
+            const cardAOpener = G1;
+            const cardBOpener = G1;
+            const pkA = G2;
+            const pkB = G2;
+
+            const result = await contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 7);
+            expect(result).to.be.true;
+        });
+
+        it("should verify valid public card at index 8 (river)", async function () {
+            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1, G1];
+            const cardAOpener = G1;
+            const cardBOpener = G1;
+            const pkA = G2;
+            const pkB = G2;
+
+            const result = await contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 8);
+            expect(result).to.be.true;
+        });
+
+        it("should reject invalid card from A", async function () {
             const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1, G1];
             const cardAOpener = twoG1; // Different point
             const cardBOpener = G1;
             const pkA = G2;
             const pkB = G2;
 
-            const result = await contract.verifyRiver(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener);
+            const result = await contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 4);
             expect(result).to.be.false;
         });
 
-        it("should reject invalid river card from B", async function () {
+        it("should reject invalid card from B", async function () {
             const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1, G1];
             const cardAOpener = G1;
             const cardBOpener = twoG1; // Different point
             const pkA = G2;
             const pkB = G2;
 
-            const result = await contract.verifyRiver(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener);
+            const result = await contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 4);
             expect(result).to.be.false;
         });
 
-        it("should revert if deck has less than 9 cards", async function () {
-            const bDeckSigned = [G1, G1, G1, G1, G1, G1, G1, G1];
+        it("should revert if card index is out of bounds", async function () {
+            const bDeckSigned = [G1, G1, G1, G1, G1];
             const cardAOpener = G1;
             const cardBOpener = G1;
             const pkA = G2;
             const pkB = G2;
 
             await expect(
-                contract.verifyRiver(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener)
-            ).to.be.revertedWith("Deck must have at least 9 cards");
+                contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 10)
+            ).to.be.revertedWith("Card index out of bounds");
         });
 
         it("should revert if cardAOpener has invalid length", async function () {
@@ -382,7 +238,7 @@ describe("CardVerifier", function () {
             const pkB = G2;
 
             await expect(
-                contract.verifyRiver(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener)
+                contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 4)
             ).to.be.revertedWith("cardAOpener must be 64 bytes");
         });
 
@@ -394,8 +250,10 @@ describe("CardVerifier", function () {
             const pkB = G2;
 
             await expect(
-                contract.verifyRiver(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener)
+                contract.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, 4)
             ).to.be.revertedWith("cardBOpener must be 64 bytes");
         });
     });
+
+
 });

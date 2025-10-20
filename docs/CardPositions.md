@@ -11,11 +11,11 @@ Index | Card          | Description           | Verification Function
 1     | Card 2        | Player A Hole Card 2  | verifyHoleA
 2     | Card 3        | Player B Hole Card 1  | verifyHoleB
 3     | Card 4        | Player B Hole Card 2  | verifyHoleB
-4     | Card 5        | Flop Card 1           | verifyFlop
-5     | Card 6        | Flop Card 2           | verifyFlop
-6     | Card 7        | Flop Card 3           | verifyFlop
-7     | Card 8        | Turn Card             | verifyTurn
-8     | Card 9        | River Card            | verifyRiver
+4     | Card 5        | Flop Card 1           | verifyPublic(*, *, *, *, *, 4)
+5     | Card 6        | Flop Card 2           | verifyPublic(*, *, *, *, *, 5)
+6     | Card 7        | Flop Card 3           | verifyPublic(*, *, *, *, *, 6)
+7     | Card 8        | Turn Card             | verifyPublic(*, *, *, *, *, 7)
+8     | Card 9        | River Card            | verifyPublic(*, *, *, *, *, 8)
 ```
 
 ## Verification Requirements
@@ -31,14 +31,13 @@ Index | Card          | Description           | Verification Function
 
 ### Public Cards
 - **Flop Cards (indices 4, 5, 6)**: Both players must provide decryption
-  - Player A provides partial decryption
-  - Player B provides final decryption from Player A's partial result
+  - Both players independently decrypt from the same encrypted deck
   
 - **Turn Card (index 7)**: Both players must provide decryption
-  - Sequential decryption: A first, then B
+  - Both players independently decrypt from the same encrypted deck
   
 - **River Card (index 8)**: Both players must provide decryption
-  - Sequential decryption: A first, then B
+  - Both players independently decrypt from the same encrypted deck
 
 ## Cryptographic Protocol
 
@@ -52,7 +51,7 @@ e(bDeckSigned[i], pkOpponent) == e(opener[i], G2_BASE)
 ### For Public Cards (both players)
 ```
 e(bDeckSigned[i], pkA) == e(openerA[i], G2_BASE)
-e(openerA[i], pkB) == e(openerB[i], G2_BASE)
+e(bDeckSigned[i], pkB) == e(openerB[i], G2_BASE)
 ```
 
 ### Notation

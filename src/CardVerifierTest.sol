@@ -26,36 +26,15 @@ contract CardVerifierTest {
         return CardVerifier.verifyHoleB(pkA, bDeckSigned, card1Opener, card2Opener);
     }
 
-    /// @notice Test wrapper for verifyFlop
-    function verifyFlop(
-        bytes memory pkA,
-        bytes memory pkB,
-        bytes[] memory bDeckSigned,
-        bytes[] memory cardAOpeners,
-        bytes[] memory cardBOpeners
-    ) external view returns (bool) {
-        return CardVerifier.verifyFlop(pkA, pkB, bDeckSigned, cardAOpeners, cardBOpeners);
-    }
-
-    /// @notice Test wrapper for verifyTurn
-    function verifyTurn(
+    /// @notice Test wrapper for verifyPublic
+    function verifyPublic(
         bytes memory pkA,
         bytes memory pkB,
         bytes[] memory bDeckSigned,
         bytes memory cardAOpener,
-        bytes memory cardBOpener
+        bytes memory cardBOpener,
+        uint256 cardIndex
     ) external view returns (bool) {
-        return CardVerifier.verifyTurn(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener);
-    }
-
-    /// @notice Test wrapper for verifyRiver
-    function verifyRiver(
-        bytes memory pkA,
-        bytes memory pkB,
-        bytes[] memory bDeckSigned,
-        bytes memory cardAOpener,
-        bytes memory cardBOpener
-    ) external view returns (bool) {
-        return CardVerifier.verifyRiver(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener);
+        return CardVerifier.verifyPublic(pkA, pkB, bDeckSigned, cardAOpener, cardBOpener, cardIndex);
     }
 }

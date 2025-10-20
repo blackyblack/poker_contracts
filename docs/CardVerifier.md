@@ -12,7 +12,7 @@ In mental poker, cards are encrypted using a two-party protocol:
 2. **Distribution**: Cards are distributed in encrypted form
 3. **Decryption**: To reveal a card, the appropriate player(s) must provide decryption data
    - For **hole cards**: Only the opponent needs to decrypt (since each player already knows their own cards)
-   - For **public cards** (flop, turn, river): Both players must provide sequential decryptions
+   - For **public cards** (flop, turn, river): Both players must independently decrypt from the encrypted deck
 
 ## Functions
 
@@ -62,44 +62,18 @@ function verifyHoleB(
 
 **Verification:** Checks `e(bDeckSigned[i], pkA) == e(cardOpener[i], G2_BASE)` for i=2,3
 
-### verifyFlop
+### verifyPublic
 
-Verifies the three flop cards (cards at indices 4, 5, and 6 in the deck).
-
-```solidity
-function verifyFlop(
-    bytes memory pkA,
-    bytes memory pkB,
-    bytes[] memory bDeckSigned,
-    bytes[] memory cardAOpeners,
-    bytes[] memory cardBOpeners
-) internal view returns (bool)
-```
-
-**Parameters:**
-- `pkA`: Player A's G2 public key (128 bytes)
-- `pkB`: Player B's G2 public key (128 bytes)
-- `bDeckSigned`: The fully encrypted deck (array of G1 points, each 64 bytes)
-- `cardAOpeners`: Array of 3 G1 points partially decrypted by player A (each 64 bytes)
-- `cardBOpeners`: Array of 3 G1 points fully decrypted by player B (each 64 bytes)
-
-**Returns:** `true` if all three flop cards are correctly decrypted
-
-**Verification:** For each flop card i (i=0,1,2):
-1. `e(bDeckSigned[4+i], pkA) == e(cardAOpeners[i], G2_BASE)`
-2. `e(cardAOpeners[i], pkB) == e(cardBOpeners[i], G2_BASE)`
-
-### verifyTurn
-
-Verifies the turn card (card at index 7 in the deck).
+Verifies a public card at a specified index in the deck (used for flop, turn, and river cards).
 
 ```solidity
-function verifyTurn(
+function verifyPublic(
     bytes memory pkA,
     bytes memory pkB,
     bytes[] memory bDeckSigned,
     bytes memory cardAOpener,
-    bytes memory cardBOpener
+    bytes memory cardBOpener,
+    uint256 cardIndex
 ) internal view returns (bool)
 ```
 
@@ -107,41 +81,20 @@ function verifyTurn(
 - `pkA`: Player A's G2 public key (128 bytes)
 - `pkB`: Player B's G2 public key (128 bytes)
 - `bDeckSigned`: The fully encrypted deck (array of G1 points, each 64 bytes)
-- `cardAOpener`: Turn card partially decrypted by player A (G1 point, 64 bytes)
-- `cardBOpener`: Turn card fully decrypted by player B (G1 point, 64 bytes)
+- `cardAOpener`: Card decrypted by player A (G1 point, 64 bytes)
+- `cardBOpener`: Card decrypted by player B (G1 point, 64 bytes)
+- `cardIndex`: Index of the card in the deck (e.g., 4-6 for flop, 7 for turn, 8 for river)
 
-**Returns:** `true` if the turn card is correctly decrypted
+**Returns:** `true` if the card is correctly decrypted by both players
 
-**Verification:**
-1. `e(bDeckSigned[7], pkA) == e(cardAOpener, G2_BASE)`
-2. `e(cardAOpener, pkB) == e(cardBOpener, G2_BASE)`
+**Verification:** Both players independently decrypt from the encrypted deck:
+1. `e(bDeckSigned[cardIndex], pkA) == e(cardAOpener, G2_BASE)`
+2. `e(bDeckSigned[cardIndex], pkB) == e(cardBOpener, G2_BASE)`
 
-### verifyRiver
-
-Verifies the river card (card at index 8 in the deck).
-
-```solidity
-function verifyRiver(
-    bytes memory pkA,
-    bytes memory pkB,
-    bytes[] memory bDeckSigned,
-    bytes memory cardAOpener,
-    bytes memory cardBOpener
-) internal view returns (bool)
-```
-
-**Parameters:**
-- `pkA`: Player A's G2 public key (128 bytes)
-- `pkB`: Player B's G2 public key (128 bytes)
-- `bDeckSigned`: The fully encrypted deck (array of G1 points, each 64 bytes)
-- `cardAOpener`: River card partially decrypted by player A (G1 point, 64 bytes)
-- `cardBOpener`: River card fully decrypted by player B (G1 point, 64 bytes)
-
-**Returns:** `true` if the river card is correctly decrypted
-
-**Verification:**
-1. `e(bDeckSigned[8], pkA) == e(cardAOpener, G2_BASE)`
-2. `e(cardAOpener, pkB) == e(cardBOpener, G2_BASE)`
+**Usage Examples:**
+- Flop cards: `verifyPublic(pkA, pkB, deck, openerA, openerB, 4)` for first flop card
+- Turn card: `verifyPublic(pkA, pkB, deck, openerA, openerB, 7)`
+- River card: `verifyPublic(pkA, pkB, deck, openerA, openerB, 8)`
 
 ## Usage Example
 
@@ -158,14 +111,15 @@ contract PokerGame {
         return CardVerifier.verifyHoleA(pkB, deck, card1, card2);
     }
     
-    function verifyFlopCards(
+    function verifyFlopCard(
         bytes memory pkA,
         bytes memory pkB,
         bytes[] memory deck,
-        bytes[] memory aOpeners,
-        bytes[] memory bOpeners
+        bytes memory aOpener,
+        bytes memory bOpener,
+        uint256 cardIndex
     ) public view returns (bool) {
-        return CardVerifier.verifyFlop(pkA, pkB, deck, aOpeners, bOpeners);
+        return CardVerifier.verifyPublic(pkA, pkB, deck, aOpener, bOpener, cardIndex);
     }
 }
 ```
