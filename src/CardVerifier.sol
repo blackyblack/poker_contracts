@@ -5,14 +5,19 @@ import "./Bn254.sol";
 
 /// @title CardVerifier
 /// @notice Library for verifying card decryption data in poker games
-/// @dev Uses BN254 pairing to verify partial decryptions of encrypted cards
+/// @dev Uses BN254 pairing to verify partial decryptions of encrypted cards.
+/// In mental poker, cards are encrypted by both players. To reveal:
+/// - Hole cards: opponent provides decryption (since the player already knows their own cards)
+/// - Public cards: both players provide decryptions in sequence
 library CardVerifier {
     /// @notice Verify hole cards for player A (first two cards in deck)
-    /// @dev Verifies cards at positions 0 and 1 using BN254 pairing
+    /// @dev Verifies cards at positions 0 and 1 using BN254 pairing.
+    /// Player B must provide decryptions to reveal Player A's hole cards.
+    /// Checks: e(bDeckSigned[i], pkB) == e(cardOpener[i], G2_BASE)
     /// @param pkB G2 public key of player B (128 bytes)
-    /// @param bDeckSigned Final deck signed by player B (array of G1 points, each 64 bytes)
-    /// @param card1Opener G1 point representing decrypted first card by B (64 bytes)
-    /// @param card2Opener G1 point representing decrypted second card by B (64 bytes)
+    /// @param bDeckSigned Final deck encrypted by both players (array of G1 points, each 64 bytes)
+    /// @param card1Opener G1 point representing first card decrypted by B (64 bytes)
+    /// @param card2Opener G1 point representing second card decrypted by B (64 bytes)
     /// @return True if both cards are correctly decrypted
     function verifyHoleA(
         bytes memory pkB,
@@ -42,11 +47,13 @@ library CardVerifier {
     }
 
     /// @notice Verify hole cards for player B (third and fourth cards in deck)
-    /// @dev Verifies cards at positions 2 and 3 using BN254 pairing
+    /// @dev Verifies cards at positions 2 and 3 using BN254 pairing.
+    /// Player A must provide decryptions to reveal Player B's hole cards.
+    /// Checks: e(bDeckSigned[i], pkA) == e(cardOpener[i], G2_BASE)
     /// @param pkA G2 public key of player A (128 bytes)
-    /// @param bDeckSigned Final deck signed by player A (array of G1 points, each 64 bytes)
-    /// @param card1Opener G1 point representing decrypted third card by A (64 bytes)
-    /// @param card2Opener G1 point representing decrypted fourth card by A (64 bytes)
+    /// @param bDeckSigned Final deck encrypted by both players (array of G1 points, each 64 bytes)
+    /// @param card1Opener G1 point representing third card decrypted by A (64 bytes)
+    /// @param card2Opener G1 point representing fourth card decrypted by A (64 bytes)
     /// @return True if both cards are correctly decrypted
     function verifyHoleB(
         bytes memory pkA,
@@ -75,13 +82,16 @@ library CardVerifier {
         return card1Valid && card2Valid;
     }
 
-    /// @notice Verify flop cards (cards 5, 6, 7 in deck)
-    /// @dev Verifies three flop cards using both players' public keys
+    /// @notice Verify flop cards (cards 5, 6, 7 in deck - indices 4, 5, 6)
+    /// @dev Verifies three flop cards using both players' public keys.
+    /// Both players must provide decryptions for public cards.
+    /// Checks: e(bDeckSigned[i], pkA) == e(cardAOpeners[i], G2_BASE) AND
+    ///         e(cardAOpeners[i], pkB) == e(cardBOpeners[i], G2_BASE)
     /// @param pkA G2 public key of player A (128 bytes)
     /// @param pkB G2 public key of player B (128 bytes)
-    /// @param bDeckSigned Final deck (array of G1 points, each 64 bytes)
-    /// @param cardAOpeners Array of 3 G1 points representing cards decrypted by A (each 64 bytes)
-    /// @param cardBOpeners Array of 3 G1 points representing cards decrypted by B (each 64 bytes)
+    /// @param bDeckSigned Final deck encrypted by both players (array of G1 points, each 64 bytes)
+    /// @param cardAOpeners Array of 3 G1 points representing cards partially decrypted by A (each 64 bytes)
+    /// @param cardBOpeners Array of 3 G1 points representing cards fully decrypted by B (each 64 bytes)
     /// @return True if all three flop cards are correctly decrypted
     function verifyFlop(
         bytes memory pkA,
@@ -121,13 +131,16 @@ library CardVerifier {
         return true;
     }
 
-    /// @notice Verify turn card (card 8 in deck)
-    /// @dev Verifies the turn card using both players' public keys
+    /// @notice Verify turn card (card 8 in deck - index 7)
+    /// @dev Verifies the turn card using both players' public keys.
+    /// Both players must provide decryptions for public cards.
+    /// Checks: e(bDeckSigned[7], pkA) == e(cardAOpener, G2_BASE) AND
+    ///         e(cardAOpener, pkB) == e(cardBOpener, G2_BASE)
     /// @param pkA G2 public key of player A (128 bytes)
     /// @param pkB G2 public key of player B (128 bytes)
-    /// @param bDeckSigned Final deck (array of G1 points, each 64 bytes)
-    /// @param cardAOpener G1 point representing card decrypted by A (64 bytes)
-    /// @param cardBOpener G1 point representing card decrypted by B (64 bytes)
+    /// @param bDeckSigned Final deck encrypted by both players (array of G1 points, each 64 bytes)
+    /// @param cardAOpener G1 point representing card partially decrypted by A (64 bytes)
+    /// @param cardBOpener G1 point representing card fully decrypted by B (64 bytes)
     /// @return True if the turn card is correctly decrypted
     function verifyTurn(
         bytes memory pkA,
@@ -158,13 +171,16 @@ library CardVerifier {
         return validA && validB;
     }
 
-    /// @notice Verify river card (card 9 in deck)
-    /// @dev Verifies the river card using both players' public keys
+    /// @notice Verify river card (card 9 in deck - index 8)
+    /// @dev Verifies the river card using both players' public keys.
+    /// Both players must provide decryptions for public cards.
+    /// Checks: e(bDeckSigned[8], pkA) == e(cardAOpener, G2_BASE) AND
+    ///         e(cardAOpener, pkB) == e(cardBOpener, G2_BASE)
     /// @param pkA G2 public key of player A (128 bytes)
     /// @param pkB G2 public key of player B (128 bytes)
-    /// @param bDeckSigned Final deck (array of G1 points, each 64 bytes)
-    /// @param cardAOpener G1 point representing card decrypted by A (64 bytes)
-    /// @param cardBOpener G1 point representing card decrypted by B (64 bytes)
+    /// @param bDeckSigned Final deck encrypted by both players (array of G1 points, each 64 bytes)
+    /// @param cardAOpener G1 point representing card partially decrypted by A (64 bytes)
+    /// @param cardBOpener G1 point representing card fully decrypted by B (64 bytes)
     /// @return True if the river card is correctly decrypted
     function verifyRiver(
         bytes memory pkA,
