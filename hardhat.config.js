@@ -1,4 +1,11 @@
 import hardhatToolboxMochaEthers from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
+import { ProxyAgent, setGlobalDispatcher } from "undici";
+
+if (process.env.HTTP_PROXY) {
+    console.log("Using proxy for HTTP requests: " + process.env.HTTP_PROXY);
+    const proxyAgent = new ProxyAgent(process.env.HTTP_PROXY);
+    setGlobalDispatcher(proxyAgent);
+}
 
 export default {
     solidity: {
