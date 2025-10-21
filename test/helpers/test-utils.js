@@ -1,9 +1,9 @@
-import { network } from "hardhat";
+import hre from "hardhat";
 import { actionHash, actionDigest, handGenesis, domainSeparator, commitHash, cardCommitDigest } from "./hashes.js";
 import { ACTION } from "./actions.js";
 import { ZeroHash } from "ethers";
 
-const { ethers } = await network.connect();
+const { ethers } = hre;
 
 // Standard test wallet private keys
 export const wallet1 = new ethers.Wallet(

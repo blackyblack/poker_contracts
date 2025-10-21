@@ -1,9 +1,9 @@
 import { expect } from "chai";
-import { network } from "hardhat";
+import hre from "hardhat";
 import { ACTION } from "../helpers/actions.js";
 import { buildActions, signActions, wallet1, wallet2, startGameWithDeckHash } from "../helpers/test-utils.js";
 
-const { ethers } = await network.connect();
+const { ethers } = hre;
 
 describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
     let escrow;

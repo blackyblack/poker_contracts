@@ -1,10 +1,10 @@
 import { expect } from "chai";
-import { network } from "hardhat";
+import hre from "hardhat";
 import { ACTION } from "../helpers/actions.js";
 import { domainSeparator, actionDigest } from "../helpers/hashes.js";
 import { buildActions, signActions, wallet1, wallet2, wallet3, startGameWithDeckHash } from "../helpers/test-utils.js";
 
-const { ethers } = await network.connect();
+const { ethers } = hre;
 
 // Helper to settle fold scenario in tests
 async function settleBasicFold(escrow, channelId, winner, wallet1, wallet2, chainId) {
