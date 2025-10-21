@@ -1,10 +1,10 @@
 import { expect } from "chai";
-import { network } from "hardhat";
+import hre from "hardhat";
 import { ACTION } from "../helpers/actions.js";
 import { domainSeparator, cardCommitDigest, actionDigest, handGenesis } from "../helpers/hashes.js";
 import { SLOT } from "../helpers/slots.js";
 
-const { ethers } = await network.connect();
+const { ethers } = hre;
 
 describe("HeadsUpPokerEIP712", function () {
     let contract;

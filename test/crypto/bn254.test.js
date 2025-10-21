@@ -1,7 +1,7 @@
 import { expect } from "chai";
-import { network } from "hardhat";
+import hre from "hardhat";
 
-const { ethers } = await network.connect();
+const { ethers } = hre;
 
 describe("Bn254", function () {
     let contract;

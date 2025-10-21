@@ -1,4 +1,4 @@
-import hardhatToolboxMochaEthers from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
+import "@nomicfoundation/hardhat-toolbox";
 import { execSync } from "child_process";
 import path from "path";
 
@@ -45,5 +45,4 @@ export default {
     typechain: {
         outDir: "typechain",
     },
-    plugins: [hardhatToolboxMochaEthers],
 };

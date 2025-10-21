@@ -1,10 +1,10 @@
 import { expect } from "chai";
-import { network } from "hardhat";
+import hre from "hardhat";
 import { ZERO32, domainSeparator, cardCommitDigest } from "../helpers/hashes.js";
 import { SLOT } from "../helpers/slots.js";
 import { buildCardCommit, wallet1, wallet2, wallet3, playPlayer1WinsShowdown, startGameWithDeckHash } from "../helpers/test-utils.js";
 
-const { ethers } = await network.connect();
+const { ethers } = hre;
 
 const EMPTY_CODES = Array(9).fill(0xff);
 const EMPTY_SALTS = Array(9).fill(ZERO32);
