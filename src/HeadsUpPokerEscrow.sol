@@ -1118,20 +1118,24 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     /// @notice Request force reveal of flop cards
-    /// @dev Requires both A-holes and B-holes responses. Helper alternates based on hand.
+    /// @dev Either player can request. Prerequisites optional. Requesting player must provide their DecryptResps.
     /// @param channelId The channel identifier
-    /// @param bDeck Array of 52 G1 encrypted card points (Y values)
-    /// @param prerequisiteResps Array of 4 DecryptResp: [A-hole1, A-hole2, B-hole1, B-hole2]
-    /// @param prerequisiteSigs Array of 4 signatures: first 2 from B, next 2 from A
-    /// @param pkBG2 Helper B's G2 public key for verifying A's holes
-    /// @param pkAG2 Helper A's G2 public key for verifying B's holes
+    /// @param requesterDecryptResps Requesting player's DecryptResp for the 3 flop cards
+    /// @param requesterSigs Requesting player's signatures for the 3 flop cards
+    /// @param prerequisiteResps Optional array of 4 DecryptResp: [A-hole1, A-hole2, B-hole1, B-hole2]
+    /// @param prerequisiteSigs Optional array of 4 signatures: first 2 from B, next 2 from A
+    /// @param pkBG2 Helper B's G2 public key (only if prerequisites provided)
+    /// @param pkAG2 Helper A's G2 public key (only if prerequisites provided)
+    /// @param pkRequesterG2 Requesting player's G2 public key
     function requestFlop(
         uint256 channelId,
-        bytes[] calldata bDeck,
+        HeadsUpPokerEIP712.DecryptResp[] calldata requesterDecryptResps,
+        bytes[] calldata requesterSigs,
         HeadsUpPokerEIP712.DecryptResp[] calldata prerequisiteResps,
         bytes[] calldata prerequisiteSigs,
         bytes calldata pkBG2,
-        bytes calldata pkAG2
+        bytes calldata pkAG2,
+        bytes calldata pkRequesterG2
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         ForceRevealState storage fr = forceReveals[channelId];
@@ -1139,20 +1143,47 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.player1 == address(0)) revert NoChannel();
         if (!ch.gameStarted) revert GameNotStarted();
         if (fr.inProgress) revert ForceRevealInProgress();
-        if (bDeck.length != 52) revert InvalidBDeck();
-        if (prerequisiteResps.length != 4 || prerequisiteSigs.length != 4) revert PrerequisitesNotMet();
-        if (pkBG2.length != 128 || pkAG2.length != 128) revert InvalidBDeck();
+        if (msg.sender != ch.player1 && msg.sender != ch.player1Signer && msg.sender != ch.player2 && msg.sender != ch.player2Signer) revert NotPlayer();
+        if (requesterDecryptResps.length != 3 || requesterSigs.length != 3) revert InvalidDecryptResp();
+        if (pkRequesterG2.length != 128) revert InvalidBDeck();
 
-        bytes32 deckHash = _hashBDeck(bDeck);
+        bytes[] storage deck = decks[channelId];
+        bytes32 deckHash = _hashBDeck(deck);
 
-        // Verify A's hole 1 (index 0) signed by B
-        _verifyDecryptResp(channelId, deckHash, 0, prerequisiteResps[0], prerequisiteSigs[0], ch.player2, bDeck[0], pkBG2);
-        // Verify A's hole 2 (index 1) signed by B
-        _verifyDecryptResp(channelId, deckHash, 1, prerequisiteResps[1], prerequisiteSigs[1], ch.player2, bDeck[1], pkBG2);
-        // Verify B's hole 1 (index 2) signed by A
-        _verifyDecryptResp(channelId, deckHash, 2, prerequisiteResps[2], prerequisiteSigs[2], ch.player1, bDeck[2], pkAG2);
-        // Verify B's hole 2 (index 3) signed by A
-        _verifyDecryptResp(channelId, deckHash, 3, prerequisiteResps[3], prerequisiteSigs[3], ch.player1, bDeck[3], pkAG2);
+        // Verify prerequisites only if holes not already revealed
+        bool needPrereqs = (revealedCards[channelId][0].length == 0 || revealedCards[channelId][1].length == 0 ||
+                           revealedCards[channelId][2].length == 0 || revealedCards[channelId][3].length == 0);
+        if (needPrereqs) {
+            if (prerequisiteResps.length != 4 || prerequisiteSigs.length != 4) revert PrerequisitesNotMet();
+            if (pkBG2.length != 128 || pkAG2.length != 128) revert InvalidBDeck();
+            
+            // Verify A's holes signed by B
+            _verifyDecryptResp(channelId, deckHash, 0, prerequisiteResps[0], prerequisiteSigs[0], ch.player2, deck[0], pkBG2);
+            _verifyDecryptResp(channelId, deckHash, 1, prerequisiteResps[1], prerequisiteSigs[1], ch.player2, deck[1], pkBG2);
+            // Verify B's holes signed by A
+            _verifyDecryptResp(channelId, deckHash, 2, prerequisiteResps[2], prerequisiteSigs[2], ch.player1, deck[2], pkAG2);
+            _verifyDecryptResp(channelId, deckHash, 3, prerequisiteResps[3], prerequisiteSigs[3], ch.player1, deck[3], pkAG2);
+            
+            // Store revealed cards
+            revealedCards[channelId][0] = prerequisiteResps[0].U;
+            revealedCards[channelId][1] = prerequisiteResps[1].U;
+            revealedCards[channelId][2] = prerequisiteResps[2].U;
+            revealedCards[channelId][3] = prerequisiteResps[3].U;
+        }
+
+        // Determine requester and obligated helper
+        address requester = (msg.sender == ch.player1 || msg.sender == ch.player1Signer) ? ch.player1 : ch.player2;
+        address obligatedHelper = (requester == ch.player1) ? ch.player2 : ch.player1;
+
+        // Verify requester's flop DecryptResps
+        _verifyDecryptResp(channelId, deckHash, 4, requesterDecryptResps[0], requesterSigs[0], requester, deck[4], pkRequesterG2);
+        _verifyDecryptResp(channelId, deckHash, 5, requesterDecryptResps[1], requesterSigs[1], requester, deck[5], pkRequesterG2);
+        _verifyDecryptResp(channelId, deckHash, 6, requesterDecryptResps[2], requesterSigs[2], requester, deck[6], pkRequesterG2);
+
+        // Store requester's flop cards
+        revealedCards[channelId][4] = requesterDecryptResps[0].U;
+        revealedCards[channelId][5] = requesterDecryptResps[1].U;
+        revealedCards[channelId][6] = requesterDecryptResps[2].U;
 
         // Flop indices are 4, 5, 6
         uint8[] memory indices = new uint8[](3);
@@ -1160,14 +1191,12 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         indices[1] = 5;
         indices[2] = 6;
 
-        // Helper for flop is A (player1)
         fr.stage = ForceRevealStage.FLOP;
         fr.inProgress = true;
         fr.served = false;
         fr.deadline = block.timestamp + forceRevealWindow;
-        fr.obligatedHelper = ch.player1;
+        fr.obligatedHelper = obligatedHelper;
         fr.indices = indices;
-        fr.deckHash = deckHash;
 
         emit ForceRevealOpened(channelId, uint8(ForceRevealStage.FLOP), indices);
     }
@@ -1175,12 +1204,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     /// @notice Answer force reveal for flop cards
     /// @param channelId The channel identifier
     /// @param bDeck Array of 52 G1 encrypted card points (Y values)
-    /// @param decryptResps Array of 3 DecryptResp structs (for indices 4, 5, 6)
-    /// @param signatures Array of 3 signatures from helper (A)
+    /// @notice Answer force reveal for flop cards
+    /// @dev Helper provides their DecryptResps for the 3 flop cards. Flop cards are now fully revealed with both players' responses.
+    /// @param channelId The channel identifier
+    /// @param decryptResps Array of 3 DecryptResp structs (for indices 4, 5, 6) from helper
+    /// @param signatures Array of 3 signatures from helper
     /// @param pkHelperG2 Helper's G2 public key (128 bytes)
     function answerFlop(
         uint256 channelId,
-        bytes[] calldata bDeck,
         HeadsUpPokerEIP712.DecryptResp[] calldata decryptResps,
         bytes[] calldata signatures,
         bytes calldata pkHelperG2
@@ -1192,61 +1223,35 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (fr.stage != ForceRevealStage.FLOP) revert ForceRevealWrongStage();
         if (fr.served) revert ForceRevealAlreadyServed();
         if (block.timestamp > fr.deadline) revert Expired();
-        if (bDeck.length != 52) revert InvalidBDeck();
-        
-        bytes32 deckHash = _hashBDeck(bDeck);
-        if (deckHash != fr.deckHash) revert DeckHashMismatch();
-
         if (decryptResps.length != 3 || signatures.length != 3) revert InvalidDecryptResp();
         if (pkHelperG2.length != 128) revert InvalidDecryptResp();
 
+        bytes[] storage deck = decks[channelId];
+        bytes32 deckHash = _hashBDeck(deck);
+
         // Verify flop card 1 (index 4)
-        _verifyDecryptResp(channelId, fr.deckHash, fr.indices[0], decryptResps[0], signatures[0], fr.obligatedHelper, bDeck[fr.indices[0]], pkHelperG2);
+        _verifyDecryptResp(channelId, deckHash, fr.indices[0], decryptResps[0], signatures[0], fr.obligatedHelper, deck[fr.indices[0]], pkHelperG2);
         // Verify flop card 2 (index 5)
-        _verifyDecryptResp(channelId, fr.deckHash, fr.indices[1], decryptResps[1], signatures[1], fr.obligatedHelper, bDeck[fr.indices[1]], pkHelperG2);
+        _verifyDecryptResp(channelId, deckHash, fr.indices[1], decryptResps[1], signatures[1], fr.obligatedHelper, deck[fr.indices[1]], pkHelperG2);
         // Verify flop card 3 (index 6)
-        _verifyDecryptResp(channelId, fr.deckHash, fr.indices[2], decryptResps[2], signatures[2], fr.obligatedHelper, bDeck[fr.indices[2]], pkHelperG2);
+        _verifyDecryptResp(channelId, deckHash, fr.indices[2], decryptResps[2], signatures[2], fr.obligatedHelper, deck[fr.indices[2]], pkHelperG2);
 
         fr.served = true;
         emit ForceRevealServed(channelId, uint8(ForceRevealStage.FLOP), fr.indices);
     }
 
-    /// @notice Finalize force reveal for flop cards
-    /// @param channelId The channel identifier
-    function finalizeFlop(uint256 channelId) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (!fr.inProgress) revert NoForceRevealInProgress();
-        if (fr.stage != ForceRevealStage.FLOP) revert ForceRevealWrongStage();
-        if (block.timestamp <= fr.deadline) revert ForceRevealNotExpired();
-
-        if (!fr.served) {
-            // Slash the obligated helper (player1/A)
-            uint256 slashAmount = ch.deposit1;
-            ch.deposit1 = 0;
-            ch.deposit2 += slashAmount;
-            
-            ch.finalized = true;
-            emit ForceRevealSlashed(channelId, uint8(ForceRevealStage.FLOP), fr.indices, fr.obligatedHelper);
-        }
-
-        fr.inProgress = false;
-    }
-
     /// @notice Request force reveal of turn card
-    /// @dev Requires flop responses. Helper = B.
+    /// @dev Either player can request. Prerequisites optional. Requesting player provides their DecryptResp.
     /// @param channelId The channel identifier
-    /// @param bDeck Array of 52 G1 encrypted card points (Y values)
-    /// @param prerequisiteResps Array of 3 DecryptResp for flop (indices 4,5,6) signed by A
-    /// @param prerequisiteSigs Array of 3 signatures from A
-    /// @param pkPrereqG2 Helper A's G2 public key for verifying prerequisites
+    /// @param channelId The channel identifier  
+    /// @param requesterDecryptResp Requesting player's DecryptResp for the turn card
+    /// @param requesterSig Requesting player's signature
+    /// @param pkRequesterG2 Requesting player's G2 public key
     function requestTurn(
         uint256 channelId,
-        bytes[] calldata bDeck,
-        HeadsUpPokerEIP712.DecryptResp[] calldata prerequisiteResps,
-        bytes[] calldata prerequisiteSigs,
-        bytes calldata pkPrereqG2
+        HeadsUpPokerEIP712.DecryptResp calldata requesterDecryptResp,
+        bytes calldata requesterSig,
+        bytes calldata pkRequesterG2
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         ForceRevealState storage fr = forceReveals[channelId];
@@ -1254,18 +1259,26 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.player1 == address(0)) revert NoChannel();
         if (!ch.gameStarted) revert GameNotStarted();
         if (fr.inProgress) revert ForceRevealInProgress();
-        if (bDeck.length != 52) revert InvalidBDeck();
-        if (prerequisiteResps.length != 3 || prerequisiteSigs.length != 3) revert PrerequisitesNotMet();
-        if (pkPrereqG2.length != 128) revert InvalidBDeck();
+        if (msg.sender != ch.player1 && msg.sender != ch.player1Signer && msg.sender != ch.player2 && msg.sender != ch.player2Signer) revert NotPlayer();
+        if (pkRequesterG2.length != 128) revert InvalidBDeck();
 
-        bytes32 deckHash = _hashBDeck(bDeck);
+        bytes[] storage deck = decks[channelId];
+        bytes32 deckHash = _hashBDeck(deck);
 
-        // Verify flop card 1 (index 4) signed by A
-        _verifyDecryptResp(channelId, deckHash, 4, prerequisiteResps[0], prerequisiteSigs[0], ch.player1, bDeck[4], pkPrereqG2);
-        // Verify flop card 2 (index 5) signed by A
-        _verifyDecryptResp(channelId, deckHash, 5, prerequisiteResps[1], prerequisiteSigs[1], ch.player1, bDeck[5], pkPrereqG2);
-        // Verify flop card 3 (index 6) signed by A
-        _verifyDecryptResp(channelId, deckHash, 6, prerequisiteResps[2], prerequisiteSigs[2], ch.player1, bDeck[6], pkPrereqG2);
+        // Verify flop cards are already revealed (indices 4, 5, 6)
+        if (revealedCards[channelId][4].length == 0 || revealedCards[channelId][5].length == 0 || revealedCards[channelId][6].length == 0) {
+            revert PrerequisitesNotMet();
+        }
+
+        // Determine requester and obligated helper
+        address requester = (msg.sender == ch.player1 || msg.sender == ch.player1Signer) ? ch.player1 : ch.player2;
+        address obligatedHelper = (requester == ch.player1) ? ch.player2 : ch.player1;
+
+        // Verify requester's turn DecryptResp
+        _verifyDecryptResp(channelId, deckHash, 7, requesterDecryptResp, requesterSig, requester, deck[7], pkRequesterG2);
+
+        // Store requester's turn card
+        revealedCards[channelId][7] = requesterDecryptResp.U;
 
         // Turn index is 7
         uint8[] memory indices = new uint8[](1);
@@ -1275,24 +1288,21 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         fr.inProgress = true;
         fr.served = false;
         fr.deadline = block.timestamp + forceRevealWindow;
-        fr.obligatedHelper = ch.player2; // B must answer
+        fr.obligatedHelper = obligatedHelper;
         fr.indices = indices;
-        fr.deckHash = deckHash;
 
         emit ForceRevealOpened(channelId, uint8(ForceRevealStage.TURN), indices);
     }
 
     /// @notice Answer force reveal for turn card
     /// @param channelId The channel identifier
-    /// @param bDeck Array of 52 G1 encrypted card points (Y values)
-    /// @param decryptResps Array of 1 DecryptResp struct (for index 7)
-    /// @param signatures Array of 1 signature from helper (B)
+    /// @param decryptResp DecryptResp struct for index 7 from helper
+    /// @param signature Signature from helper
     /// @param pkHelperG2 Helper's G2 public key (128 bytes)
     function answerTurn(
         uint256 channelId,
-        bytes[] calldata bDeck,
-        HeadsUpPokerEIP712.DecryptResp[] calldata decryptResps,
-        bytes[] calldata signatures,
+        HeadsUpPokerEIP712.DecryptResp calldata decryptResp,
+        bytes calldata signature,
         bytes calldata pkHelperG2
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
@@ -1302,65 +1312,28 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (fr.stage != ForceRevealStage.TURN) revert ForceRevealWrongStage();
         if (fr.served) revert ForceRevealAlreadyServed();
         if (block.timestamp > fr.deadline) revert Expired();
-        if (bDeck.length != 52) revert InvalidBDeck();
-        
-        bytes32 deckHash = _hashBDeck(bDeck);
-        if (deckHash != fr.deckHash) revert DeckHashMismatch();
-
-        if (decryptResps.length != 1 || signatures.length != 1) revert InvalidDecryptResp();
         if (pkHelperG2.length != 128) revert InvalidDecryptResp();
 
-        _verifyDecryptResp(
-            channelId,
-            fr.deckHash,
-            fr.indices[0],
-            decryptResps[0],
-            signatures[0],
-            fr.obligatedHelper,
-            bDeck[fr.indices[0]],
-            pkHelperG2
-        );
+        bytes[] storage deck = decks[channelId];
+        bytes32 deckHash = _hashBDeck(deck);
+
+        _verifyDecryptResp(channelId, deckHash, fr.indices[0], decryptResp, signature, fr.obligatedHelper, deck[fr.indices[0]], pkHelperG2);
 
         fr.served = true;
         emit ForceRevealServed(channelId, uint8(ForceRevealStage.TURN), fr.indices);
     }
 
-    /// @notice Finalize force reveal for turn card
-    /// @param channelId The channel identifier
-    function finalizeTurn(uint256 channelId) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (!fr.inProgress) revert NoForceRevealInProgress();
-        if (fr.stage != ForceRevealStage.TURN) revert ForceRevealWrongStage();
-        if (block.timestamp <= fr.deadline) revert ForceRevealNotExpired();
-
-        if (!fr.served) {
-            // Slash the obligated helper (player2/B)
-            uint256 slashAmount = ch.deposit2;
-            ch.deposit2 = 0;
-            ch.deposit1 += slashAmount;
-            
-            ch.finalized = true;
-            emit ForceRevealSlashed(channelId, uint8(ForceRevealStage.TURN), fr.indices, fr.obligatedHelper);
-        }
-
-        fr.inProgress = false;
-    }
-
     /// @notice Request force reveal of river card
-    /// @dev Requires turn response. Helper = A.
+    /// @dev Either player can request. Prerequisites checked. Requesting player provides their DecryptResp.
     /// @param channelId The channel identifier
-    /// @param bDeck Array of 52 G1 encrypted card points (Y values)
-    /// @param prerequisiteResp Single DecryptResp for turn (index 7) signed by B
-    /// @param prerequisiteSig Signature from B
-    /// @param pkPrereqG2 Helper B's G2 public key for verifying prerequisite
+    /// @param requesterDecryptResp Requesting player's DecryptResp for the river card
+    /// @param requesterSig Requesting player's signature
+    /// @param pkRequesterG2 Requesting player's G2 public key
     function requestRiver(
         uint256 channelId,
-        bytes[] calldata bDeck,
-        HeadsUpPokerEIP712.DecryptResp calldata prerequisiteResp,
-        bytes calldata prerequisiteSig,
-        bytes calldata pkPrereqG2
+        HeadsUpPokerEIP712.DecryptResp calldata requesterDecryptResp,
+        bytes calldata requesterSig,
+        bytes calldata pkRequesterG2
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         ForceRevealState storage fr = forceReveals[channelId];
@@ -1368,22 +1341,26 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.player1 == address(0)) revert NoChannel();
         if (!ch.gameStarted) revert GameNotStarted();
         if (fr.inProgress) revert ForceRevealInProgress();
-        if (bDeck.length != 52) revert InvalidBDeck();
-        if (pkPrereqG2.length != 128) revert InvalidBDeck();
+        if (msg.sender != ch.player1 && msg.sender != ch.player1Signer && msg.sender != ch.player2 && msg.sender != ch.player2Signer) revert NotPlayer();
+        if (pkRequesterG2.length != 128) revert InvalidBDeck();
 
-        bytes32 deckHash = _hashBDeck(bDeck);
+        bytes[] storage deck = decks[channelId];
+        bytes32 deckHash = _hashBDeck(deck);
 
-        // Verify turn card (index 7) signed by B
-        _verifyDecryptResp(
-            channelId,
-            deckHash,
-            7,
-            prerequisiteResp,
-            prerequisiteSig,
-            ch.player2,
-            bDeck[7],
-            pkPrereqG2
-        );
+        // Verify turn card is already revealed (index 7)
+        if (revealedCards[channelId][7].length == 0) {
+            revert PrerequisitesNotMet();
+        }
+
+        // Determine requester and obligated helper
+        address requester = (msg.sender == ch.player1 || msg.sender == ch.player1Signer) ? ch.player1 : ch.player2;
+        address obligatedHelper = (requester == ch.player1) ? ch.player2 : ch.player1;
+
+        // Verify requester's river DecryptResp
+        _verifyDecryptResp(channelId, deckHash, 8, requesterDecryptResp, requesterSig, requester, deck[8], pkRequesterG2);
+
+        // Store requester's river card
+        revealedCards[channelId][8] = requesterDecryptResp.U;
 
         // River index is 8
         uint8[] memory indices = new uint8[](1);
@@ -1393,22 +1370,19 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         fr.inProgress = true;
         fr.served = false;
         fr.deadline = block.timestamp + forceRevealWindow;
-        fr.obligatedHelper = ch.player1; // A must answer
+        fr.obligatedHelper = obligatedHelper;
         fr.indices = indices;
-        fr.deckHash = deckHash;
 
         emit ForceRevealOpened(channelId, uint8(ForceRevealStage.RIVER), indices);
     }
 
     /// @notice Answer force reveal for river card
     /// @param channelId The channel identifier
-    /// @param bDeck Array of 52 G1 encrypted card points (Y values)
-    /// @param decryptResp Single DecryptResp struct (for index 8)
-    /// @param signature Signature from helper (A)
+    /// @param decryptResp DecryptResp struct for index 8 from helper
+    /// @param signature Signature from helper
     /// @param pkHelperG2 Helper's G2 public key (128 bytes)
     function answerRiver(
         uint256 channelId,
-        bytes[] calldata bDeck,
         HeadsUpPokerEIP712.DecryptResp calldata decryptResp,
         bytes calldata signature,
         bytes calldata pkHelperG2
@@ -1420,21 +1394,19 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (fr.stage != ForceRevealStage.RIVER) revert ForceRevealWrongStage();
         if (fr.served) revert ForceRevealAlreadyServed();
         if (block.timestamp > fr.deadline) revert Expired();
-        if (bDeck.length != 52) revert InvalidBDeck();
-        
-        bytes32 deckHash = _hashBDeck(bDeck);
-        if (deckHash != fr.deckHash) revert DeckHashMismatch();
-
         if (pkHelperG2.length != 128) revert InvalidDecryptResp();
+
+        bytes[] storage deck = decks[channelId];
+        bytes32 deckHash = _hashBDeck(deck);
 
         _verifyDecryptResp(
             channelId,
-            fr.deckHash,
+            deckHash,
             fr.indices[0],
             decryptResp,
             signature,
             fr.obligatedHelper,
-            bDeck[fr.indices[0]],
+            deck[fr.indices[0]],
             pkHelperG2
         );
 
@@ -1442,32 +1414,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit ForceRevealServed(channelId, uint8(ForceRevealStage.RIVER), fr.indices);
     }
 
-    /// @notice Finalize force reveal for river card
-    /// @param channelId The channel identifier
-    function finalizeRiver(uint256 channelId) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (!fr.inProgress) revert NoForceRevealInProgress();
-        if (fr.stage != ForceRevealStage.RIVER) revert ForceRevealWrongStage();
-        if (block.timestamp <= fr.deadline) revert ForceRevealNotExpired();
-
-        if (!fr.served) {
-            // Slash the obligated helper (player1/A)
-            uint256 slashAmount = ch.deposit1;
-            ch.deposit1 = 0;
-            ch.deposit2 += slashAmount;
-            
-            ch.finalized = true;
-            emit ForceRevealSlashed(channelId, uint8(ForceRevealStage.RIVER), fr.indices, fr.obligatedHelper);
-        }
-
-        fr.inProgress = false;
-    }
-
     /// @notice Internal helper to compute the hash of bDeck
     /// @dev Hashes all 52 encrypted card points
     function _hashBDeck(bytes[] calldata bDeck) internal pure returns (bytes32) {
+        return keccak256(abi.encode(bDeck));
+    }
+
+    /// @notice Internal helper to compute the hash of bDeck from storage
+    /// @dev Hashes all 52 encrypted card points
+    function _hashBDeck(bytes[] storage bDeck) internal view returns (bytes32) {
         return keccak256(abi.encode(bDeck));
     }
 
@@ -1480,7 +1435,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         HeadsUpPokerEIP712.DecryptResp calldata decryptResp,
         bytes calldata signature,
         address expectedSigner,
-        bytes calldata Y,
+        bytes storage Y,
         bytes calldata pkHelperG2
     ) internal view {
         // Verify DecryptResp matches the expected values
