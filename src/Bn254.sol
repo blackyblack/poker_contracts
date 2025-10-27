@@ -38,7 +38,7 @@ library Bn254 {
         uint256 yX;
         uint256 yY;
 
-        assembly {
+        assembly ("memory-safe") {
             yX := mload(add(Y, 32))
             yY := mload(add(Y, 64))
         }
@@ -48,7 +48,7 @@ library Bn254 {
 
         bytes memory input = new bytes(384);
 
-        assembly {
+        assembly ("memory-safe") {
             let inputPtr := add(input, 32)
 
             mstore(inputPtr, mload(add(U, 32)))
@@ -70,7 +70,7 @@ library Bn254 {
         // Call pairing precompile at 0x08
         uint256[1] memory result;
         bool success;
-        assembly {
+        assembly ("memory-safe") {
             success := staticcall(
                 gas(),
                 0x08,           // Pairing precompile
@@ -96,7 +96,7 @@ library Bn254 {
         
         uint256 x;
         uint256 y;
-        assembly {
+        assembly ("memory-safe") {
             x := mload(add(p, 32))
             y := mload(add(p, 64))
         }
@@ -129,7 +129,7 @@ library Bn254 {
         
         uint256 x;
         uint256 y;
-        assembly {
+        assembly ("memory-safe") {
             x := mload(add(p, 32))
             y := mload(add(p, 64))
         }

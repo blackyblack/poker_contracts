@@ -50,11 +50,12 @@ contract HeadsUpPokerEIP712 is EIP712 {
         bytes32 prevHash;
     }
 
-    struct DecryptResp {
+    struct DecryptedCard {
         uint256 channelId;
-        bytes32 deckHash;
+        uint256 handId;
+        address player; // address of the player decrypting the card
         uint8 index;
-        bytes U; // G1 partial decrypt point (64 bytes)
+        bytes decryptedCard; // G1 partial decrypt point (64 bytes)
     }
 
     constructor() EIP712("HeadsUpPoker", "1") {}
@@ -101,16 +102,15 @@ contract HeadsUpPokerEIP712 is EIP712 {
         return _hashTypedDataV4(structHash);
     }
 
-    function digestDecryptResp(
-        DecryptResp calldata dr
-    ) public view returns (bytes32) {
+    function digestDecryptedCard(DecryptedCard calldata dr) public view returns (bytes32) {
         bytes32 structHash = keccak256(
             abi.encode(
                 DECRYPT_RESP_TYPEHASH,
                 dr.channelId,
-                dr.deckHash,
+                dr.handId,
+                dr.player,
                 dr.index,
-                keccak256(dr.U)
+                keccak256(dr.decryptedCard)
             )
         );
         return _hashTypedDataV4(structHash);
@@ -133,10 +133,10 @@ contract HeadsUpPokerEIP712 is EIP712 {
         return digestCardCommit(cc).recover(sig);
     }
 
-    function recoverDecryptRespSigner(
-        DecryptResp calldata dr,
+    function recoverDecryptedCardSigner(
+        DecryptedCard calldata dr,
         bytes calldata sig
     ) external view returns (address) {
-        return digestDecryptResp(dr).recover(sig);
+        return digestDecryptedCard(dr).recover(sig);
     }
 }
