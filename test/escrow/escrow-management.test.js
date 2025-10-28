@@ -2,7 +2,7 @@ import { expect } from "chai";
 import hre from "hardhat";
 import { ACTION } from "../helpers/actions.js";
 import { domainSeparator, actionDigest } from "../helpers/hashes.js";
-import { buildActions, signActions, wallet1, wallet2, wallet3, startGameWithDeckHash , createMockDeck } from "../helpers/test-utils.js";
+import { buildActions, signActions, wallet1, wallet2, wallet3, startGameWithDeckHash, createMockDeck } from "../helpers/test-utils.js";
 
 const { ethers } = hre;
 

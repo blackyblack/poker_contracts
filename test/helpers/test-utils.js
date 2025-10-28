@@ -128,7 +128,7 @@ export async function buildCardCommit(a, b, dom, channelId, slot, card, handId =
 export function createMockDeck() {
     const deck = [];
     for (let i = 0; i < 52; i++) {
-        // Create a 64-byte mock card (all zeros for simplicity)
+        // Create a 64-byte mock card
         deck.push(ethers.hexlify(ethers.randomBytes(64)));
     }
     return deck;

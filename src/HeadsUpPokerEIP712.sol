@@ -32,7 +32,7 @@ contract HeadsUpPokerEIP712 is EIP712 {
         keccak256(
             "CardCommit(uint256 channelId,uint256 handId,uint8 slot,bytes32 commitHash,bytes32 prevHash)"
         );
-    bytes32 internal constant DECRYPT_RESP_TYPEHASH =
+    bytes32 internal constant DECRYPTED_CARD_TYPEHASH =
         keccak256(
             "DecryptedCard(uint256 channelId,uint256 handId,address player,uint8 index,bytes decryptedCard)"
         );
@@ -105,7 +105,7 @@ contract HeadsUpPokerEIP712 is EIP712 {
     function digestDecryptedCard(DecryptedCard calldata dr) public view returns (bytes32) {
         bytes32 structHash = keccak256(
             abi.encode(
-                DECRYPT_RESP_TYPEHASH,
+                DECRYPTED_CARD_TYPEHASH,
                 dr.channelId,
                 dr.handId,
                 dr.player,
