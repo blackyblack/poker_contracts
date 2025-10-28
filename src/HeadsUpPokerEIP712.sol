@@ -34,7 +34,7 @@ contract HeadsUpPokerEIP712 is EIP712 {
         );
     bytes32 internal constant DECRYPT_RESP_TYPEHASH =
         keccak256(
-            "DecryptResp(uint256 channelId,bytes32 deckHash,uint8 index,bytes U)"
+            "DecryptedCard(uint256 channelId,uint256 handId,address player,uint8 index,bytes decryptedCard)"
         );
 
     // ---------------------------------------------------------------------

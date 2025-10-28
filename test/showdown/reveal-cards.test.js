@@ -19,8 +19,8 @@ describe("Showdown - revealCards", function () {
         [player1, player2] = await ethers.getSigners();
         const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await Escrow.deploy();
-        await escrow.open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
-        await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
+        await escrow.open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
+        await escrow.connect(player2).join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
         await startGameWithDeckHash(escrow, channelId, player1, player2);
     });
 
