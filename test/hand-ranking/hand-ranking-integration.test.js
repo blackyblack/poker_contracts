@@ -18,8 +18,8 @@ describe("HeadsUpPokerEscrow - Poker Hand Ranking Integration", function () {
         escrow = await HeadsUpPokerEscrow.deploy();
 
         // Setup channel
-        await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, { value: deposit });
-        await escrow.connect(player2).join(channelId, ethers.ZeroAddress, { value: deposit });
+        await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
+        await escrow.connect(player2).join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
         await startGameWithDeckHash(escrow, channelId, player1, player2);
     });
 

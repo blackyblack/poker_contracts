@@ -123,19 +123,31 @@ export async function buildCardCommit(a, b, dom, channelId, slot, card, handId =
 }
 
 /**
- * Helper to start a game by having both players submit the same deck hash
+ * Helper to create a mock deck (52 cards, each 64 bytes)
+ */
+export function createMockDeck() {
+    const deck = [];
+    for (let i = 0; i < 52; i++) {
+        // Create a 64-byte mock card
+        deck.push(ethers.hexlify(ethers.randomBytes(64)));
+    }
+    return deck;
+}
+
+/**
+ * Helper to start a game by having both players submit the same deck
  * @param escrow - The escrow contract
  * @param channelId - Channel ID
  * @param player1 - Player 1 signer
  * @param player2 - Player 2 signer
- * @param deckHash - Optional deck hash (defaults to keccak256 of "test_deck"))
+ * @param deck - Optional deck array (defaults to mock deck)
  */
-export async function startGameWithDeckHash(escrow, channelId, player1, player2, deckHash = null) {
-    if (!deckHash) {
-        deckHash = ethers.keccak256(ethers.toUtf8Bytes("test_deck"));
+export async function startGameWithDeckHash(escrow, channelId, player1, player2, deck = null) {
+    if (!deck) {
+        deck = createMockDeck();
     }
-    await escrow.connect(player1).startGame(channelId, deckHash);
-    await escrow.connect(player2).startGame(channelId, deckHash);
+    await escrow.connect(player1).startGame(channelId, deck);
+    await escrow.connect(player2).startGame(channelId, deck);
 }
 
 /**
