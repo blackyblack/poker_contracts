@@ -4,9 +4,8 @@ export default {
     solidity: {
         version: "0.8.24",
         settings: {
-            optimizer: { enabled: true, runs: 1 },
+            optimizer: { enabled: true, runs: 200 },
             viaIR: true,
-            evmVersion: "paris"
         }
     },
     gasReporter: {

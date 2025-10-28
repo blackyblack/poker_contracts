@@ -55,5 +55,5 @@ error ForceRevealAlreadyServed();
 error ForceRevealWrongStage();
 error InvalidDecryptedCard();
 error PrerequisitesNotMet();
-error InvalidBDeck();
+error InvalidDeck();
 error NotEscrow();
