@@ -75,7 +75,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     constructor() {
         replay = new HeadsUpPokerReplay();
-        forceReveal = new HeadsUpPokerForceReveal(address(this));
+        forceReveal = new HeadsUpPokerForceReveal(address(this), replay);
     }
 
     // ---------------------------------------------------------------------
@@ -370,6 +370,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         data.deposit1 = ch.deposit1;
         data.deposit2 = ch.deposit2;
         data.slashAmount = ch.slashAmount;
+        data.minSmallBlind = ch.minSmallBlind;
     }
 
     /// @notice Allows player1 to top up their deposit after player2 has joined
@@ -891,9 +892,26 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     // Force Reveal Functions
     // ------------------------------------------------------------------
 
-    function requestHoleA(uint256 channelId) external nonReentrant {
+    function requestHoleA(
+        uint256 channelId,
+        Action[] calldata actions,
+        bytes[] calldata actionSignatures
+    ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        forceReveal.requestHoleA(channelId, _channelData(ch), msg.sender);
+        _verifyActionSignatures(
+            channelId,
+            ch.handId,
+            actions,
+            actionSignatures,
+            ch.player1,
+            ch.player2
+        );
+        forceReveal.requestHoleA(
+            channelId,
+            _channelData(ch),
+            msg.sender,
+            actions
+        );
         emit ForceRevealOpened(
             channelId,
             uint8(HeadsUpPokerForceReveal.ForceRevealStage.HOLE_A)
@@ -921,16 +939,23 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function requestHoleB(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        Action[] calldata actions,
+        bytes[] calldata actionSignatures
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
+        _verifyActionSignatures(
+            channelId,
+            ch.handId,
+            actions,
+            actionSignatures,
+            ch.player1,
+            ch.player2
+        );
         forceReveal.requestHoleB(
             channelId,
             _channelData(ch),
             msg.sender,
-            decryptedCards,
-            signatures
+            actions
         );
         emit ForceRevealOpened(
             channelId,
@@ -959,20 +984,27 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function requestFlop(
         uint256 channelId,
+        Action[] calldata actions,
+        bytes[] calldata actionSignatures,
         HeadsUpPokerEIP712.DecryptedCard[] calldata requesterDecryptedCards,
-        bytes[] calldata requesterSignatures,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes[] calldata requesterSignatures
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
+        _verifyActionSignatures(
+            channelId,
+            ch.handId,
+            actions,
+            actionSignatures,
+            ch.player1,
+            ch.player2
+        );
         forceReveal.requestFlop(
             channelId,
             _channelData(ch),
             msg.sender,
+            actions,
             requesterDecryptedCards,
-            requesterSignatures,
-            decryptedCards,
-            signatures
+            requesterSignatures
         );
         emit ForceRevealOpened(
             channelId,
@@ -1001,20 +1033,27 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function requestTurn(
         uint256 channelId,
+        Action[] calldata actions,
+        bytes[] calldata actionSignatures,
         HeadsUpPokerEIP712.DecryptedCard calldata requesterDecryptedCard,
-        bytes calldata requesterSignature,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes calldata requesterSignature
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
+        _verifyActionSignatures(
+            channelId,
+            ch.handId,
+            actions,
+            actionSignatures,
+            ch.player1,
+            ch.player2
+        );
         forceReveal.requestTurn(
             channelId,
             _channelData(ch),
             msg.sender,
+            actions,
             requesterDecryptedCard,
-            requesterSignature,
-            decryptedCards,
-            signatures
+            requesterSignature
         );
         emit ForceRevealOpened(
             channelId,
@@ -1043,20 +1082,27 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function requestRiver(
         uint256 channelId,
+        Action[] calldata actions,
+        bytes[] calldata actionSignatures,
         HeadsUpPokerEIP712.DecryptedCard calldata requesterDecryptedCard,
-        bytes calldata requesterSignature,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes calldata requesterSignature
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
+        _verifyActionSignatures(
+            channelId,
+            ch.handId,
+            actions,
+            actionSignatures,
+            ch.player1,
+            ch.player2
+        );
         forceReveal.requestRiver(
             channelId,
             _channelData(ch),
             msg.sender,
+            actions,
             requesterDecryptedCard,
-            requesterSignature,
-            decryptedCards,
-            signatures
+            requesterSignature
         );
         emit ForceRevealOpened(
             channelId,

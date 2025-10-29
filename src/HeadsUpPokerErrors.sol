@@ -56,4 +56,5 @@ error ForceRevealWrongStage();
 error InvalidDecryptedCard();
 error PrerequisitesNotMet();
 error InvalidDeck();
+error InvalidGameState();
 error NotEscrow();
