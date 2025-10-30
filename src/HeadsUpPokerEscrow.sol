@@ -320,7 +320,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     /// @notice Both players must call this function with matching encrypted decks to start the game
     /// @param channelId The channel identifier
-    /// @param deck The deck to be used for this game (52 G1 encrypted card points, each 64 bytes)
+    /// @param deck The deck to be used for this game (9 G1 encrypted card points, each 64 bytes)
     function startGame(
         uint256 channelId,
         bytes[] calldata deck
@@ -331,7 +331,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.gameStarted) revert GameAlreadyStarted();
         if (msg.sender != ch.player1 && msg.sender != ch.player2)
             revert NotPlayer();
-        if (deck.length != 52) revert InvalidDeck();
+        if (deck.length != SLOT_RIVER + 1) revert InvalidDeck();
 
         bytes32 deckHash = keccak256(abi.encode(deck));
 

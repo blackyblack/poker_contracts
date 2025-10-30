@@ -21,6 +21,10 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         RIVER
     }
 
+    uint8 constant STREET_FLOP = 1;
+    uint8 constant STREET_TURN = 2;
+    uint8 constant STREET_RIVER = 3;
+
     struct ForceRevealState {
         ForceRevealStage stage;
         bool inProgress;
@@ -101,7 +105,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
     }
 
     function isDeckSet(uint256 channelId) external view returns (bool) {
-        return decks[channelId].length == 52;
+        return decks[channelId].length == HeadsUpPokerEIP712.SLOT_RIVER + 1;
     }
 
     // ------------------------------------------------------------------
@@ -145,11 +149,12 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         if (fr.inProgress || fr.stage != ForceRevealStage.NONE) revert ForceRevealInProgress();
         if (requester != ch.player1) revert NotPlayer();
 
-        GameValidation memory gv = _validateGameState(ch, actions);
-        _ensureActiveGame(gv);
+        _ensureActiveGame(ch, actions);
 
-        _ensureCardNotRevealed(channelId, HeadsUpPokerEIP712.SLOT_A1);
-        _ensureCardNotRevealed(channelId, HeadsUpPokerEIP712.SLOT_A2);
+        if (revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_A1].length != 0)
+            revert PrerequisitesNotMet();
+        if (revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_A2].length != 0)
+            revert PrerequisitesNotMet();
 
         _openForceReveal(fr, ForceRevealStage.HOLE_A, ch.player2);
     }
@@ -195,12 +200,12 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         _requireDeck(channelId);
         if (fr.inProgress) revert ForceRevealInProgress();
         if (requester != ch.player2 && requester != ch.player2Signer) revert NotPlayer();
-        GameValidation memory gv = _validateGameState(ch, actions);
-        _ensureActiveGame(gv);
-        _requireCardRevealed(channelId, HeadsUpPokerEIP712.SLOT_A1);
-        _requireCardRevealed(channelId, HeadsUpPokerEIP712.SLOT_A2);
-        _ensureCardNotRevealed(channelId, HeadsUpPokerEIP712.SLOT_B1);
-        _ensureCardNotRevealed(channelId, HeadsUpPokerEIP712.SLOT_B2);
+        _ensureActiveGame(ch, actions);
+
+        if (revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_B1].length != 0)
+            revert PrerequisitesNotMet();
+        if (revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_B2].length != 0)
+            revert PrerequisitesNotMet();
 
         _openForceReveal(fr, ForceRevealStage.HOLE_B, ch.player1);
     }
@@ -248,16 +253,11 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         _requireDeck(channelId);
         if (fr.inProgress) revert ForceRevealInProgress();
         if (requester != ch.player1 && requester != ch.player2) revert NotPlayer();
-        GameValidation memory gv = _validateGameState(ch, actions);
-        _ensureCommunityStage(gv, 1);
+        _ensureCommunityStage(ch, actions, STREET_FLOP);
         if (
             requesterDecryptedCards.length != 3 ||
             requesterSignatures.length != 3
         ) revert InvalidDecryptedCard();
-        _requireCardRevealed(channelId, HeadsUpPokerEIP712.SLOT_A1);
-        _requireCardRevealed(channelId, HeadsUpPokerEIP712.SLOT_A2);
-        _requireCardRevealed(channelId, HeadsUpPokerEIP712.SLOT_B1);
-        _requireCardRevealed(channelId, HeadsUpPokerEIP712.SLOT_B2);
 
         address obligatedHelper = requester == ch.player1 ? ch.player2 : ch.player1;
 
@@ -337,8 +337,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         if (fr.inProgress) revert ForceRevealInProgress();
         if (requester != ch.player1 && requester != ch.player2) revert NotPlayer();
 
-        GameValidation memory gv = _validateGameState(ch, actions);
-        _ensureCommunityStage(gv, 2);
+        _ensureCommunityStage(ch, actions, STREET_TURN);
 
         address obligatedHelper = requester == ch.player1 ? ch.player2 : ch.player1;
 
@@ -351,10 +350,6 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
                 revert PrerequisitesNotMet();
             }
         }
-
-        _requireCardRevealed(channelId, HeadsUpPokerEIP712.SLOT_FLOP1);
-        _requireCardRevealed(channelId, HeadsUpPokerEIP712.SLOT_FLOP2);
-        _requireCardRevealed(channelId, HeadsUpPokerEIP712.SLOT_FLOP3);
 
         _verifyAndStore(
             channelId,
@@ -408,8 +403,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         if (fr.inProgress) revert ForceRevealInProgress();
         if (requester != ch.player1 && requester != ch.player2) revert NotPlayer();
 
-        GameValidation memory gv = _validateGameState(ch, actions);
-        _ensureCommunityStage(gv, 3);
+        _ensureCommunityStage(ch, actions, STREET_RIVER);
 
         address obligatedHelper = requester == ch.player1 ? ch.player2 : ch.player1;
 
@@ -422,8 +416,6 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
                 revert PrerequisitesNotMet();
             }
         }
-
-        _requireCardRevealed(channelId, HeadsUpPokerEIP712.SLOT_TURN);
 
         _verifyAndStore(
             channelId,
@@ -657,11 +649,13 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         }
     }
 
-    function _validateGameState(
+    function _ensureCommunityStage(
         ChannelData calldata ch,
-        Action[] calldata actions
-    ) internal view returns (GameValidation memory gv) {
+        Action[] calldata actions,
+        uint8 requiredStreet
+    ) internal view {
         if (actions.length == 0) revert NoActionsProvided();
+        GameValidation memory gv;
         (gv.ended, , gv.street) = replay.replayState(
             actions,
             ch.deposit1,
@@ -670,12 +664,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
             ch.player1,
             ch.player2
         );
-    }
 
-    function _ensureCommunityStage(
-        GameValidation memory gv,
-        uint8 requiredStreet
-    ) internal pure {
         if (gv.ended) {
             revert InvalidGameState();
         }
@@ -684,33 +673,26 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         }
     }
 
-    function _ensureActiveGame(GameValidation memory gv) internal pure {
+    function _ensureActiveGame(
+        ChannelData calldata ch,
+        Action[] calldata actions
+    ) internal view {
+        if (actions.length == 0) revert NoActionsProvided();
+        GameValidation memory gv;
+        (gv.ended, , gv.street) = replay.replayState(
+            actions,
+            ch.deposit1,
+            ch.deposit2,
+            ch.minSmallBlind,
+            ch.player1,
+            ch.player2
+        );
         if (gv.ended) {
             revert InvalidGameState();
         }
     }
 
-    function _cardRevealed(
-        uint256 channelId,
-        uint8 index
-    ) internal view returns (bool) {
-        return revealedCardsA[channelId][index].length != 0 ||
-            revealedCardsB[channelId][index].length != 0;
-    }
-
-    function _ensureCardNotRevealed(uint256 channelId, uint8 index) internal view {
-        if (_cardRevealed(channelId, index)) {
-            revert PrerequisitesNotMet();
-        }
-    }
-
-    function _requireCardRevealed(uint256 channelId, uint8 index) internal view {
-        if (!_cardRevealed(channelId, index)) {
-            revert PrerequisitesNotMet();
-        }
-    }
-
     function _requireDeck(uint256 channelId) internal view {
-        if (decks[channelId].length != 52) revert InvalidDeck();
+        if (decks[channelId].length != HeadsUpPokerEIP712.SLOT_RIVER + 1) revert InvalidDeck();
     }
 }
