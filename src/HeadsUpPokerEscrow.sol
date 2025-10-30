@@ -5,10 +5,11 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
+import {HeadsUpPokerForceReveal} from "./HeadsUpPokerForceReveal.sol";
 import {PokerEvaluator} from "./PokerEvaluator.sol";
 import {HeadsUpPokerReplay} from "./HeadsUpPokerReplay.sol";
 import {Action} from "./HeadsUpPokerActions.sol";
-import {Bn254} from "./Bn254.sol";
+import "./HeadsUpPokerErrors.sol";
 
 /// @title HeadsUpPokerEscrow - Simple escrow contract for heads up poker matches using ETH only
 /// @notice Supports opening channels, joining, settling on fold and basic showdown flow
@@ -24,67 +25,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     uint256 public constant revealWindow = 1 hours;
     uint256 public constant disputeWindow = 1 hours;
-    uint256 public constant forceRevealWindow = 1 hours;
-
-    // ------------------------------------------------------------------
-    // Errors
-    // ------------------------------------------------------------------
-    error CommitDuplicate(uint8 slot);
-    error CommitWrongChannel(uint8 slot);
-    error CommitWrongSignerA(uint8 slot);
-    error CommitWrongSignerB(uint8 slot);
-    error CommitUnexpected(uint8 slot);
-
-    error NotFinalized();
-    error PaymentFailed();
-    error NoBalance();
-    error ChannelExists();
-    error BadOpponent();
-    error InvalidMinSmallBlind();
-    error NoDeposit();
-    error NoChannel();
-    error NotOpponent();
-    error AlreadyJoined();
-    error AlreadyFinalized();
-    error DepositExceedsOpponent();
-    error ShowdownInProgress();
-    error NotPlayer();
-    error SignatureLengthMismatch();
-    error CardsLengthMismatch();
-    error CardSaltsLengthMismatch();
-    error NoOverlap();
-    error HashMismatch();
-    error ChannelNotReady();
-    error BadRoleIndex();
-    error SequenceTooLow();
-    error Expired();
-    error NoShowdownInProgress();
-    error StillRevealing();
-    error OpponentHoleOpenFailed();
-    error InitiatorHolesRequired();
-    error ActionSignatureLengthMismatch();
-    error ActionWrongChannel();
-    error ActionWrongHand();
-    error ActionInvalidSender();
-    error ActionWrongSigner();
-    error NoActionsProvided();
-    error DisputeInProgress();
-    error NoDisputeInProgress();
-    error DisputeStillActive();
-    error SequenceTooShort();
-    error SequenceNotLonger();
-    error GameNotStarted();
-    error DeckHashMismatch();
-    error GameAlreadyStarted();
-    error ForceRevealInProgress();
-    error NoForceRevealInProgress();
-    error ForceRevealNotExpired();
-    error ForceRevealAlreadyServed();
-    error ForceRevealWrongStage();
-    error InvalidDecryptedCard();
-    error PrerequisitesNotMet();
-    error InvalidBDeck();
-
     // ------------------------------------------------------------------
     // Dispute state
     // ------------------------------------------------------------------
@@ -112,32 +52,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     mapping(uint256 => ShowdownState) private showdowns;
 
-    // ------------------------------------------------------------------
-    // Force Reveal state
-    // ------------------------------------------------------------------
-    enum ForceRevealStage {
-        NONE,
-        HOLE_A,
-        HOLE_B,
-        FLOP,
-        TURN,
-        RIVER
-    }
-
-    struct ForceRevealState {
-        ForceRevealStage stage;
-        bool inProgress;
-        bool served;
-        uint256 deadline;
-        address obligatedHelper;
-    }
-
-    mapping(uint256 => ForceRevealState) private forceReveals;
-    mapping(uint256 => mapping(uint8 => bytes)) private revealedCardsA; // channelId => index => decrypted U point for player A
-    mapping(uint256 => mapping(uint8 => bytes)) private revealedCardsB; // channelId => index => decrypted U point for player B
-    // ---------------------------------------------------------------------
-    // Channel storage
-    // ---------------------------------------------------------------------
     struct Channel {
         address player1;
         address player2;
@@ -145,21 +59,23 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 deposit2;
         bool finalized;
         uint256 handId;
-        bool player2Joined; // Track if player2 joined current hand
-        uint256 minSmallBlind; // Minimum small blind amount for this channel
-        address player1Signer; // Optional additional signing address for player1
-        address player2Signer; // Optional additional signing address for player2
-        bool gameStarted; // True when both players have submitted matching deck hashes
-        uint256 slashAmount; // Amount to slash for failed force reveals
+        bool player2Joined;
+        uint256 minSmallBlind;
+        address player1Signer;
+        address player2Signer;
+        bool gameStarted;
+        uint256 slashAmount;
+        bytes32 deckHashPlayer1;
+        bytes32 deckHashPlayer2;
     }
 
     mapping(uint256 => Channel) private channels;
-    mapping(uint256 => bytes[]) private decks; // channelId => deck (52 G1 points)
-    mapping(uint256 => bytes) private publicKeyA; // channelId => player A public key G2 point
-    mapping(uint256 => bytes) private publicKeyB; // channelId => player B public key G2 point
+
+    HeadsUpPokerForceReveal private immutable forceReveal;
 
     constructor() {
         replay = new HeadsUpPokerReplay();
+        forceReveal = new HeadsUpPokerForceReveal(address(this), replay);
     }
 
     // ---------------------------------------------------------------------
@@ -195,6 +111,13 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address indexed player,
         uint256 amount
     );
+    event ForceRevealOpened(uint256 indexed channelId, uint8 indexed stage);
+    event ForceRevealServed(uint256 indexed channelId, uint8 indexed stage);
+    event ForceRevealSlashed(
+        uint256 indexed channelId,
+        uint8 indexed stage,
+        address indexed obligatedHelper
+    );
     event DisputeStarted(
         uint256 indexed channelId,
         address indexed submitter,
@@ -216,13 +139,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 amount
     );
     event GameStarted(uint256 indexed channelId, bytes32 deckHash);
-    event ForceRevealOpened(uint256 indexed channelId, uint8 indexed stage);
-    event ForceRevealServed(uint256 indexed channelId, uint8 indexed stage);
-    event ForceRevealSlashed(
-        uint256 indexed channelId,
-        uint8 indexed stage,
-        address indexed slashedPlayer
-    );
 
     // ---------------------------------------------------------------------
     // View helpers
@@ -283,7 +199,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         uint8 index
     ) external view returns (bytes memory) {
-        return revealedCardsA[channelId][index];
+        return forceReveal.getRevealedCardA(channelId, index);
     }
 
     /// @notice Get the revealed card for a specific index for player B
@@ -294,21 +210,21 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         uint8 index
     ) external view returns (bytes memory) {
-        return revealedCardsB[channelId][index];
+        return forceReveal.getRevealedCardB(channelId, index);
     }
 
     /// @notice Get the force reveal state for a channel
     function getForceReveal(
         uint256 channelId
-    ) external view returns (ForceRevealState memory) {
-        return forceReveals[channelId];
+    ) external view returns (HeadsUpPokerForceReveal.ForceRevealState memory) {
+        return forceReveal.getForceReveal(channelId);
     }
 
     /// @notice Get public keys for a channel
     function getPublicKeys(
         uint256 channelId
     ) external view returns (bytes memory, bytes memory) {
-        return (publicKeyA[channelId], publicKeyB[channelId]);
+        return forceReveal.getPublicKeys(channelId);
     }
 
     // ---------------------------------------------------------------------
@@ -322,7 +238,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 minSmallBlind,
         address player1Signer,
         uint256 slashAmount,
-        bytes calldata publicKey
+        bytes calldata publicKeyA
     ) external payable nonReentrant returns (uint256 handId) {
         Channel storage ch = channels[channelId];
         if (ch.player1 != address(0) && !ch.finalized) revert ChannelExists();
@@ -346,15 +262,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ch.gameStarted = false;
         // TODO: maybe limit to deposit?
         ch.slashAmount = slashAmount;
+        ch.deckHashPlayer1 = bytes32(0);
+        ch.deckHashPlayer2 = bytes32(0);
 
-        // Reset deck storage
-        delete decks[channelId];
-        delete publicKeyA[channelId];
-        delete publicKeyB[channelId];
-        for (uint8 i = HeadsUpPokerEIP712.SLOT_A1; i <= HeadsUpPokerEIP712.SLOT_RIVER; i++) {
-            delete revealedCardsA[channelId][i];
-            delete revealedCardsB[channelId][i];
-        }
+        // Reset force reveal related storage via manager
+        forceReveal.resetChannel(channelId);
 
         // Reset showdown state when reusing channel
         ShowdownState storage sd = showdowns[channelId];
@@ -372,14 +284,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             ds.actionCount = 0;
         }
 
-        // Reset force reveal state
-        ForceRevealState storage fr = forceReveals[channelId];
-        if (fr.inProgress) {
-            fr.inProgress = false;
-            fr.stage = ForceRevealStage.NONE;
-        }
-
-        publicKeyA[channelId] = publicKey;
+        forceReveal.setPublicKeyA(channelId, publicKeyA);
 
         emit ChannelOpened(
             channelId,
@@ -395,7 +300,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     function join(
         uint256 channelId,
         address player2Signer,
-        bytes calldata publicKey
+        bytes calldata publicKeyB
     ) external payable nonReentrant {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
@@ -408,14 +313,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ch.deposit2 += msg.value; // Add to existing deposit instead of overwriting
         ch.player2Joined = true;
         ch.player2Signer = player2Signer;
-        publicKeyB[channelId] = publicKey;
+        forceReveal.setPublicKeyB(channelId, publicKeyB);
 
         emit ChannelJoined(channelId, msg.sender, msg.value);
     }
 
-    /// @notice Both players must call this function with matching decks to start the game
+    /// @notice Both players must call this function with matching encrypted decks to start the game
     /// @param channelId The channel identifier
-    /// @param deck The deck to be used for this game (52 G1 encrypted card points, each 64 bytes)
+    /// @param deck The deck to be used for this game (9 G1 encrypted card points, each 64 bytes)
     function startGame(
         uint256 channelId,
         bytes[] calldata deck
@@ -426,19 +331,46 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.gameStarted) revert GameAlreadyStarted();
         if (msg.sender != ch.player1 && msg.sender != ch.player2)
             revert NotPlayer();
-        if (deck.length != 52) revert InvalidBDeck();
+        if (deck.length != SLOT_RIVER + 1) revert InvalidDeck();
 
-        if (decks[channelId].length == 0) {
-            // First player submits deck
-            decks[channelId] = deck;
+        bytes32 deckHash = keccak256(abi.encode(deck));
+
+        if (msg.sender == ch.player1) {
+            ch.deckHashPlayer1 = deckHash;
+        } else {
+            ch.deckHashPlayer2 = deckHash;
+        }
+
+        if (
+            ch.deckHashPlayer1 == bytes32(0) || ch.deckHashPlayer2 == bytes32(0)
+        ) {
             return;
         }
 
-        // Second player verifies deck matches
-        bytes32 deckHash = _hashBDeck(deck);
-        if (deckHash != _hashBDeck(decks[channelId])) revert DeckHashMismatch();
+        if (ch.deckHashPlayer1 != ch.deckHashPlayer2) {
+            return;
+        }
+
+        forceReveal.storeDeck(channelId, deck);
+
         ch.gameStarted = true;
         emit GameStarted(channelId, deckHash);
+    }
+
+    function _channelData(
+        Channel storage ch
+    ) internal view returns (HeadsUpPokerForceReveal.ChannelData memory data) {
+        data.player1 = ch.player1;
+        data.player2 = ch.player2;
+        data.player1Signer = ch.player1Signer;
+        data.player2Signer = ch.player2Signer;
+        data.finalized = ch.finalized;
+        data.gameStarted = ch.gameStarted;
+        data.handId = ch.handId;
+        data.deposit1 = ch.deposit1;
+        data.deposit2 = ch.deposit2;
+        data.slashAmount = ch.slashAmount;
+        data.minSmallBlind = ch.minSmallBlind;
     }
 
     /// @notice Allows player1 to top up their deposit after player2 has joined
@@ -960,827 +892,251 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     // Force Reveal Functions
     // ------------------------------------------------------------------
 
-    /// @notice Request force reveal of Player A's hole cards
-    /// @dev Only player A can request. No prerequisites. Helper = B.
-    /// @param channelId The channel identifier
-    function requestHoleA(uint256 channelId) external nonReentrant {
+    function requestHoleA(
+        uint256 channelId,
+        Action[] calldata actions,
+        bytes[] calldata actionSignatures
+    ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (ch.player1 == address(0)) revert NoChannel();
-        if (!ch.gameStarted) revert GameNotStarted();
-        if (ch.finalized) revert AlreadyFinalized();
-        if (fr.inProgress) revert ForceRevealInProgress();
-        if (fr.stage != ForceRevealStage.NONE) revert ForceRevealInProgress();
-        if (msg.sender != ch.player1) revert NotPlayer();
-        if (
-            revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_A1].length != 0 ||
-            revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_A2].length != 0
-        ) revert PrerequisitesNotMet();
-
-        fr.stage = ForceRevealStage.HOLE_A;
-        fr.inProgress = true;
-        fr.served = false;
-        fr.deadline = block.timestamp + forceRevealWindow;
-        fr.obligatedHelper = ch.player2; // B must answer
-
-        emit ForceRevealOpened(channelId, uint8(ForceRevealStage.HOLE_A));
+        _verifyActionSignatures(
+            channelId,
+            ch.handId,
+            actions,
+            actionSignatures,
+            ch.player1,
+            ch.player2
+        );
+        forceReveal.requestHoleA(
+            channelId,
+            _channelData(ch),
+            msg.sender,
+            actions
+        );
+        emit ForceRevealOpened(
+            channelId,
+            uint8(HeadsUpPokerForceReveal.ForceRevealStage.HOLE_A)
+        );
     }
 
-    /// @notice Answer force reveal for Player A's hole cards
-    /// @dev Player B provides DecryptedCard for indices 0 and 1
-    /// @param channelId The channel identifier
-    /// @param decryptedCards Array of 2 A's holes
-    /// @param signatures Array of 2 signatures from helper (B)
     function answerHoleA(
         uint256 channelId,
         HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
         bytes[] calldata signatures
     ) external nonReentrant {
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (!fr.inProgress) revert NoForceRevealInProgress();
-        if (fr.stage != ForceRevealStage.HOLE_A) revert ForceRevealWrongStage();
-        if (fr.served) revert ForceRevealAlreadyServed();
-        if (block.timestamp > fr.deadline) revert Expired();
-        if (decryptedCards.length != 2 || signatures.length != 2)
-            revert InvalidDecryptedCard();
-        _verifySender(channelId, msg.sender, fr.obligatedHelper);
-
-        uint256 handId = channels[channelId].handId;
-
-        // Verify A's hole 1
-        _verifyDecryptedCard(
+        Channel storage ch = channels[channelId];
+        forceReveal.answerHoleA(
             channelId,
-            handId,
-            HeadsUpPokerEIP712.SLOT_A1,
-            decryptedCards[0],
-            signatures[0],
-            fr.obligatedHelper
+            _channelData(ch),
+            msg.sender,
+            decryptedCards,
+            signatures
         );
-        // Verify A's hole 2
-        _verifyDecryptedCard(
+        emit ForceRevealServed(
             channelId,
-            handId,
-            HeadsUpPokerEIP712.SLOT_A2,
-            decryptedCards[1],
-            signatures[1],
-            fr.obligatedHelper
+            uint8(HeadsUpPokerForceReveal.ForceRevealStage.HOLE_A)
         );
-
-        // Store revealed cards
-        revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_A1] = decryptedCards[
-            0
-        ].decryptedCard;
-        revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_A2] = decryptedCards[
-            1
-        ].decryptedCard;
-
-        fr.served = true;
-        fr.inProgress = false;
-        emit ForceRevealServed(channelId, uint8(ForceRevealStage.HOLE_A));
     }
 
-    /// @notice Request force reveal of Player B's hole cards
-    /// @dev Only player B can request. Prerequisites optional (checked if indices not already revealed). Helper = A.
-    /// @param channelId The channel identifier
-    /// @param decryptedCards Optional array of second A's hole signed by B
-    /// @param signatures Optional array of 1 signature from B
     function requestHoleB(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        Action[] calldata actions,
+        bytes[] calldata actionSignatures
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (ch.player1 == address(0)) revert NoChannel();
-        if (!ch.gameStarted) revert GameNotStarted();
-        if (fr.inProgress) revert ForceRevealInProgress();
-        if (msg.sender != ch.player2 && msg.sender != ch.player2Signer)
-            revert NotPlayer();
-        if (
-            revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_B1].length != 0 ||
-            revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_B2].length != 0
-        ) revert PrerequisitesNotMet();
-
-        // Verify prerequisites only if A's holes not already revealed via force reveal
-        bool needPrereqs = revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_A2]
-            .length == 0;
-        if (needPrereqs) {
-            if (decryptedCards.length != 1 || signatures.length != 1)
-                revert PrerequisitesNotMet();
-
-            // Verify A's hole 2 signed by B
-            // Note: we only check second hole as prerequisite to prove game advanced to hole stage
-            _verifyDecryptedCard(
-                channelId,
-                ch.handId,
-                HeadsUpPokerEIP712.SLOT_A2,
-                decryptedCards[0],
-                signatures[0],
-                ch.player2
-            );
-
-            // Store revealed cards
-            revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_A2
-            ] = decryptedCards[0].decryptedCard;
-        }
-
-        fr.stage = ForceRevealStage.HOLE_B;
-        fr.inProgress = true;
-        fr.served = false;
-        fr.deadline = block.timestamp + forceRevealWindow;
-        fr.obligatedHelper = ch.player1; // A must answer
-
-        emit ForceRevealOpened(channelId, uint8(ForceRevealStage.HOLE_B));
+        _verifyActionSignatures(
+            channelId,
+            ch.handId,
+            actions,
+            actionSignatures,
+            ch.player1,
+            ch.player2
+        );
+        forceReveal.requestHoleB(
+            channelId,
+            _channelData(ch),
+            msg.sender,
+            actions
+        );
+        emit ForceRevealOpened(
+            channelId,
+            uint8(HeadsUpPokerForceReveal.ForceRevealStage.HOLE_B)
+        );
     }
 
-    /// @notice Answer force reveal for Player B's hole cards
-    /// @param channelId The channel identifier
-    /// @param decryptedCards Array of 2 DecryptedCard structs (for indices 2 and 3)
-    /// @param signatures Array of 2 signatures from helper (A)
     function answerHoleB(
         uint256 channelId,
         HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
         bytes[] calldata signatures
     ) external nonReentrant {
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (!fr.inProgress) revert NoForceRevealInProgress();
-        if (fr.stage != ForceRevealStage.HOLE_B) revert ForceRevealWrongStage();
-        if (fr.served) revert ForceRevealAlreadyServed();
-        if (block.timestamp > fr.deadline) revert Expired();
-        if (decryptedCards.length != 2 || signatures.length != 2)
-            revert InvalidDecryptedCard();
-        _verifySender(channelId, msg.sender, fr.obligatedHelper);
-
-        uint256 handId = channels[channelId].handId;
-
-        // Verify B's hole 1
-        _verifyDecryptedCard(
+        Channel storage ch = channels[channelId];
+        forceReveal.answerHoleB(
             channelId,
-            handId,
-            HeadsUpPokerEIP712.SLOT_B1,
-            decryptedCards[0],
-            signatures[0],
-            fr.obligatedHelper
+            _channelData(ch),
+            msg.sender,
+            decryptedCards,
+            signatures
         );
-        // Verify B's hole 2
-        _verifyDecryptedCard(
+        emit ForceRevealServed(
             channelId,
-            handId,
-            HeadsUpPokerEIP712.SLOT_B2,
-            decryptedCards[1],
-            signatures[1],
-            fr.obligatedHelper
+            uint8(HeadsUpPokerForceReveal.ForceRevealStage.HOLE_B)
         );
-
-        // Store revealed cards
-        revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_B1] = decryptedCards[
-            0
-        ].decryptedCard;
-        revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_B2] = decryptedCards[
-            1
-        ].decryptedCard;
-
-        fr.served = true;
-        fr.inProgress = false;
-        emit ForceRevealServed(channelId, uint8(ForceRevealStage.HOLE_B));
     }
 
-    /// @notice Request force reveal of flop cards
-    /// @dev Either player can request. Requesting player must provide their DecryptedCards.
-    /// decryptedCards are used to prove that the game advanced to flop stage.
-    /// @param channelId The channel identifier
-    /// @param requesterDecryptedCards Requesting player's DecryptedCard for the 3 flop cards
-    /// @param requesterSignatures Requesting player's signatures for the 3 flop cards
-    /// @param decryptedCards Optional array of second hole card of the opponent
-    /// @param signatures Optional array of 1 signature
     function requestFlop(
         uint256 channelId,
+        Action[] calldata actions,
+        bytes[] calldata actionSignatures,
         HeadsUpPokerEIP712.DecryptedCard[] calldata requesterDecryptedCards,
-        bytes[] calldata requesterSignatures,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes[] calldata requesterSignatures
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (ch.player1 == address(0)) revert NoChannel();
-        if (!ch.gameStarted) revert GameNotStarted();
-        if (fr.inProgress) revert ForceRevealInProgress();
-        if (msg.sender != ch.player1 && msg.sender != ch.player2)
-            revert NotPlayer();
-        if (
-            requesterDecryptedCards.length != 3 ||
-            requesterSignatures.length != 3
-        ) revert InvalidDecryptedCard();
-
-        uint256 handId = ch.handId;
-        address obligatedHelper = msg.sender == ch.player1
-            ? ch.player2
-            : ch.player1;
-
-        if (msg.sender == ch.player1) {
-            if (
-                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_FLOP1]
-                    .length !=
-                0 ||
-                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_FLOP2]
-                    .length !=
-                0 ||
-                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_FLOP3]
-                    .length !=
-                0
-            ) revert PrerequisitesNotMet();
-
-            // we only check B's second hole card as prerequisite
-            bool needPrereqs = revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_B2
-            ].length == 0;
-
-            // Verify prerequisites only if holes not already revealed
-            if (needPrereqs) {
-                if (decryptedCards.length != 1 || signatures.length != 1)
-                    revert PrerequisitesNotMet();
-
-                // Verify B's holes signed by B
-                _verifyDecryptedCard(
-                    channelId,
-                    handId,
-                    HeadsUpPokerEIP712.SLOT_B2,
-                    decryptedCards[0],
-                    signatures[0],
-                    obligatedHelper
-                );
-
-                revealedCardsB[channelId][
-                    HeadsUpPokerEIP712.SLOT_B2
-                ] = decryptedCards[0].decryptedCard;
-            }
-
-            // Verify requester's flop DecryptedCards
-            _verifyDecryptedCard(
-                channelId,
-                handId,
-                HeadsUpPokerEIP712.SLOT_FLOP1,
-                requesterDecryptedCards[0],
-                requesterSignatures[0],
-                msg.sender
-            );
-            _verifyDecryptedCard(
-                channelId,
-                handId,
-                HeadsUpPokerEIP712.SLOT_FLOP2,
-                requesterDecryptedCards[1],
-                requesterSignatures[1],
-                msg.sender
-            );
-            _verifyDecryptedCard(
-                channelId,
-                handId,
-                HeadsUpPokerEIP712.SLOT_FLOP3,
-                requesterDecryptedCards[2],
-                requesterSignatures[2],
-                msg.sender
-            );
-
-            // Store requester's flop cards
-            revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP1
-            ] = requesterDecryptedCards[0].decryptedCard;
-            revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP2
-            ] = requesterDecryptedCards[1].decryptedCard;
-            revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP3
-            ] = requesterDecryptedCards[2].decryptedCard;
-        } else {
-            if (
-                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_FLOP1]
-                    .length !=
-                0 ||
-                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_FLOP2]
-                    .length !=
-                0 ||
-                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_FLOP3]
-                    .length !=
-                0
-            ) revert PrerequisitesNotMet();
-
-            // we only check A's second hole card as prerequisite
-            bool needPrereqs = revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_A2
-            ].length == 0;
-
-            // Verify prerequisites only if holes not already revealed
-            if (needPrereqs) {
-                if (decryptedCards.length != 1 || signatures.length != 1)
-                    revert PrerequisitesNotMet();
-
-                // Verify A's holes signed by A
-                _verifyDecryptedCard(
-                    channelId,
-                    handId,
-                    HeadsUpPokerEIP712.SLOT_A2,
-                    decryptedCards[0],
-                    signatures[0],
-                    obligatedHelper
-                );
-
-                revealedCardsA[channelId][
-                    HeadsUpPokerEIP712.SLOT_A2
-                ] = decryptedCards[0].decryptedCard;
-            }
-
-            // Verify requester's flop DecryptedCards
-            _verifyDecryptedCard(
-                channelId,
-                handId,
-                HeadsUpPokerEIP712.SLOT_FLOP1,
-                requesterDecryptedCards[0],
-                requesterSignatures[0],
-                msg.sender
-            );
-            _verifyDecryptedCard(
-                channelId,
-                handId,
-                HeadsUpPokerEIP712.SLOT_FLOP2,
-                requesterDecryptedCards[1],
-                requesterSignatures[1],
-                msg.sender
-            );
-            _verifyDecryptedCard(
-                channelId,
-                handId,
-                HeadsUpPokerEIP712.SLOT_FLOP3,
-                requesterDecryptedCards[2],
-                requesterSignatures[2],
-                msg.sender
-            );
-
-            // Store requester's flop cards
-            revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP1
-            ] = requesterDecryptedCards[0].decryptedCard;
-            revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP2
-            ] = requesterDecryptedCards[1].decryptedCard;
-            revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP3
-            ] = requesterDecryptedCards[2].decryptedCard;
-        }
-
-        fr.stage = ForceRevealStage.FLOP;
-        fr.inProgress = true;
-        fr.served = false;
-        fr.deadline = block.timestamp + forceRevealWindow;
-        fr.obligatedHelper = obligatedHelper;
-
-        emit ForceRevealOpened(channelId, uint8(ForceRevealStage.FLOP));
+        _verifyActionSignatures(
+            channelId,
+            ch.handId,
+            actions,
+            actionSignatures,
+            ch.player1,
+            ch.player2
+        );
+        forceReveal.requestFlop(
+            channelId,
+            _channelData(ch),
+            msg.sender,
+            actions,
+            requesterDecryptedCards,
+            requesterSignatures
+        );
+        emit ForceRevealOpened(
+            channelId,
+            uint8(HeadsUpPokerForceReveal.ForceRevealStage.FLOP)
+        );
     }
 
-    /// @notice Answer force reveal for flop cards
-    /// @param channelId The channel identifier
-    /// @notice Answer force reveal for flop cards
-    /// @dev Helper provides their DecryptedCards for the 3 flop cards. Flop cards are now fully revealed with both players' responses.
-    /// @param decryptedCards Array of 3 DecryptedCard structs (for indices 4, 5, 6) from helper
-    /// @param signatures Array of 3 signatures from helper
     function answerFlop(
         uint256 channelId,
         HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
         bytes[] calldata signatures
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (!fr.inProgress) revert NoForceRevealInProgress();
-        if (fr.stage != ForceRevealStage.FLOP) revert ForceRevealWrongStage();
-        if (fr.served) revert ForceRevealAlreadyServed();
-        if (block.timestamp > fr.deadline) revert Expired();
-        if (decryptedCards.length != 3 || signatures.length != 3)
-            revert InvalidDecryptedCard();
-        _verifySender(channelId, msg.sender, fr.obligatedHelper);
-
-        uint256 handId = ch.handId;
-
-        // Verify flop card 1
-        _verifyDecryptedCard(
+        forceReveal.answerFlop(
             channelId,
-            handId,
-            HeadsUpPokerEIP712.SLOT_FLOP1,
-            decryptedCards[0],
-            signatures[0],
-            fr.obligatedHelper
+            _channelData(ch),
+            msg.sender,
+            decryptedCards,
+            signatures
         );
-        // Verify flop card 2
-        _verifyDecryptedCard(
+        emit ForceRevealServed(
             channelId,
-            handId,
-            HeadsUpPokerEIP712.SLOT_FLOP2,
-            decryptedCards[1],
-            signatures[1],
-            fr.obligatedHelper
+            uint8(HeadsUpPokerForceReveal.ForceRevealStage.FLOP)
         );
-        // Verify flop card 3
-        _verifyDecryptedCard(
-            channelId,
-            handId,
-            HeadsUpPokerEIP712.SLOT_FLOP3,
-            decryptedCards[2],
-            signatures[2],
-            fr.obligatedHelper
-        );
-
-        // Store revealed cards
-        if (fr.obligatedHelper == ch.player1) {
-            revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP1
-            ] = decryptedCards[0].decryptedCard;
-            revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP2
-            ] = decryptedCards[1].decryptedCard;
-            revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP3
-            ] = decryptedCards[2].decryptedCard;
-        } else {
-            revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP1
-            ] = decryptedCards[0].decryptedCard;
-            revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP2
-            ] = decryptedCards[1].decryptedCard;
-            revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP3
-            ] = decryptedCards[2].decryptedCard;
-        }
-
-        fr.served = true;
-        fr.inProgress = false;
-        emit ForceRevealServed(channelId, uint8(ForceRevealStage.FLOP));
     }
 
-    /// @notice Request force reveal of turn card
-    /// @dev Either player can request. Requesting player must provide their DecryptedCards.
-    /// decryptedCards are used to prove that the game advanced to turn stage.
-    /// @param channelId The channel identifier
-    /// @param requesterDecryptedCards Requesting player's DecryptedCard for the turn card
-    /// @param requesterSignatures Requesting player's signatures for the turn card
-    /// @param decryptedCards Optional array of 3rd flop card of the opponent
-    /// @param signatures Optional array of 1 signature
     function requestTurn(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata requesterDecryptedCards,
-        bytes[] calldata requesterSignatures,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        Action[] calldata actions,
+        bytes[] calldata actionSignatures,
+        HeadsUpPokerEIP712.DecryptedCard calldata requesterDecryptedCard,
+        bytes calldata requesterSignature
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (ch.player1 == address(0)) revert NoChannel();
-        if (!ch.gameStarted) revert GameNotStarted();
-        if (fr.inProgress) revert ForceRevealInProgress();
-        if (msg.sender != ch.player1 && msg.sender != ch.player2)
-            revert NotPlayer();
-        if (
-            requesterDecryptedCards.length != 1 ||
-            requesterSignatures.length != 1
-        ) revert InvalidDecryptedCard();
-
-        uint256 handId = ch.handId;
-        address obligatedHelper = msg.sender == ch.player1
-            ? ch.player2
-            : ch.player1;
-
-        if (msg.sender == ch.player1) {
-            if (
-                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_TURN]
-                    .length != 0
-            ) revert PrerequisitesNotMet();
-
-            // we only check last flop card as prerequisite
-            bool needPrereqs = revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP3
-            ].length == 0;
-
-            if (needPrereqs) {
-                if (decryptedCards.length != 1 || signatures.length != 1)
-                    revert PrerequisitesNotMet();
-
-                _verifyDecryptedCard(
-                    channelId,
-                    handId,
-                    HeadsUpPokerEIP712.SLOT_FLOP3,
-                    decryptedCards[0],
-                    signatures[0],
-                    obligatedHelper
-                );
-
-                revealedCardsB[channelId][
-                    HeadsUpPokerEIP712.SLOT_FLOP3
-                ] = decryptedCards[0].decryptedCard;
-            }
-
-            // Verify requester's turn DecryptedCards
-            _verifyDecryptedCard(
-                channelId,
-                handId,
-                HeadsUpPokerEIP712.SLOT_TURN,
-                requesterDecryptedCards[0],
-                requesterSignatures[0],
-                msg.sender
-            );
-
-            // Store requester's turn card
-            revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_TURN
-            ] = requesterDecryptedCards[0].decryptedCard;
-        } else {
-            if (
-                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_TURN]
-                    .length != 0
-            ) revert PrerequisitesNotMet();
-
-            // we only check last flop card as prerequisite
-            bool needPrereqs = revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_FLOP3
-            ].length == 0;
-
-            if (needPrereqs) {
-                if (decryptedCards.length != 1 || signatures.length != 1)
-                    revert PrerequisitesNotMet();
-
-                _verifyDecryptedCard(
-                    channelId,
-                    handId,
-                    HeadsUpPokerEIP712.SLOT_FLOP3,
-                    decryptedCards[0],
-                    signatures[0],
-                    obligatedHelper
-                );
-
-                revealedCardsA[channelId][
-                    HeadsUpPokerEIP712.SLOT_FLOP3
-                ] = decryptedCards[0].decryptedCard;
-            }
-
-            // Verify requester's turn DecryptedCards
-            _verifyDecryptedCard(
-                channelId,
-                handId,
-                HeadsUpPokerEIP712.SLOT_TURN,
-                requesterDecryptedCards[0],
-                requesterSignatures[0],
-                msg.sender
-            );
-
-            // Store requester's turn card
-            revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_TURN
-            ] = requesterDecryptedCards[0].decryptedCard;
-        }
-
-        fr.stage = ForceRevealStage.TURN;
-        fr.inProgress = true;
-        fr.served = false;
-        fr.deadline = block.timestamp + forceRevealWindow;
-        fr.obligatedHelper = obligatedHelper;
-
-        emit ForceRevealOpened(channelId, uint8(ForceRevealStage.TURN));
+        _verifyActionSignatures(
+            channelId,
+            ch.handId,
+            actions,
+            actionSignatures,
+            ch.player1,
+            ch.player2
+        );
+        forceReveal.requestTurn(
+            channelId,
+            _channelData(ch),
+            msg.sender,
+            actions,
+            requesterDecryptedCard,
+            requesterSignature
+        );
+        emit ForceRevealOpened(
+            channelId,
+            uint8(HeadsUpPokerForceReveal.ForceRevealStage.TURN)
+        );
     }
 
-    /// @notice Answer force reveal for turn card
-    /// @param channelId The channel identifier
-    /// @param decryptedCard DecryptedCard for turn card from helper
-    /// @param signature Signature from helper
     function answerTurn(
         uint256 channelId,
         HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
         bytes calldata signature
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (!fr.inProgress) revert NoForceRevealInProgress();
-        if (fr.stage != ForceRevealStage.TURN) revert ForceRevealWrongStage();
-        if (fr.served) revert ForceRevealAlreadyServed();
-        if (block.timestamp > fr.deadline) revert Expired();
-
-        _verifySender(channelId, msg.sender, fr.obligatedHelper);
-
-        uint256 handId = ch.handId;
-
-        _verifyDecryptedCard(
+        forceReveal.answerTurn(
             channelId,
-            handId,
-            HeadsUpPokerEIP712.SLOT_TURN,
+            _channelData(ch),
+            msg.sender,
             decryptedCard,
-            signature,
-            fr.obligatedHelper
+            signature
         );
-
-        // Store revealed cards
-        if (fr.obligatedHelper == ch.player1) {
-            revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_TURN
-            ] = decryptedCard.decryptedCard;
-        } else {
-            revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_TURN
-            ] = decryptedCard.decryptedCard;
-        }
-
-        fr.served = true;
-        emit ForceRevealServed(channelId, uint8(ForceRevealStage.TURN));
+        emit ForceRevealServed(
+            channelId,
+            uint8(HeadsUpPokerForceReveal.ForceRevealStage.TURN)
+        );
     }
 
-    /// @notice Request force reveal of river card
-    /// @dev Either player can request. Requesting player must provide their DecryptedCards.
-    /// decryptedCards are used to prove that the game advanced to river stage.
-    /// @param channelId The channel identifier
-    /// @param requesterDecryptedCard Requesting player's DecryptedCard for the river card
-    /// @param requesterSignature Requesting player's signatures for the river card
-    /// @param decryptedCards Optional array of turn card of the opponent
-    /// @param signatures Optional array of 1 signature
     function requestRiver(
         uint256 channelId,
+        Action[] calldata actions,
+        bytes[] calldata actionSignatures,
         HeadsUpPokerEIP712.DecryptedCard calldata requesterDecryptedCard,
-        bytes calldata requesterSignature,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes calldata requesterSignature
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (ch.player1 == address(0)) revert NoChannel();
-        if (!ch.gameStarted) revert GameNotStarted();
-        if (fr.inProgress) revert ForceRevealInProgress();
-        if (msg.sender != ch.player1 && msg.sender != ch.player2)
-            revert NotPlayer();
-
-        uint256 handId = ch.handId;
-        address obligatedHelper = msg.sender == ch.player1
-            ? ch.player2
-            : ch.player1;
-
-        if (msg.sender == ch.player1) {
-            if (
-                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_RIVER]
-                    .length != 0
-            ) revert PrerequisitesNotMet();
-
-            bool needPrereqs = revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_TURN
-            ].length == 0;
-
-            // Verify prerequisites only if turn is not already revealed
-            if (needPrereqs) {
-                if (decryptedCards.length != 1 || signatures.length != 1)
-                    revert PrerequisitesNotMet();
-
-                _verifyDecryptedCard(
-                    channelId,
-                    handId,
-                    HeadsUpPokerEIP712.SLOT_TURN,
-                    decryptedCards[0],
-                    signatures[0],
-                    obligatedHelper
-                );
-
-                revealedCardsB[channelId][
-                    HeadsUpPokerEIP712.SLOT_TURN
-                ] = decryptedCards[0].decryptedCard;
-            }
-
-            // Verify requester's river DecryptedCards
-            _verifyDecryptedCard(
-                channelId,
-                handId,
-                HeadsUpPokerEIP712.SLOT_RIVER,
-                requesterDecryptedCard,
-                requesterSignature,
-                msg.sender
-            );
-
-            // Store requester's river card
-            revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_RIVER
-            ] = requesterDecryptedCard.decryptedCard;
-        } else {
-            if (
-                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_RIVER]
-                    .length != 0
-            ) revert PrerequisitesNotMet();
-
-            bool needPrereqs = revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_TURN
-            ].length == 0;
-
-            if (needPrereqs) {
-                if (decryptedCards.length != 1 || signatures.length != 1)
-                    revert PrerequisitesNotMet();
-
-                _verifyDecryptedCard(
-                    channelId,
-                    handId,
-                    HeadsUpPokerEIP712.SLOT_TURN,
-                    decryptedCards[0],
-                    signatures[0],
-                    obligatedHelper
-                );
-
-                revealedCardsA[channelId][
-                    HeadsUpPokerEIP712.SLOT_TURN
-                ] = decryptedCards[0].decryptedCard;
-            }
-
-            // Verify requester's river DecryptedCards
-            _verifyDecryptedCard(
-                channelId,
-                handId,
-                HeadsUpPokerEIP712.SLOT_RIVER,
-                requesterDecryptedCard,
-                requesterSignature,
-                msg.sender
-            );
-
-            // Store requester's river card
-            revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_RIVER
-            ] = requesterDecryptedCard.decryptedCard;
-        }
-
-        fr.stage = ForceRevealStage.RIVER;
-        fr.inProgress = true;
-        fr.served = false;
-        fr.deadline = block.timestamp + forceRevealWindow;
-        fr.obligatedHelper = obligatedHelper;
-
-        emit ForceRevealOpened(channelId, uint8(ForceRevealStage.RIVER));
+        _verifyActionSignatures(
+            channelId,
+            ch.handId,
+            actions,
+            actionSignatures,
+            ch.player1,
+            ch.player2
+        );
+        forceReveal.requestRiver(
+            channelId,
+            _channelData(ch),
+            msg.sender,
+            actions,
+            requesterDecryptedCard,
+            requesterSignature
+        );
+        emit ForceRevealOpened(
+            channelId,
+            uint8(HeadsUpPokerForceReveal.ForceRevealStage.RIVER)
+        );
     }
 
-    /// @notice Answer force reveal for river card
-    /// @param channelId The channel identifier
-    /// @param decryptedCard DecryptedCard struct for river card
-    /// @param signature Signature from helper
     function answerRiver(
         uint256 channelId,
         HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
         bytes calldata signature
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        ForceRevealState storage fr = forceReveals[channelId];
-
-        if (!fr.inProgress) revert NoForceRevealInProgress();
-        if (fr.stage != ForceRevealStage.RIVER) revert ForceRevealWrongStage();
-        if (fr.served) revert ForceRevealAlreadyServed();
-        if (block.timestamp > fr.deadline) revert Expired();
-
-        _verifySender(channelId, msg.sender, fr.obligatedHelper);
-
-        uint256 handId = ch.handId;
-
-        _verifyDecryptedCard(
+        forceReveal.answerRiver(
             channelId,
-            handId,
-            HeadsUpPokerEIP712.SLOT_RIVER,
+            _channelData(ch),
+            msg.sender,
             decryptedCard,
-            signature,
-            fr.obligatedHelper
+            signature
         );
-
-        // Store revealed cards
-        if (fr.obligatedHelper == ch.player1) {
-            revealedCardsA[channelId][
-                HeadsUpPokerEIP712.SLOT_RIVER
-            ] = decryptedCard.decryptedCard;
-        } else {
-            revealedCardsB[channelId][
-                HeadsUpPokerEIP712.SLOT_RIVER
-            ] = decryptedCard.decryptedCard;
-        }
-
-        fr.served = true;
-        emit ForceRevealServed(channelId, uint8(ForceRevealStage.RIVER));
+        emit ForceRevealServed(
+            channelId,
+            uint8(HeadsUpPokerForceReveal.ForceRevealStage.RIVER)
+        );
     }
 
-    /// @notice Slash the obligated helper for any force reveal stage
-    /// @dev Can be called after deadline expires without answer
-    /// @param channelId The channel identifier
     function slashForceReveal(uint256 channelId) external nonReentrant {
         Channel storage ch = channels[channelId];
-        ForceRevealState storage fr = forceReveals[channelId];
+        address obligatedHelper = forceReveal.slashForceReveal(channelId);
+        HeadsUpPokerForceReveal.ForceRevealState memory frState = forceReveal
+            .getForceReveal(channelId);
 
-        if (!fr.inProgress) revert NoForceRevealInProgress();
-        if (block.timestamp <= fr.deadline) revert ForceRevealNotExpired();
-        if (fr.served) revert ForceRevealAlreadyServed();
-
-        // Determine which player to slash based on obligated helper
         uint256 slashAmt = ch.slashAmount;
-        if (fr.obligatedHelper == ch.player1) {
+        if (obligatedHelper == ch.player1) {
             if (ch.deposit1 < slashAmt) slashAmt = ch.deposit1;
             ch.deposit1 -= slashAmt;
             ch.deposit2 += slashAmt;
@@ -1791,99 +1147,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
 
         ch.finalized = true;
-        fr.inProgress = false;
-        emit ForceRevealSlashed(channelId, uint8(fr.stage), fr.obligatedHelper);
-    }
-
-    /// @notice Internal helper to compute the hash of bDeck
-    /// @dev Hashes all 52 encrypted card points
-    function _hashBDeck(
-        bytes[] calldata bDeck
-    ) internal pure returns (bytes32) {
-        return keccak256(abi.encode(bDeck));
-    }
-
-    /// @notice Internal helper to compute the hash of bDeck from storage
-    /// @dev Hashes all 52 encrypted card points
-    function _hashBDeck(bytes[] storage bDeck) internal pure returns (bytes32) {
-        return keccak256(abi.encode(bDeck));
-    }
-
-    function _verifySender(
-        uint256 channelId,
-        address sender,
-        address expectedSender
-    ) internal view {
-        address expectedOptionalSigner = expectedSender ==
-            channels[channelId].player1
-            ? channels[channelId].player1Signer
-            : channels[channelId].player2Signer;
-
-        if (sender != expectedSender && sender != expectedOptionalSigner) {
-            revert ActionInvalidSender();
-        }
-    }
-
-    /// @notice Internal helper to verify a DecryptedCard
-    /// @dev Verifies EIP-712 signature and BN254 pairing
-    function _verifyDecryptedCard(
-        uint256 channelId,
-        uint256 handId,
-        uint8 index,
-        HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
-        bytes calldata signature,
-        address expectedSigner
-    ) internal view {
-        address expectedOptionalSigner = expectedSigner ==
-            channels[channelId].player1
-            ? channels[channelId].player1Signer
-            : channels[channelId].player2Signer;
-
-        bytes memory publicKey;
-        if (expectedSigner == channels[channelId].player1) {
-            publicKey = publicKeyA[channelId];
-        } else {
-            publicKey = publicKeyB[channelId];
-        }
-
-        bytes storage encryptedCard = decks[channelId][index];
-
-        // Verify DecryptedCard matches the expected values
-        if (
-            decryptedCard.channelId != channelId ||
-            decryptedCard.handId != handId ||
-            decryptedCard.index != index ||
-            (decryptedCard.player != expectedSigner &&
-                decryptedCard.player != expectedOptionalSigner)
-        ) {
-            revert InvalidDecryptedCard();
-        }
-        if (
-            decryptedCard.decryptedCard.length != 64 ||
-            encryptedCard.length != 64
-        ) {
-            revert InvalidDecryptedCard();
-        }
-
-        // Verify EIP-712 signature
-        if (
-            digestDecryptedCard(decryptedCard).recover(signature) !=
-            expectedSigner &&
-            digestDecryptedCard(decryptedCard).recover(signature) !=
-            expectedOptionalSigner
-        ) {
-            revert InvalidDecryptedCard();
-        }
-
-        // Verify BN254 pairing: e(decryptedCard, pk_helper_G2) == e(encryptedCard, G2_BASE)
-        if (
-            !Bn254.verifyPartialDecrypt(
-                decryptedCard.decryptedCard,
-                encryptedCard,
-                publicKey
-            )
-        ) {
-            revert InvalidDecryptedCard();
-        }
+        emit ForceRevealSlashed(
+            channelId,
+            uint8(frState.stage),
+            obligatedHelper
+        );
     }
 }
