@@ -474,6 +474,28 @@ contract HeadsUpPokerReplay {
         return (End.SHOWDOWN, 0, calledAmount);
     }
 
+    function replayState(
+        Action[] calldata actions,
+        uint256 stackA,
+        uint256 stackB,
+        uint256 minSmallBlind,
+        address player1,
+        address player2
+    ) external pure returns (bool ended, End gameEnd, uint8 street) {
+        (ReplayResult memory res, Game memory g) = _replayActions(
+            actions,
+            stackA,
+            stackB,
+            minSmallBlind,
+            player1,
+            player2
+        );
+
+        if (res.end == End.NO_BLINDS) revert NoBlinds();
+
+        return (res.ended, res.end, g.street);
+    }
+
     // NOTE: this is a copy of hashing of the Action from HeadsUpPokerEIP712.digestAction.
     //       We do not reuse it since it's too small to inherit from the EIP712 contract to access it.
     function _hashAction(Action calldata act) private pure returns (bytes32) {
