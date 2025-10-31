@@ -20,10 +20,9 @@ const G2 = bn254.G2.Point.BASE;
  * @returns {Object} { secretKey: bigint, publicKeyG1: Point, publicKeyG2: Point }
  */
 export function generateKeyPair() {
-    // Generate random secret key (scalar)
-    const secretKey = bn254.fields.Fr.create(
-        BigInt('0x' + Buffer.from(randomBytes(32)).toString('hex')) % bn254.fields.Fr.ORDER
-    );
+    // Generate random secret key using proper random generation
+    const secretKeyBytes = bn254.utils.randomSecretKey();
+    const secretKey = BigInt('0x' + Buffer.from(secretKeyBytes).toString('hex'));
     
     // Compute public keys
     const publicKeyG1 = G1.multiply(secretKey);
@@ -36,16 +35,29 @@ export function generateKeyPair() {
     };
 }
 
+// Cache for card encoding lookups
+const cardEncodingCache = new Map();
+
 /**
  * Encode a card value as a BN254 G1 point using hash-to-curve
  * @param {number} cardValue - Card value (0-51 for standard deck, 0-255 for byte)
  * @returns {Point} G1 point representing the card
  */
 export function encodeCard(cardValue) {
+    // Check cache first
+    if (cardEncodingCache.has(cardValue)) {
+        return cardEncodingCache.get(cardValue);
+    }
+    
     // Simple encoding: multiply generator by (cardValue + 1)
     // We add 1 to avoid the identity element for card 0
     const scalar = bn254.fields.Fr.create(BigInt(cardValue) + 1n);
-    return G1.multiply(scalar);
+    const point = G1.multiply(scalar);
+    
+    // Cache the result
+    cardEncodingCache.set(cardValue, point);
+    
+    return point;
 }
 
 /**
@@ -56,10 +68,14 @@ export function encodeCard(cardValue) {
  * @returns {Object} { U: Point, V: Point } - Encrypted point pair
  */
 export function encryptPoint(message, publicKeyG1, randomness = null) {
-    // Generate random scalar r
-    const r = randomness || bn254.fields.Fr.create(
-        BigInt('0x' + Buffer.from(randomBytes(32)).toString('hex')) % bn254.fields.Fr.ORDER
-    );
+    // Generate random scalar r using proper random generation
+    let r;
+    if (randomness !== null) {
+        r = randomness;
+    } else {
+        const rBytes = bn254.utils.randomSecretKey();
+        r = BigInt('0x' + Buffer.from(rBytes).toString('hex'));
+    }
     
     // U = r * G1
     const U = G1.multiply(r);
@@ -109,7 +125,14 @@ export function decryptPoint(ciphertext, secretKey) {
  * @returns {number} Card value (0-51 for standard deck)
  */
 export function decodeCard(point) {
-    // Brute force search for small values (fine for 52 cards)
+    // Check cache (reverse lookup)
+    for (const [cardValue, cachedPoint] of cardEncodingCache.entries()) {
+        if (point.equals(cachedPoint)) {
+            return cardValue;
+        }
+    }
+    
+    // Brute force search for values not in cache (should be rare after first use)
     for (let i = 0; i < 256; i++) {
         const testPoint = encodeCard(i);
         if (point.equals(testPoint)) {
@@ -162,14 +185,18 @@ export function encryptDeck(deck, publicKeyG1) {
 }
 
 /**
- * Shuffle an array using Fisher-Yates algorithm
+ * Shuffle an array using Fisher-Yates algorithm with cryptographically secure randomness
  * @param {Array} array - Array to shuffle
  * @returns {Array} Shuffled array
  */
 export function shuffleArray(array) {
     const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        // Use cryptographically secure random bytes
+        const randomBuffer = randomBytes(4);
+        const randomValue = randomBuffer.readUInt32BE(0);
+        // Calculate j with uniform distribution
+        const j = Math.floor((randomValue / 0x100000000) * (i + 1));
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     return shuffled;
@@ -211,9 +238,8 @@ export function encryptAndShufflePlayer2(player1Deck, player2PublicKeyG1) {
     // For each card { U: U1, V: V1 }, create new layer of encryption
     // Result: { U1: U1, U2: U2, V2: V2 } where (U2, V2) = encrypt(V1)
     const doubleEncrypted = player1Deck.map(card => {
-        const r2 = bn254.fields.Fr.create(
-            BigInt('0x' + Buffer.from(randomBytes(32)).toString('hex')) % bn254.fields.Fr.ORDER
-        );
+        const r2Bytes = bn254.utils.randomSecretKey();
+        const r2 = BigInt('0x' + Buffer.from(r2Bytes).toString('hex'));
         const U2 = G1.multiply(r2);
         const V2 = card.V.add(player2PublicKeyG1.multiply(r2));
         
