@@ -1,11 +1,12 @@
+import { ethers } from "ethers";
 import { bn254 } from "@noble/curves/bn254.js";
 
 const Fr = bn254.fields.Fr;
 const G1 = bn254.G1.Point;
 
 /**
-     * Hash a context and index to a G1 point deterministically
-     */
+ * Hash a context and index to a G1 point deterministically
+ */
 export function hashToG1(context, index) {
     // Create a deterministic hash from context and index
     const hash = ethers.keccak256(
