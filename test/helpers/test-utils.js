@@ -135,32 +135,6 @@ export function createMockDeck() {
 }
 
 /**
- * Helper to create an encrypted deck for mental poker
- * Returns both the deck array and the keypairs used for encryption
- * @returns {Object} { deck, player1Keys, player2Keys }
- */
-export async function createEncryptedDeck() {
-    const { generateKeyPair, createDeck, encryptAndShufflePlayer1, encryptAndShufflePlayer2, deckToSolidityFormat } = await import("./bn254-crypto.js");
-    
-    // Generate different keys for each player
-    const player1Keys = generateKeyPair();
-    const player2Keys = generateKeyPair();
-    
-    // Create and encrypt deck
-    const plaintextDeck = createDeck(9);
-    const deck1 = encryptAndShufflePlayer1(plaintextDeck, player1Keys.publicKeyG1);
-    const deck2 = encryptAndShufflePlayer2(deck1, player2Keys.publicKeyG1);
-    const solidityDeck = deckToSolidityFormat(deck2);
-    
-    return {
-        deck: solidityDeck,
-        deck2: deck2, // Keep the full encryption details for testing
-        player1Keys,
-        player2Keys
-    };
-}
-
-/**
  * Helper to start a game by having both players submit the same deck
  * @param escrow - The escrow contract
  * @param channelId - Channel ID
