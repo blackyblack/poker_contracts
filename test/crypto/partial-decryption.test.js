@@ -34,11 +34,14 @@ describe("Partial Decryption Tests", function () {
 
     /**
      * Generate a random scalar in the Fr field
+     * Ensures the scalar is non-zero by returning 1 as a fallback.
+     * In the context of elliptic curve operations, scalar 1 is cryptographically
+     * safe as it represents the identity operation (point · 1 = point).
      */
     function randomScalar() {
         const randomBytes = ethers.randomBytes(32);
         const scalar = BigInt(ethers.hexlify(randomBytes)) % Fr.ORDER;
-        // Ensure we don't get 0
+        // Ensure we don't get 0 (probability: 1/Fr.ORDER ≈ 0)
         return scalar === 0n ? 1n : scalar;
     }
 
@@ -96,8 +99,8 @@ describe("Partial Decryption Tests", function () {
             const pkB_G2_bytes = g2ToBytes(pkB_G2);
 
             // This should verify that e(U, pkB_G2) == e(Y, G2_BASE)
-            // Which means e(b^(-1)·Y, b·G2) == e(Y, G2)
-            // Which simplifies to e(Y, G2) == e(Y, G2) ✓
+            // Which means e(b^(-1)·Y, b·G2_BASE) == e(Y, G2_BASE)
+            // Which simplifies to e(Y, G2_BASE) == e(Y, G2_BASE) ✓
             const verified = await contract.verifyPartialDecrypt(
                 U_bytes,
                 Y_bytes,
@@ -180,8 +183,8 @@ describe("Partial Decryption Tests", function () {
             const pkA_G2_bytes = g2ToBytes(pkA_G2);
 
             // This should verify that e(U, pkA_G2) == e(Y, G2_BASE)
-            // Which means e(a^(-1)·Y, a·G2) == e(Y, G2)
-            // Which simplifies to e(Y, G2) == e(Y, G2) ✓
+            // Which means e(a^(-1)·Y, a·G2_BASE) == e(Y, G2_BASE)
+            // Which simplifies to e(Y, G2_BASE) == e(Y, G2_BASE) ✓
             const verified = await contract.verifyPartialDecrypt(
                 U_bytes,
                 Y_bytes,
