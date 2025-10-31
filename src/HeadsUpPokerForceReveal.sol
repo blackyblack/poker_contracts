@@ -638,6 +638,20 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
             revert InvalidDecryptedCard();
         }
 
+        // Validate G1 points before pairing check
+        if (Bn254.isInfinity(decryptedCard.decryptedCard)) {
+            revert InvalidDecryptedCard();
+        }
+        if (!Bn254.isG1OnCurve(decryptedCard.decryptedCard)) {
+            revert InvalidDecryptedCard();
+        }
+        if (Bn254.isInfinity(encryptedCard)) {
+            revert InvalidDecryptedCard();
+        }
+        if (!Bn254.isG1OnCurve(encryptedCard)) {
+            revert InvalidDecryptedCard();
+        }
+
         if (
             !Bn254.verifyPartialDecrypt(
                 decryptedCard.decryptedCard,
