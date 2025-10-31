@@ -1,74 +1,19 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { bn254 } from "@noble/curves/bn254.js";
+import { hashToG1, randomScalar, g1ToBytes, g2ToBytes } from "../helpers/bn254.js";
 
 const { ethers } = hre;
 
 describe("Partial Decryption Tests", function () {
     let contract;
     const Fr = bn254.fields.Fr;
-    const G1 = bn254.G1.Point;
     const G2 = bn254.G2.Point;
 
     beforeEach(async function () {
         const Bn254Test = await ethers.getContractFactory("Bn254Test");
         contract = await Bn254Test.deploy();
     });
-
-    /**
-     * Hash a context and index to a G1 point deterministically
-     * This simulates HashToG1(ctx, k) from the problem statement
-     */
-    function hashToG1(context, index) {
-        // Create a deterministic hash from context and index
-        const hash = ethers.keccak256(
-            ethers.solidityPacked(["string", "uint256"], [context, index])
-        );
-        
-        // Use the hash as a scalar to multiply the generator
-        const scalar = BigInt(hash) % Fr.ORDER;
-        const point = G1.BASE.multiply(scalar);
-        
-        return point;
-    }
-
-    /**
-     * Generate a random scalar in the Fr field
-     * Ensures the scalar is non-zero by returning 1 as a fallback.
-     * In the context of elliptic curve operations, scalar 1 is cryptographically
-     * safe as it represents the identity operation (point · 1 = point).
-     */
-    function randomScalar() {
-        const randomBytes = ethers.randomBytes(32);
-        const scalar = BigInt(ethers.hexlify(randomBytes)) % Fr.ORDER;
-        // Ensure we don't get 0 (probability: 1/Fr.ORDER ≈ 0)
-        return scalar === 0n ? 1n : scalar;
-    }
-
-    /**
-     * Convert a G1 point to bytes for Solidity (64 bytes: x||y)
-     */
-    function g1ToBytes(point) {
-        const affine = point.toAffine();
-        return ethers.concat([
-            ethers.zeroPadValue(ethers.toBeHex(affine.x), 32),
-            ethers.zeroPadValue(ethers.toBeHex(affine.y), 32)
-        ]);
-    }
-
-    /**
-     * Convert a G2 point to bytes for Solidity (128 bytes: x.a||x.b||y.a||y.b)
-     * EVM format: [x_imaginary, x_real, y_imaginary, y_real]
-     */
-    function g2ToBytes(point) {
-        const affine = point.toAffine();
-        return ethers.concat([
-            ethers.zeroPadValue(ethers.toBeHex(affine.x.c1), 32), // x imaginary
-            ethers.zeroPadValue(ethers.toBeHex(affine.x.c0), 32), // x real
-            ethers.zeroPadValue(ethers.toBeHex(affine.y.c1), 32), // y imaginary
-            ethers.zeroPadValue(ethers.toBeHex(affine.y.c0), 32)  // y real
-        ]);
-    }
 
     describe("Case: B helps A decrypt", function () {
         it("should verify partial decryption when B helps A", async function () {
@@ -77,7 +22,6 @@ describe("Partial Decryption Tests", function () {
             const b = randomScalar();
 
             // Step 2: Derive public keys in G2
-            const pkA_G2 = G2.BASE.multiply(a);
             const pkB_G2 = G2.BASE.multiply(b);
 
             // Step 3: Pick R = HashToG1(ctx, k)
@@ -99,8 +43,6 @@ describe("Partial Decryption Tests", function () {
             const pkB_G2_bytes = g2ToBytes(pkB_G2);
 
             // This should verify that e(U, pkB_G2) == e(Y, G2_BASE)
-            // Which means e(b^(-1)·Y, b·G2_BASE) == e(Y, G2_BASE)
-            // Which simplifies to e(Y, G2_BASE) == e(Y, G2_BASE) ✓
             const verified = await contract.verifyPartialDecrypt(
                 U_bytes,
                 Y_bytes,
@@ -122,11 +64,10 @@ describe("Partial Decryption Tests", function () {
             const a = randomScalar();
             const b = randomScalar();
 
-            const pkA_G2 = G2.BASE.multiply(a);
             const pkB_G2 = G2.BASE.multiply(b);
 
             const context = "poker_hand_67890";
-            
+
             // Test with multiple card indices
             for (let cardIndex = 0; cardIndex < 3; cardIndex++) {
                 const R = hashToG1(context, cardIndex);
@@ -162,7 +103,6 @@ describe("Partial Decryption Tests", function () {
 
             // Step 2: Derive public keys in G2
             const pkA_G2 = G2.BASE.multiply(a);
-            const pkB_G2 = G2.BASE.multiply(b);
 
             // Step 3: Pick R = HashToG1(ctx, k)
             const context = "poker_hand_symmetric";
@@ -183,8 +123,6 @@ describe("Partial Decryption Tests", function () {
             const pkA_G2_bytes = g2ToBytes(pkA_G2);
 
             // This should verify that e(U, pkA_G2) == e(Y, G2_BASE)
-            // Which means e(a^(-1)·Y, a·G2_BASE) == e(Y, G2_BASE)
-            // Which simplifies to e(Y, G2_BASE) == e(Y, G2_BASE) ✓
             const verified = await contract.verifyPartialDecrypt(
                 U_bytes,
                 Y_bytes,
@@ -207,7 +145,6 @@ describe("Partial Decryption Tests", function () {
             const b = randomScalar();
 
             const pkA_G2 = G2.BASE.multiply(a);
-            const pkB_G2 = G2.BASE.multiply(b);
 
             const context = "edge_case_test";
             const cardIndex = 0;
