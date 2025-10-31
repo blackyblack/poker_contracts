@@ -186,17 +186,32 @@ export function encryptDeck(deck, publicKeyG1) {
 
 /**
  * Shuffle an array using Fisher-Yates algorithm with cryptographically secure randomness
+ * Uses rejection sampling to avoid modulo bias
  * @param {Array} array - Array to shuffle
  * @returns {Array} Shuffled array
  */
 export function shuffleArray(array) {
     const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
-        // Use cryptographically secure random bytes
-        const randomBuffer = randomBytes(4);
-        const randomValue = randomBuffer.readUInt32BE(0);
-        // Calculate j with uniform distribution
-        const j = Math.floor((randomValue / 0x100000000) * (i + 1));
+        // Use rejection sampling to get uniform random value in range [0, i+1)
+        const range = i + 1;
+        const bitsNeeded = Math.ceil(Math.log2(range));
+        const bytesNeeded = Math.ceil(bitsNeeded / 8);
+        const maxValid = Math.floor(2 ** (bytesNeeded * 8) / range) * range;
+        
+        let randomValue;
+        do {
+            const randomBuffer = randomBytes(bytesNeeded);
+            randomValue = 0;
+            for (let b = 0; b < bytesNeeded; b++) {
+                randomValue = (randomValue << 8) | randomBuffer[b];
+            }
+        } while (randomValue >= maxValid);
+        
+        // SECURITY: This modulo is safe because randomValue < maxValid,
+        // where maxValid is the largest multiple of range that fits in the bit range.
+        // This ensures uniform distribution without bias.
+        const j = randomValue % range;
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     return shuffled;
