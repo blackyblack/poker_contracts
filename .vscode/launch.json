@@ -51,9 +51,7 @@
             "runtimeExecutable": "npx",
             "runtimeArgs": [
                 "hardhat",
-                "test",
-                "--grep",
-                "${input:mochaGrep}"
+                "test"
             ],
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
@@ -66,14 +64,6 @@
             "env": {
                 "FORCE_COLOR": "1"
             }
-        }
-    ],
-    "inputs": [
-        {
-            "id": "mochaGrep",
-            "type": "promptString",
-            "description": "Mocha grep pattern",
-            "default": ""
         }
     ]
 }

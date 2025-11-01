@@ -15,13 +15,11 @@ export const wallet3 = new ethers.Wallet(
     "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
 );
 
-/**
- * Helper to build actions with proper hashes and sequence numbers
- * @param {Array} specs - Array of action specifications {action, amount, sender}
- * @param {bigint} channelId - Channel ID (default: 1n)
- * @param {bigint} handId - Hand ID (default: 1n)
- * @returns {Array} Array of action objects
- */
+// Helper to build actions with proper hashes and sequence numbers
+// @param specs - Array of action specifications {action, amount, sender}
+// @param channelId - Channel ID (default: 1n)
+// @param handId - Hand ID (default: 1n)
+// @returns Array of action objects
 export function buildActions(specs, channelId = 1n, handId = 1n) {
     let seq = 0;
     let prevHash = handGenesis(channelId, handId);
@@ -47,14 +45,12 @@ export function buildActions(specs, channelId = 1n, handId = 1n) {
     return actions;
 }
 
-/**
- * Helper to sign actions
- * @param {Array} actions - Array of actions to sign
- * @param {Array} signers - Array of wallet signers  
- * @param {string} contractAddress - Contract address for domain separator
- * @param {bigint} chainId - Chain ID for domain separator
- * @returns {Array} Array of signatures
- */
+// Helper to sign actions
+// @param actions - Array of actions to sign
+// @param signers - Array of wallet signers
+// @param contractAddress - Contract address for domain separator
+// @param chainId - Chain ID for domain separator
+// @returns Array of signatures
 export async function signActions(actions, signers, contractAddress, chainId) {
     const signatures = [];
     const domain = domainSeparator(contractAddress, chainId);
@@ -81,14 +77,12 @@ export async function signActions(actions, signers, contractAddress, chainId) {
     return signatures;
 }
 
-/**
- * Helper to sign a commit for a card
- * @param {Object} a - First wallet signer
- * @param {Object} b - Second wallet signer
- * @param {string} dom - Domain separator
- * @param {Object} cc - Card commit object
- * @returns {Array} Array of two signatures [sigA, sigB]
- */
+// Helper to sign a commit for a card
+// @param a - First wallet signer
+// @param b - Second wallet signer
+// @param dom - Domain separator
+// @param cc - Card commit object
+// @returns Array of two signatures [sigA, sigB]
 export async function signCardCommit(a, b, dom, cc) {
     const digest = cardCommitDigest(dom, cc);
     const sigA = a.signingKey.sign(digest).serialized;
@@ -96,17 +90,15 @@ export async function signCardCommit(a, b, dom, cc) {
     return [sigA, sigB];
 }
 
-/**
- * Helper to build a card commit with signatures
- * @param {Object} a - First wallet signer
- * @param {Object} b - Second wallet signer
- * @param {string} dom - Domain separator
- * @param {bigint} channelId - Channel ID
- * @param {number} slot - Card slot
- * @param {number} card - Card value
- * @param {bigint} handId - Hand ID (default: 1n)
- * @returns {Object} Commit object with signatures and metadata
- */
+// Helper to build a card commit with signatures
+// @param a - First wallet signer
+// @param b - Second wallet signer
+// @param dom - Domain separator
+// @param channelId - Channel ID
+// @param slot - Card slot
+// @param card - Card value
+// @param handId - Hand ID (default: 1n)
+// @returns Commit object with signatures and metadata
 export async function buildCardCommit(a, b, dom, channelId, slot, card, handId = 1n) {
     const salt = ethers.hexlify(ethers.randomBytes(32));
     const cHash = commitHash(dom, channelId, slot, card, salt);
@@ -121,9 +113,7 @@ export async function buildCardCommit(a, b, dom, channelId, slot, card, handId =
     return { cc, sigA, sigB, salt, card, slot };
 }
 
-/**
- * Helper to create a mock deck (9 cards, each 64 bytes) - we only use up to RIVER
- */
+// Helper to create a mock deck (9 cards, each 64 bytes) - we only use up to RIVER
 export function createMockDeck() {
     const deck = [];
     for (let i = 0; i < 9; i++) {
@@ -133,15 +123,13 @@ export function createMockDeck() {
     return deck;
 }
 
-/**
- * Helper to start a game by having both players submit the same deck
- * @param escrow - The escrow contract
- * @param channelId - Channel ID
- * @param player1 - Player 1 signer
- * @param player2 - Player 2 signer
- * @param deck - Optional deck array (defaults to mock deck)
- */
-export async function startGameWithDeckHash(escrow, channelId, player1, player2, deck = null) {
+// Helper to start a game by having both players submit the same deck
+// @param escrow - The escrow contract
+// @param channelId - Channel ID
+// @param player1 - Player 1 signer
+// @param player2 - Player 2 signer
+// @param deck - Optional deck array (defaults to mock deck)
+export async function startGameWithDeck(escrow, channelId, player1, player2, deck = null) {
     if (!deck) {
         deck = createMockDeck();
     }
@@ -149,9 +137,7 @@ export async function startGameWithDeckHash(escrow, channelId, player1, player2,
     await escrow.connect(player2).startGame(channelId, deck);
 }
 
-/**
- * Helper to play a basic showdown game where player1 wins 2 chips
- */
+// Helper to play a basic showdown game where player1 wins 2 chips
 export async function playPlayer1WinsShowdown(escrow, channelId, player1, player1Wallet, player2Wallet) {
     // Simple sequence where both players put in 2 chips (blinds) and check down
     const actionSpecs = [
@@ -174,4 +160,37 @@ export async function playPlayer1WinsShowdown(escrow, channelId, player1, player
     return await escrow.connect(player1).settle(channelId, actions, signatures);
 }
 
+// Helper to settle fold scenario in tests
+export async function settleBasicFold(escrow, channelId, winner, wallet1, wallet2, chainId) {
+    const handId = await escrow.getHandId(channelId);
 
+    if (handId % 2n === 0n) {
+        if (winner === wallet1.address) {
+            winner = wallet2.address;
+        } else {
+            winner = wallet1.address;
+        }
+    }
+
+    // Determine who should fold to make the winner win
+    let actions;
+    if (winner === wallet1.address) {
+        // Player2 should fold, so player1 wins
+        actions = buildActions([
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
+            { action: ACTION.BET_RAISE, amount: 3n, sender: wallet1.address }, // Small blind raises,
+            { action: ACTION.FOLD, amount: 0n, sender: wallet2.address } // Big blind folds
+        ], channelId, handId);
+    } else {
+        // Player1 should fold, so player2 wins  
+        actions = buildActions([
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
+            { action: ACTION.FOLD, amount: 0n, sender: wallet1.address } // Small blind folds
+        ], channelId, handId);
+    }
+
+    const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
+    return escrow.settle(channelId, actions, signatures);
+}

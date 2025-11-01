@@ -3,7 +3,7 @@ import hre from "hardhat";
 import { domainSeparator, ZERO32 } from "../helpers/hashes.js";
 import { SLOT } from "../helpers/slots.js";
 import { CARD } from "../helpers/cards.js";
-import { buildCardCommit, wallet1, wallet2, playPlayer1WinsShowdown, startGameWithDeckHash } from "../helpers/test-utils.js";
+import { buildCardCommit, wallet1, wallet2, playPlayer1WinsShowdown, startGameWithDeck } from "../helpers/test-utils.js";
 
 const { ethers } = hre;
 
@@ -20,7 +20,7 @@ describe("HeadsUpPokerEscrow - Poker Hand Ranking Integration", function () {
         // Setup channel
         await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
         await escrow.connect(player2).join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
-        await startGameWithDeckHash(escrow, channelId, player1, player2);
+        await startGameWithDeck(escrow, channelId, player1, player2);
     });
 
     async function setupShowdownWithCards(player1Cards, player2Cards, boardCards) {

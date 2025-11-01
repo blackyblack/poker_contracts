@@ -4,8 +4,8 @@ import { bn254 } from "@noble/curves/bn254.js";
 
 import { ACTION } from "../helpers/actions.js";
 import { SLOT } from "../helpers/slots.js";
-import { buildActions, signActions, startGameWithDeckHash, wallet1, wallet2 } from "../helpers/test-utils.js";
-import { hashToG1, randomScalar, g1ToBytes, g2ToBytes } from "../helpers/bn254.js";
+import { buildActions, signActions, startGameWithDeck, wallet1, wallet2 } from "../helpers/test-utils.js";
+import { hashToG1, g1ToBytes, g2ToBytes } from "../helpers/bn254.js";
 import { domainSeparator } from "../helpers/hashes.js";
 
 const { ethers } = hre;
@@ -15,14 +15,15 @@ describe("Force Reveal - answer functions", function () {
     let player1;
     let player2;
     let forceRevealAddress;
+    let forceRevealContract;
     const channelId = 1n;
     const deposit = ethers.parseEther("1");
     
     // Crypto setup
     const Fr = bn254.fields.Fr;
     const G2 = bn254.G2.Point;
-    let a, b;  // scalars for players
-    let pkA_G2, pkB_G2;  // public keys
+    let secretKeyA, secretKeyB;  // scalars (private keys) for players
+    let publicKeyA, publicKeyB;  // public keys
     let deck;  // encrypted deck
 
     beforeEach(async () => {
@@ -30,17 +31,18 @@ describe("Force Reveal - answer functions", function () {
         const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await Escrow.deploy();
         forceRevealAddress = await escrow.getForceRevealAddress();
+        forceRevealContract = await ethers.getContractAt("HeadsUpPokerForceReveal", forceRevealAddress);
 
         // Generate per-hand scalars (use fixed values for reproducibility)
-        a = 12345n;
-        b = 67890n;
-        
+        secretKeyA = 12345n;
+        secretKeyB = 67890n;
+
         // Derive public keys
-        pkA_G2 = G2.BASE.multiply(a);
-        pkB_G2 = G2.BASE.multiply(b);
-        
-        const pkA_G2_bytes = g2ToBytes(pkA_G2);
-        const pkB_G2_bytes = g2ToBytes(pkB_G2);
+        publicKeyA = G2.BASE.multiply(secretKeyA);
+        publicKeyB = G2.BASE.multiply(secretKeyB);
+
+        const pkA_G2_bytes = g2ToBytes(publicKeyA);
+        const pkB_G2_bytes = g2ToBytes(publicKeyB);
 
         await escrow.open(
             channelId,
@@ -60,12 +62,12 @@ describe("Force Reveal - answer functions", function () {
         const context = "test_poker_hand";
         for (let i = 0; i < 9; i++) {
             const R = hashToG1(context, i);
-            const aR = R.multiply(a);
-            const Y = aR.multiply(b);  // Fully encrypted: b·(a·R)
+            const aR = R.multiply(secretKeyA);
+            const Y = aR.multiply(secretKeyB);
             deck.push(g1ToBytes(Y));
         }
 
-        await startGameWithDeckHash(escrow, channelId, player1, player2, deck);
+        await startGameWithDeck(escrow, channelId, player1, player2, deck);
     });
 
     async function buildSequence(specs) {
@@ -82,14 +84,14 @@ describe("Force Reveal - answer functions", function () {
     }
 
     // Helper to create a decrypted card structure and signature
-    async function createDecryptedCard(signer, signerScalar, index, channelId, handId) {
+    async function createDecryptedCard(signer, secretKey, index, channelId, handId) {
         const context = "test_poker_hand";
         const R = hashToG1(context, index);
-        const aR = R.multiply(a);
-        const Y = aR.multiply(b);
+        const aR = R.multiply(secretKeyA);
+        const Y = aR.multiply(secretKeyB);
 
         // Compute partial decryption: U = scalar^(-1) · Y
-        const scalar_inv = Fr.inv(signerScalar);
+        const scalar_inv = Fr.inv(secretKey);
         const U = Y.multiply(scalar_inv);
 
         const decryptedCard = {
@@ -155,9 +157,9 @@ describe("Force Reveal - answer functions", function () {
             // Answer with player2 (obligated helper)
             const handId = await escrow.getHandId(channelId);
             const { decryptedCard: card1, signature: sig1 } = 
-                await createDecryptedCard(wallet2, b, SLOT.A1, channelId, handId);
+                await createDecryptedCard(wallet2, secretKeyB, SLOT.A1, channelId, handId);
             const { decryptedCard: card2, signature: sig2 } = 
-                await createDecryptedCard(wallet2, b, SLOT.A2, channelId, handId);
+                await createDecryptedCard(wallet2, secretKeyB, SLOT.A2, channelId, handId);
 
             await escrow
                 .connect(player2)
@@ -188,15 +190,15 @@ describe("Force Reveal - answer functions", function () {
 
             const handId = await escrow.getHandId(channelId);
             const { decryptedCard: card1, signature: sig1 } = 
-                await createDecryptedCard(wallet1, a, SLOT.A1, channelId, handId);
+                await createDecryptedCard(wallet1, secretKeyA, SLOT.A1, channelId, handId);
             const { decryptedCard: card2, signature: sig2 } = 
-                await createDecryptedCard(wallet1, a, SLOT.A2, channelId, handId);
+                await createDecryptedCard(wallet1, secretKeyA, SLOT.A2, channelId, handId);
 
             await expect(
                 escrow
                     .connect(player1)
                     .answerHoleA(channelId, [card1, card2], [sig1, sig2])
-            ).to.be.rejectedWith(Error);
+            ).to.be.revertedWithCustomError(escrow, "ActionInvalidSender");
         });
 
         it("reverts with invalid G1 point at infinity", async () => {
@@ -214,7 +216,7 @@ describe("Force Reveal - answer functions", function () {
             
             // Create valid card for A2
             const { decryptedCard: card2, signature: sig2 } = 
-                await createDecryptedCard(wallet2, b, SLOT.A2, channelId, handId);
+                await createDecryptedCard(wallet2, secretKeyB, SLOT.A2, channelId, handId);
 
             // Create invalid card with point at infinity for A1
             const infinityPoint = ethers.zeroPadValue("0x00", 64);
@@ -256,7 +258,7 @@ describe("Force Reveal - answer functions", function () {
                 escrow
                     .connect(player2)
                     .answerHoleA(channelId, [decryptedCard1, card2], [sig1, sig2])
-            ).to.be.rejectedWith(Error, /InvalidDecryptedCard/);
+            ).to.be.revertedWithCustomError(forceRevealContract, "InvalidDecryptedCard");
         });
 
         it("reverts with invalid G1 point not on curve", async () => {
@@ -274,7 +276,7 @@ describe("Force Reveal - answer functions", function () {
             
             // Create valid card for A2
             const { decryptedCard: card2, signature: sig2 } = 
-                await createDecryptedCard(wallet2, b, SLOT.A2, channelId, handId);
+                await createDecryptedCard(wallet2, secretKeyB, SLOT.A2, channelId, handId);
 
             // Create invalid card with point not on curve for A1
             const invalidPoint = ethers.concat([
@@ -319,7 +321,7 @@ describe("Force Reveal - answer functions", function () {
                 escrow
                     .connect(player2)
                     .answerHoleA(channelId, [decryptedCard1, card2], [sig1, sig2])
-            ).to.be.rejectedWith(Error, /InvalidDecryptedCard/);
+            ).to.be.revertedWithCustomError(forceRevealContract, "InvalidDecryptedCard");
         });
     });
 
@@ -341,9 +343,9 @@ describe("Force Reveal - answer functions", function () {
 
             const handId = await escrow.getHandId(channelId);
             const { decryptedCard: card1, signature: sig1 } = 
-                await createDecryptedCard(wallet1, a, SLOT.B1, channelId, handId);
+                await createDecryptedCard(wallet1, secretKeyA, SLOT.B1, channelId, handId);
             const { decryptedCard: card2, signature: sig2 } = 
-                await createDecryptedCard(wallet1, a, SLOT.B2, channelId, handId);
+                await createDecryptedCard(wallet1, secretKeyA, SLOT.B2, channelId, handId);
 
             await escrow
                 .connect(player1)
@@ -362,15 +364,15 @@ describe("Force Reveal - answer functions", function () {
         it("reverts when no force reveal in progress", async () => {
             const handId = await escrow.getHandId(channelId);
             const { decryptedCard: card1, signature: sig1 } = 
-                await createDecryptedCard(wallet1, a, SLOT.B1, channelId, handId);
+                await createDecryptedCard(wallet1, secretKeyA, SLOT.B1, channelId, handId);
             const { decryptedCard: card2, signature: sig2 } = 
-                await createDecryptedCard(wallet1, a, SLOT.B2, channelId, handId);
+                await createDecryptedCard(wallet1, secretKeyA, SLOT.B2, channelId, handId);
 
             await expect(
                 escrow
                     .connect(player1)
                     .answerHoleB(channelId, [card1, card2], [sig1, sig2])
-            ).to.be.rejectedWith(Error, /NoForceRevealInProgress/);
+            ).to.be.revertedWithCustomError(forceRevealContract, "NoForceRevealInProgress");
         });
     });
 
@@ -388,11 +390,11 @@ describe("Force Reveal - answer functions", function () {
             
             // Player 1 requests with their decryptions
             const { decryptedCard: p1card1, signature: p1sig1 } = 
-                await createDecryptedCard(wallet1, a, SLOT.FLOP1, channelId, handId);
+                await createDecryptedCard(wallet1, secretKeyA, SLOT.FLOP1, channelId, handId);
             const { decryptedCard: p1card2, signature: p1sig2 } = 
-                await createDecryptedCard(wallet1, a, SLOT.FLOP2, channelId, handId);
+                await createDecryptedCard(wallet1, secretKeyA, SLOT.FLOP2, channelId, handId);
             const { decryptedCard: p1card3, signature: p1sig3 } = 
-                await createDecryptedCard(wallet1, a, SLOT.FLOP3, channelId, handId);
+                await createDecryptedCard(wallet1, secretKeyA, SLOT.FLOP3, channelId, handId);
 
             await escrow
                 .connect(player1)
@@ -410,11 +412,11 @@ describe("Force Reveal - answer functions", function () {
 
             // Player 2 answers
             const { decryptedCard: p2card1, signature: p2sig1 } = 
-                await createDecryptedCard(wallet2, b, SLOT.FLOP1, channelId, handId);
+                await createDecryptedCard(wallet2, secretKeyB, SLOT.FLOP1, channelId, handId);
             const { decryptedCard: p2card2, signature: p2sig2 } = 
-                await createDecryptedCard(wallet2, b, SLOT.FLOP2, channelId, handId);
+                await createDecryptedCard(wallet2, secretKeyB, SLOT.FLOP2, channelId, handId);
             const { decryptedCard: p2card3, signature: p2sig3 } = 
-                await createDecryptedCard(wallet2, b, SLOT.FLOP3, channelId, handId);
+                await createDecryptedCard(wallet2, secretKeyB, SLOT.FLOP3, channelId, handId);
 
             await escrow
                 .connect(player2)
@@ -441,7 +443,7 @@ describe("Force Reveal - answer functions", function () {
             const handId = await escrow.getHandId(channelId);
             
             const { decryptedCard: p1card, signature: p1sig } = 
-                await createDecryptedCard(wallet1, a, SLOT.TURN, channelId, handId);
+                await createDecryptedCard(wallet1, secretKeyA, SLOT.TURN, channelId, handId);
 
             await escrow
                 .connect(player1)
@@ -452,7 +454,7 @@ describe("Force Reveal - answer functions", function () {
             expect(fr.stage).to.equal(4); // TURN
 
             const { decryptedCard: p2card, signature: p2sig } = 
-                await createDecryptedCard(wallet2, b, SLOT.TURN, channelId, handId);
+                await createDecryptedCard(wallet2, secretKeyB, SLOT.TURN, channelId, handId);
 
             await escrow
                 .connect(player2)
@@ -481,7 +483,7 @@ describe("Force Reveal - answer functions", function () {
             const handId = await escrow.getHandId(channelId);
             
             const { decryptedCard: p1card, signature: p1sig } = 
-                await createDecryptedCard(wallet1, a, SLOT.RIVER, channelId, handId);
+                await createDecryptedCard(wallet1, secretKeyA, SLOT.RIVER, channelId, handId);
 
             await escrow
                 .connect(player1)
@@ -492,7 +494,7 @@ describe("Force Reveal - answer functions", function () {
             expect(fr.stage).to.equal(5); // RIVER
 
             const { decryptedCard: p2card, signature: p2sig } = 
-                await createDecryptedCard(wallet2, b, SLOT.RIVER, channelId, handId);
+                await createDecryptedCard(wallet2, secretKeyB, SLOT.RIVER, channelId, handId);
 
             await escrow
                 .connect(player2)
@@ -518,7 +520,7 @@ describe("Force Reveal - answer functions", function () {
             
             // Request TURN
             const { decryptedCard: p1card, signature: p1sig } = 
-                await createDecryptedCard(wallet1, a, SLOT.TURN, channelId, handId);
+                await createDecryptedCard(wallet1, secretKeyA, SLOT.TURN, channelId, handId);
 
             await escrow
                 .connect(player1)
@@ -526,13 +528,13 @@ describe("Force Reveal - answer functions", function () {
 
             // Try to answer with RIVER (wrong stage)
             const { decryptedCard: p2card, signature: p2sig } = 
-                await createDecryptedCard(wallet2, b, SLOT.RIVER, channelId, handId);
+                await createDecryptedCard(wallet2, secretKeyB, SLOT.RIVER, channelId, handId);
 
             await expect(
                 escrow
                     .connect(player2)
                     .answerRiver(channelId, p2card, p2sig)
-            ).to.be.rejectedWith(Error, /ForceRevealWrongStage/);
+            ).to.be.revertedWithCustomError(forceRevealContract, "ForceRevealWrongStage");
         });
     });
 });

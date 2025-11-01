@@ -3,6 +3,11 @@ pragma solidity 0.8.24;
 
 import "./Bn254.sol";
 
+error IncorrectCardOpener1();
+error IncorrectCardOpener2();
+error IncorrectCardEncrypted1();
+error IncorrectCardEncrypted2();
+
 /// @title CardVerifier
 /// @notice Library for verifying card decryption data in poker games
 /// @dev Uses BN254 pairing to verify partial decryptions of encrypted cards.
@@ -27,26 +32,34 @@ library CardVerifier {
         bytes memory card2Encrypted,
         bytes memory card2Opener
     ) internal view returns (bool) {
-        require(card1Encrypted.length == 64, "card1Encrypted must be 64 bytes");
-        require(card1Opener.length == 64, "card1Opener must be 64 bytes");
-        require(card2Encrypted.length == 64, "card2Encrypted must be 64 bytes");
-        require(card2Opener.length == 64, "card2Opener must be 64 bytes");
+        if (card1Encrypted.length != 64)
+            revert IncorrectCardEncrypted1();
+        if (card1Opener.length != 64)
+            revert IncorrectCardOpener1();
+        if (card2Encrypted.length != 64)
+            revert IncorrectCardEncrypted2();
+        if (card2Opener.length != 64)
+            revert IncorrectCardOpener2();
 
         // Verify first hole card (position 0)
-        bool card1Valid = Bn254.verifyPartialDecrypt(
-            card1Encrypted,
+        if (!Bn254.verifyPartialDecrypt(
             card1Opener,
+            card1Encrypted,
             pkB
-        );
+        )) {
+            return false;
+        }
 
         // Verify second hole card (position 1)
-        bool card2Valid = Bn254.verifyPartialDecrypt(
-            card2Encrypted,
+        if (!Bn254.verifyPartialDecrypt(
             card2Opener,
+            card2Encrypted,
             pkB
-        );
+        )) {
+            return false;
+        }
 
-        return card1Valid && card2Valid;
+        return true;
     }
 
     /// @notice Verify hole cards for player B (third and fourth cards in deck)
@@ -66,26 +79,34 @@ library CardVerifier {
         bytes memory card2Encrypted,
         bytes memory card2Opener
     ) internal view returns (bool) {
-        require(card1Encrypted.length == 64, "card1Encrypted must be 64 bytes");
-        require(card1Opener.length == 64, "card1Opener must be 64 bytes");
-        require(card2Encrypted.length == 64, "card2Encrypted must be 64 bytes");
-        require(card2Opener.length == 64, "card2Opener must be 64 bytes");
+        if (card1Encrypted.length != 64)
+            revert IncorrectCardEncrypted1();
+        if (card1Opener.length != 64)
+            revert IncorrectCardOpener1();
+        if (card2Encrypted.length != 64)
+            revert IncorrectCardEncrypted2();
+        if (card2Opener.length != 64)
+            revert IncorrectCardOpener2();
 
         // Verify first hole card for B (position 2)
-        bool card1Valid = Bn254.verifyPartialDecrypt(
-            card1Encrypted,
+        if (!Bn254.verifyPartialDecrypt(
             card1Opener,
+            card1Encrypted,
             pkA
-        );
+        )) {
+            return false;
+        }
 
         // Verify second hole card for B (position 3)
-        bool card2Valid = Bn254.verifyPartialDecrypt(
-            card2Encrypted,
+        if (!Bn254.verifyPartialDecrypt(
             card2Opener,
+            card2Encrypted,
             pkA
-        );
+        )) {
+            return false;
+        }
 
-        return card1Valid && card2Valid;
+        return true;
     }
 
     /// @notice Verify public card(s) at specified index/indices
@@ -106,24 +127,31 @@ library CardVerifier {
         bytes memory cardAOpener,
         bytes memory cardBOpener
     ) internal view returns (bool) {
-        require(cardEncrypted.length == 64, "cardEncrypted must be 64 bytes");
-        require(cardAOpener.length == 64, "cardAOpener must be 64 bytes");
-        require(cardBOpener.length == 64, "cardBOpener must be 64 bytes");
+        if (cardEncrypted.length != 64)
+            revert IncorrectCardEncrypted1();
+        if (cardAOpener.length != 64)
+            revert IncorrectCardOpener1();
+        if (cardBOpener.length != 64)
+            revert IncorrectCardOpener2();
 
         // Verify decrypt by A
-        bool validA = Bn254.verifyPartialDecrypt(
-            cardEncrypted,
+        if (!Bn254.verifyPartialDecrypt(
             cardAOpener,
+            cardEncrypted,
             pkA
-        );
+        )) {
+            return false;
+        }
 
         // Verify decrypt by B
-        bool validB = Bn254.verifyPartialDecrypt(
-            cardEncrypted,
+        if (!Bn254.verifyPartialDecrypt(
             cardBOpener,
+            cardEncrypted,
             pkB
-        );
-        
-        return validA && validB;
+        )) {
+            return false;
+        }
+
+        return true;
     }
 }
