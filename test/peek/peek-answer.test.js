@@ -10,12 +10,12 @@ import { domainSeparator } from "../helpers/hashes.js";
 
 const { ethers } = hre;
 
-describe("Force Reveal - answer functions", function () {
+describe("Peek - answer functions", function () {
     let escrow;
     let player1;
     let player2;
-    let forceRevealAddress;
-    let forceRevealContract;
+    let peekAddress;
+    let peekContract;
     const channelId = 1n;
     const deposit = ethers.parseEther("1");
     
@@ -30,8 +30,8 @@ describe("Force Reveal - answer functions", function () {
         [player1, player2] = await ethers.getSigners();
         const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await Escrow.deploy();
-        forceRevealAddress = await escrow.getForceRevealAddress();
-        forceRevealContract = await ethers.getContractAt("HeadsUpPokerForceReveal", forceRevealAddress);
+        peekAddress = await escrow.getPeekAddress();
+        peekContract = await ethers.getContractAt("HeadsUpPokerPeek", peekAddress);
 
         // Generate per-hand scalars (use fixed values for reproducibility)
         secretKeyA = 12345n;
@@ -104,7 +104,7 @@ describe("Force Reveal - answer functions", function () {
 
         // Sign the decrypted card
         const chainId = (await ethers.provider.getNetwork()).chainId;
-        const domain = domainSeparator(forceRevealAddress, chainId);
+        const domain = domainSeparator(peekAddress, chainId);
         
         // Build digest manually following EIP712 spec
         const DECRYPTED_CARD_TYPEHASH = ethers.keccak256(
@@ -137,7 +137,7 @@ describe("Force Reveal - answer functions", function () {
     }
 
     describe("answerHoleA", function () {
-        it("successfully answers hole A force reveal request", async () => {
+        it("successfully answers hole A peek request", async () => {
             // Request hole A
             const specs = [
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
@@ -149,8 +149,8 @@ describe("Force Reveal - answer functions", function () {
                 .connect(player1)
                 .requestHoleA(channelId, actions, signatures);
 
-            // Verify force reveal is active
-            const fr = await escrow.getForceReveal(channelId);
+            // Verify peek is active
+            const fr = await escrow.getPeek(channelId);
             expect(fr.inProgress).to.equal(true);
             expect(fr.stage).to.equal(1); // HOLE_A
 
@@ -165,8 +165,8 @@ describe("Force Reveal - answer functions", function () {
                 .connect(player2)
                 .answerHoleA(channelId, [card1, card2], [sig1, sig2]);
 
-            // Verify force reveal is completed
-            const frAfter = await escrow.getForceReveal(channelId);
+            // Verify peek is completed
+            const frAfter = await escrow.getPeek(channelId);
             expect(frAfter.inProgress).to.equal(false);
             expect(frAfter.served).to.equal(true);
 
@@ -230,7 +230,7 @@ describe("Force Reveal - answer functions", function () {
 
             // Sign it
             const chainId = (await ethers.provider.getNetwork()).chainId;
-            const domain = domainSeparator(forceRevealAddress, chainId);
+            const domain = domainSeparator(peekAddress, chainId);
             const DECRYPTED_CARD_TYPEHASH = ethers.keccak256(
                 ethers.toUtf8Bytes(
                     "DecryptedCard(uint256 channelId,uint256 handId,address player,uint8 index,bytes decryptedCard)"
@@ -258,7 +258,7 @@ describe("Force Reveal - answer functions", function () {
                 escrow
                     .connect(player2)
                     .answerHoleA(channelId, [decryptedCard1, card2], [sig1, sig2])
-            ).to.be.revertedWithCustomError(forceRevealContract, "InvalidDecryptedCard");
+            ).to.be.revertedWithCustomError(peekContract, "InvalidDecryptedCard");
         });
 
         it("reverts with invalid G1 point not on curve", async () => {
@@ -293,7 +293,7 @@ describe("Force Reveal - answer functions", function () {
 
             // Sign it
             const chainId = (await ethers.provider.getNetwork()).chainId;
-            const domain = domainSeparator(forceRevealAddress, chainId);
+            const domain = domainSeparator(peekAddress, chainId);
             const DECRYPTED_CARD_TYPEHASH = ethers.keccak256(
                 ethers.toUtf8Bytes(
                     "DecryptedCard(uint256 channelId,uint256 handId,address player,uint8 index,bytes decryptedCard)"
@@ -321,12 +321,12 @@ describe("Force Reveal - answer functions", function () {
                 escrow
                     .connect(player2)
                     .answerHoleA(channelId, [decryptedCard1, card2], [sig1, sig2])
-            ).to.be.revertedWithCustomError(forceRevealContract, "InvalidDecryptedCard");
+            ).to.be.revertedWithCustomError(peekContract, "InvalidDecryptedCard");
         });
     });
 
     describe("answerHoleB", function () {
-        it("successfully answers hole B force reveal request", async () => {
+        it("successfully answers hole B peek request", async () => {
             const specs = [
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
                 { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
@@ -337,7 +337,7 @@ describe("Force Reveal - answer functions", function () {
                 .connect(player2)
                 .requestHoleB(channelId, actions, signatures);
 
-            const fr = await escrow.getForceReveal(channelId);
+            const fr = await escrow.getPeek(channelId);
             expect(fr.inProgress).to.equal(true);
             expect(fr.stage).to.equal(2); // HOLE_B
 
@@ -351,7 +351,7 @@ describe("Force Reveal - answer functions", function () {
                 .connect(player1)
                 .answerHoleB(channelId, [card1, card2], [sig1, sig2]);
 
-            const frAfter = await escrow.getForceReveal(channelId);
+            const frAfter = await escrow.getPeek(channelId);
             expect(frAfter.inProgress).to.equal(false);
             expect(frAfter.served).to.equal(true);
 
@@ -361,7 +361,7 @@ describe("Force Reveal - answer functions", function () {
             expect(revealedCard2).to.equal(card2.decryptedCard);
         });
 
-        it("reverts when no force reveal in progress", async () => {
+        it("reverts when no peek in progress", async () => {
             const handId = await escrow.getHandId(channelId);
             const { decryptedCard: card1, signature: sig1 } = 
                 await createDecryptedCard(wallet1, secretKeyA, SLOT.B1, channelId, handId);
@@ -372,12 +372,12 @@ describe("Force Reveal - answer functions", function () {
                 escrow
                     .connect(player1)
                     .answerHoleB(channelId, [card1, card2], [sig1, sig2])
-            ).to.be.revertedWithCustomError(forceRevealContract, "NoForceRevealInProgress");
+            ).to.be.revertedWithCustomError(peekContract, "NoPeekInProgress");
         });
     });
 
     describe("answerFlop", function () {
-        it("successfully answers flop force reveal request", async () => {
+        it("successfully answers flop peek request", async () => {
             const specs = [
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
                 { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
@@ -406,7 +406,7 @@ describe("Force Reveal - answer functions", function () {
                     [p1sig1, p1sig2, p1sig3]
                 );
 
-            const fr = await escrow.getForceReveal(channelId);
+            const fr = await escrow.getPeek(channelId);
             expect(fr.inProgress).to.equal(true);
             expect(fr.stage).to.equal(3); // FLOP
 
@@ -422,14 +422,14 @@ describe("Force Reveal - answer functions", function () {
                 .connect(player2)
                 .answerFlop(channelId, [p2card1, p2card2, p2card3], [p2sig1, p2sig2, p2sig3]);
 
-            const frAfter = await escrow.getForceReveal(channelId);
+            const frAfter = await escrow.getPeek(channelId);
             expect(frAfter.inProgress).to.equal(false);
             expect(frAfter.served).to.equal(true);
         });
     });
 
     describe("answerTurn", function () {
-        it("successfully answers turn force reveal request", async () => {
+        it("successfully answers turn peek request", async () => {
             const specs = [
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
                 { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
@@ -449,7 +449,7 @@ describe("Force Reveal - answer functions", function () {
                 .connect(player1)
                 .requestTurn(channelId, actions, signatures, p1card, p1sig);
 
-            const fr = await escrow.getForceReveal(channelId);
+            const fr = await escrow.getPeek(channelId);
             expect(fr.inProgress).to.equal(true);
             expect(fr.stage).to.equal(4); // TURN
 
@@ -460,14 +460,14 @@ describe("Force Reveal - answer functions", function () {
                 .connect(player2)
                 .answerTurn(channelId, p2card, p2sig);
 
-            const frAfter = await escrow.getForceReveal(channelId);
+            const frAfter = await escrow.getPeek(channelId);
             expect(frAfter.inProgress).to.equal(false);
             expect(frAfter.served).to.equal(true);
         });
     });
 
     describe("answerRiver", function () {
-        it("successfully answers river force reveal request", async () => {
+        it("successfully answers river peek request", async () => {
             const specs = [
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
                 { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
@@ -489,7 +489,7 @@ describe("Force Reveal - answer functions", function () {
                 .connect(player1)
                 .requestRiver(channelId, actions, signatures, p1card, p1sig);
 
-            const fr = await escrow.getForceReveal(channelId);
+            const fr = await escrow.getPeek(channelId);
             expect(fr.inProgress).to.equal(true);
             expect(fr.stage).to.equal(5); // RIVER
 
@@ -500,7 +500,7 @@ describe("Force Reveal - answer functions", function () {
                 .connect(player2)
                 .answerRiver(channelId, p2card, p2sig);
 
-            const frAfter = await escrow.getForceReveal(channelId);
+            const frAfter = await escrow.getPeek(channelId);
             expect(frAfter.inProgress).to.equal(false);
             expect(frAfter.served).to.equal(true);
         });
@@ -534,7 +534,7 @@ describe("Force Reveal - answer functions", function () {
                 escrow
                     .connect(player2)
                     .answerRiver(channelId, p2card, p2sig)
-            ).to.be.revertedWithCustomError(forceRevealContract, "ForceRevealWrongStage");
+            ).to.be.revertedWithCustomError(peekContract, "PeekWrongStage");
         });
     });
 });

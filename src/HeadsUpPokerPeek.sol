@@ -9,10 +9,10 @@ import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
 import {HeadsUpPokerReplay} from "./HeadsUpPokerReplay.sol";
 import "./HeadsUpPokerErrors.sol";
 
-contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
+contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     using ECDSA for bytes32;
 
-    enum ForceRevealStage {
+    enum PeekStage {
         NONE,
         HOLE_A,
         HOLE_B,
@@ -25,8 +25,8 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
     uint8 constant STREET_TURN = 2;
     uint8 constant STREET_RIVER = 3;
 
-    struct ForceRevealState {
-        ForceRevealStage stage;
+    struct PeekState {
+        PeekStage stage;
         bool inProgress;
         bool served;
         uint256 deadline;
@@ -52,13 +52,13 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         uint8 street;
     }
 
-    uint256 public constant forceRevealWindow = 1 hours;
+    uint256 public constant peekWindow = 1 hours;
 
     address private immutable escrow;
     HeadsUpPokerReplay private immutable replay;
 
-    // channelId => ForceRevealState
-    mapping(uint256 => ForceRevealState) private forceReveals;
+    // channelId => PeekState
+    mapping(uint256 => PeekState) private peeks;
     // channelId => slot => revealed card from player A
     mapping(uint256 => mapping(uint8 => bytes)) private revealedCardsA;
     // channelId => slot => revealed card from player B
@@ -84,8 +84,8 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
     // ------------------------------------------------------------------
     // View helpers
     // ------------------------------------------------------------------
-    function getForceReveal(uint256 channelId) external view returns (ForceRevealState memory) {
-        return forceReveals[channelId];
+    function getPeek(uint256 channelId) external view returns (PeekState memory) {
+        return peeks[channelId];
     }
 
     function getRevealedCardA(uint256 channelId, uint8 index) external view returns (bytes memory) {
@@ -112,7 +112,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
     // Channel setup helpers
     // ------------------------------------------------------------------
     function resetChannel(uint256 channelId) external onlyEscrow {
-        delete forceReveals[channelId];
+        delete peeks[channelId];
         delete publicKeyA[channelId];
         delete publicKeyB[channelId];
         delete decks[channelId];
@@ -140,13 +140,13 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         address requester,
         Action[] calldata actions
     ) external onlyEscrow {
-        ForceRevealState storage fr = forceReveals[channelId];
+        PeekState storage fr = peeks[channelId];
 
         if (ch.player1 == address(0)) revert NoChannel();
         if (!ch.gameStarted) revert GameNotStarted();
         _requireDeck(channelId);
         if (ch.finalized) revert AlreadyFinalized();
-        if (fr.inProgress || fr.stage != ForceRevealStage.NONE) revert ForceRevealInProgress();
+        if (fr.inProgress || fr.stage != PeekStage.NONE) revert PeekInProgress();
         if (requester != ch.player1) revert NotPlayer();
 
         _ensureActiveGame(ch, actions);
@@ -156,7 +156,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         if (revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_A2].length != 0)
             revert PrerequisitesNotMet();
 
-        _openForceReveal(fr, ForceRevealStage.HOLE_A, ch.player2);
+        _openPeek(fr, PeekStage.HOLE_A, ch.player2);
     }
 
     function answerHoleA(
@@ -166,9 +166,9 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
         bytes[] calldata signatures
     ) external onlyEscrow {
-        ForceRevealState storage fr = forceReveals[channelId];
+        PeekState storage fr = peeks[channelId];
 
-        _requireForceRevealActive(fr, ForceRevealStage.HOLE_A);
+        _requirePeekActive(fr, PeekStage.HOLE_A);
         _verifySender(ch, helper, fr.obligatedHelper);
 
         uint8[] memory indices = _indices(
@@ -184,7 +184,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
             ch
         );
 
-        _completeForceReveal(fr);
+        _completePeek(fr);
     }
 
     function requestHoleB(
@@ -193,12 +193,12 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         address requester,
         Action[] calldata actions
     ) external onlyEscrow {
-        ForceRevealState storage fr = forceReveals[channelId];
+        PeekState storage fr = peeks[channelId];
 
         if (ch.player1 == address(0)) revert NoChannel();
         if (!ch.gameStarted) revert GameNotStarted();
         _requireDeck(channelId);
-        if (fr.inProgress) revert ForceRevealInProgress();
+        if (fr.inProgress) revert PeekInProgress();
         if (requester != ch.player2 && requester != ch.player2Signer) revert NotPlayer();
         _ensureActiveGame(ch, actions);
 
@@ -207,7 +207,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         if (revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_B2].length != 0)
             revert PrerequisitesNotMet();
 
-        _openForceReveal(fr, ForceRevealStage.HOLE_B, ch.player1);
+        _openPeek(fr, PeekStage.HOLE_B, ch.player1);
     }
 
     function answerHoleB(
@@ -217,9 +217,9 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
         bytes[] calldata signatures
     ) external onlyEscrow {
-        ForceRevealState storage fr = forceReveals[channelId];
+        PeekState storage fr = peeks[channelId];
 
-        _requireForceRevealActive(fr, ForceRevealStage.HOLE_B);
+        _requirePeekActive(fr, PeekStage.HOLE_B);
         _verifySender(ch, helper, fr.obligatedHelper);
 
         uint8[] memory indices = _indices(
@@ -235,7 +235,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
             ch
         );
 
-        _completeForceReveal(fr);
+        _completePeek(fr);
     }
 
     function requestFlop(
@@ -246,12 +246,12 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         HeadsUpPokerEIP712.DecryptedCard[] calldata requesterDecryptedCards,
         bytes[] calldata requesterSignatures
     ) external onlyEscrow {
-        ForceRevealState storage fr = forceReveals[channelId];
+        PeekState storage fr = peeks[channelId];
 
         if (ch.player1 == address(0)) revert NoChannel();
         if (!ch.gameStarted) revert GameNotStarted();
         _requireDeck(channelId);
-        if (fr.inProgress) revert ForceRevealInProgress();
+        if (fr.inProgress) revert PeekInProgress();
         if (requester != ch.player1 && requester != ch.player2) revert NotPlayer();
         _ensureCommunityStage(ch, actions, STREET_FLOP);
         if (
@@ -289,7 +289,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
             ch
         );
 
-        _openForceReveal(fr, ForceRevealStage.FLOP, obligatedHelper);
+        _openPeek(fr, PeekStage.FLOP, obligatedHelper);
     }
 
     function answerFlop(
@@ -299,9 +299,9 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
         bytes[] calldata signatures
     ) external onlyEscrow {
-        ForceRevealState storage fr = forceReveals[channelId];
+        PeekState storage fr = peeks[channelId];
 
-        _requireForceRevealActive(fr, ForceRevealStage.FLOP);
+        _requirePeekActive(fr, PeekStage.FLOP);
         _verifySender(ch, helper, fr.obligatedHelper);
 
         uint8[] memory flopIndices = _indices(
@@ -318,7 +318,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
             ch
         );
 
-        _completeForceReveal(fr);
+        _completePeek(fr);
     }
 
     function requestTurn(
@@ -329,12 +329,12 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         HeadsUpPokerEIP712.DecryptedCard calldata requesterDecryptedCard,
         bytes calldata requesterSignature
     ) external onlyEscrow {
-        ForceRevealState storage fr = forceReveals[channelId];
+        PeekState storage fr = peeks[channelId];
 
         if (ch.player1 == address(0)) revert NoChannel();
         if (!ch.gameStarted) revert GameNotStarted();
         _requireDeck(channelId);
-        if (fr.inProgress) revert ForceRevealInProgress();
+        if (fr.inProgress) revert PeekInProgress();
         if (requester != ch.player1 && requester != ch.player2) revert NotPlayer();
 
         _ensureCommunityStage(ch, actions, STREET_TURN);
@@ -360,7 +360,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
             ch
         );
 
-        _openForceReveal(fr, ForceRevealStage.TURN, obligatedHelper);
+        _openPeek(fr, PeekStage.TURN, obligatedHelper);
     }
 
     function answerTurn(
@@ -370,9 +370,9 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
         bytes calldata signature
     ) external onlyEscrow {
-        ForceRevealState storage fr = forceReveals[channelId];
+        PeekState storage fr = peeks[channelId];
 
-        _requireForceRevealActive(fr, ForceRevealStage.TURN);
+        _requirePeekActive(fr, PeekStage.TURN);
         _verifySender(ch, helper, fr.obligatedHelper);
 
         _verifyAndStore(
@@ -384,7 +384,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
             ch
         );
 
-        _completeForceReveal(fr);
+        _completePeek(fr);
     }
 
     function requestRiver(
@@ -395,12 +395,12 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         HeadsUpPokerEIP712.DecryptedCard calldata requesterDecryptedCard,
         bytes calldata requesterSignature
     ) external onlyEscrow {
-        ForceRevealState storage fr = forceReveals[channelId];
+        PeekState storage fr = peeks[channelId];
 
         if (ch.player1 == address(0)) revert NoChannel();
         if (!ch.gameStarted) revert GameNotStarted();
         _requireDeck(channelId);
-        if (fr.inProgress) revert ForceRevealInProgress();
+        if (fr.inProgress) revert PeekInProgress();
         if (requester != ch.player1 && requester != ch.player2) revert NotPlayer();
 
         _ensureCommunityStage(ch, actions, STREET_RIVER);
@@ -426,7 +426,7 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
             ch
         );
 
-        _openForceReveal(fr, ForceRevealStage.RIVER, obligatedHelper);
+        _openPeek(fr, PeekStage.RIVER, obligatedHelper);
     }
 
     function answerRiver(
@@ -436,9 +436,9 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
         HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
         bytes calldata signature
     ) external onlyEscrow {
-        ForceRevealState storage fr = forceReveals[channelId];
+        PeekState storage fr = peeks[channelId];
 
-        _requireForceRevealActive(fr, ForceRevealStage.RIVER);
+        _requirePeekActive(fr, PeekStage.RIVER);
         _verifySender(ch, helper, fr.obligatedHelper);
 
          _verifyAndStore(
@@ -450,15 +450,15 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
             ch
         );
 
-        _completeForceReveal(fr);
+        _completePeek(fr);
     }
 
-    function slashForceReveal(uint256 channelId) external onlyEscrow returns (address obligatedHelper) {
-        ForceRevealState storage fr = forceReveals[channelId];
+    function slashPeek(uint256 channelId) external onlyEscrow returns (address obligatedHelper) {
+        PeekState storage fr = peeks[channelId];
 
-        if (!fr.inProgress) revert NoForceRevealInProgress();
-        if (block.timestamp <= fr.deadline) revert ForceRevealNotExpired();
-        if (fr.served) revert ForceRevealAlreadyServed();
+        if (!fr.inProgress) revert NoPeekInProgress();
+        if (block.timestamp <= fr.deadline) revert PeekNotExpired();
+        if (fr.served) revert PeekAlreadyServed();
 
         obligatedHelper = fr.obligatedHelper;
         fr.inProgress = false;
@@ -467,26 +467,26 @@ contract HeadsUpPokerForceReveal is HeadsUpPokerEIP712 {
     // ------------------------------------------------------------------
     // Internal helpers
     // ------------------------------------------------------------------
-    function _requireForceRevealActive(ForceRevealState storage fr, ForceRevealStage stage) internal view {
-        if (!fr.inProgress) revert NoForceRevealInProgress();
-        if (fr.stage != stage) revert ForceRevealWrongStage();
-        if (fr.served) revert ForceRevealAlreadyServed();
+    function _requirePeekActive(PeekState storage fr, PeekStage stage) internal view {
+        if (!fr.inProgress) revert NoPeekInProgress();
+        if (fr.stage != stage) revert PeekWrongStage();
+        if (fr.served) revert PeekAlreadyServed();
         if (block.timestamp > fr.deadline) revert Expired();
     }
 
-    function _openForceReveal(
-        ForceRevealState storage fr,
-        ForceRevealStage stage,
+    function _openPeek(
+        PeekState storage fr,
+        PeekStage stage,
         address obligatedHelper
     ) internal {
         fr.stage = stage;
         fr.inProgress = true;
         fr.served = false;
-        fr.deadline = block.timestamp + forceRevealWindow;
+        fr.deadline = block.timestamp + peekWindow;
         fr.obligatedHelper = obligatedHelper;
     }
 
-    function _completeForceReveal(ForceRevealState storage fr) internal {
+    function _completePeek(PeekState storage fr) internal {
         fr.served = true;
         fr.inProgress = false;
     }
