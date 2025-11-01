@@ -893,7 +893,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     // ------------------------------------------------------------------
-    // Force Reveal Functions
+    // Peek Functions
     // ------------------------------------------------------------------
 
     function requestHoleA(
