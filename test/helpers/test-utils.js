@@ -1,7 +1,6 @@
 import hre from "hardhat";
 import { actionHash, actionDigest, handGenesis, domainSeparator, commitHash, cardCommitDigest } from "./hashes.js";
 import { ACTION } from "./actions.js";
-import { ZeroHash } from "ethers";
 
 const { ethers } = hre;
 
