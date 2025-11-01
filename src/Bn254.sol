@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+error IncorrectSizeU();
+error IncorrectSizeY();
+error IncorrectSizePublicKey();
+error PairingFailed();
+
 /// @title Bn254
-/// @notice Stateless helper library for BN254 curve operations
-/// @dev All functions are pure/view with no state storage
+/// @notice Helper library for BN254 curve operations
 library Bn254 {
     // BN254 curve parameters
     // Field modulus p
@@ -31,9 +35,12 @@ library Bn254 {
         bytes memory Y,
         bytes memory pkG2
     ) internal view returns (bool) {
-        require(U.length == 64, "U must be 64 bytes");
-        require(Y.length == 64, "Y must be 64 bytes");
-        require(pkG2.length == 128, "pkG2 must be 128 bytes");
+        if (U.length != 64)
+            revert IncorrectSizeU();
+        if (Y.length != 64)
+            revert IncorrectSizeY();
+        if (pkG2.length != 128)
+            revert IncorrectSizePublicKey();
 
         uint256 yX;
         uint256 yY;
@@ -80,8 +87,10 @@ library Bn254 {
                 32              // Output size (1 or 0)
             )
         }
+
+        if (!success)
+            revert PairingFailed();
         
-        require(success, "Pairing precompile failed");
         return result[0] == 1;
     }
 

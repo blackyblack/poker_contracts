@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { ACTION } from "../helpers/actions.js";
-import { buildActions, signActions, wallet1, wallet2, wallet3, startGameWithDeckHash } from "../helpers/test-utils.js";
+import { buildActions, signActions, wallet1, wallet2, wallet3, startGameWithDeck } from "../helpers/test-utils.js";
 import { domainSeparator, actionDigest } from "../helpers/hashes.js";
 
 const { ethers } = hre;
@@ -100,7 +100,7 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
         });
     });
 
-    describe("Action Settlement with Optional Signers", function () {
+    describe("Settlement with Optional Signers", function () {
         const channelId = 1n;
         let handId;
 
@@ -129,7 +129,7 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, "0x", { value: 10n });
             
             // Start the game
-            await startGameWithDeckHash(escrow, channelId, player1, player2);
+            await startGameWithDeck(escrow, channelId, player1, player2);
         });
 
         it("should accept actions signed by players themselves", async function () {

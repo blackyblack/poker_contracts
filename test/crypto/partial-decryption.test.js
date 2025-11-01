@@ -5,7 +5,7 @@ import { hashToG1, randomScalar, g1ToBytes, g2ToBytes } from "../helpers/bn254.j
 
 const { ethers } = hre;
 
-describe("Partial Decryption Tests", function () {
+describe("Partial Decryption", function () {
     let contract;
     const Fr = bn254.fields.Fr;
     const G2 = bn254.G2.Point;
@@ -15,7 +15,7 @@ describe("Partial Decryption Tests", function () {
         contract = await Bn254Test.deploy();
     });
 
-    describe("Case: B helps A decrypt", function () {
+    describe("B helps A decrypt", function () {
         it("should verify partial decryption when B helps A", async function () {
             // Step 1: Pick random per-hand scalars a and b
             const a = randomScalar();
@@ -95,7 +95,7 @@ describe("Partial Decryption Tests", function () {
         });
     });
 
-    describe("Case: A helps B decrypt", function () {
+    describe("A helps B decrypt", function () {
         it("should verify partial decryption when A helps B", async function () {
             // Step 1: Pick random per-hand scalars a and b
             const a = randomScalar();

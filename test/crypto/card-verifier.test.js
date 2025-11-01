@@ -98,7 +98,7 @@ describe("CardVerifier", function () {
                     card2Encrypted,
                     card2Opener
                 )
-            ).to.be.revertedWith("card1Encrypted must be 64 bytes");
+            ).to.be.revertedWithCustomError(contract, "IncorrectCardEncrypted1");
         });
 
         it("should revert if card1Opener has invalid length", async function () {
@@ -116,7 +116,7 @@ describe("CardVerifier", function () {
                     card2Encrypted,
                     card2Opener
                 )
-            ).to.be.revertedWith("card1Opener must be 64 bytes");
+            ).to.be.revertedWithCustomError(contract, "IncorrectCardOpener1");
         });
 
         it("should revert if card2Opener has invalid length", async function () {
@@ -134,7 +134,7 @@ describe("CardVerifier", function () {
                     card2Encrypted,
                     card2Opener
                 )
-            ).to.be.revertedWith("card2Opener must be 64 bytes");
+            ).to.be.revertedWithCustomError(contract, "IncorrectCardOpener2");
         });
 
         it("should revert if card2Encrypted has invalid length", async function () {
@@ -152,7 +152,7 @@ describe("CardVerifier", function () {
                     card2Encrypted,
                     card2Opener
                 )
-            ).to.be.revertedWith("card2Encrypted must be 64 bytes");
+            ).to.be.revertedWithCustomError(contract, "IncorrectCardEncrypted2");
         });
     });
 
@@ -223,7 +223,7 @@ describe("CardVerifier", function () {
                     card2Encrypted,
                     card2Opener
                 )
-            ).to.be.revertedWith("card1Encrypted must be 64 bytes");
+            ).to.be.revertedWithCustomError(contract, "IncorrectCardEncrypted1");
         });
 
         it("should revert if card1Opener has invalid length", async function () {
@@ -241,7 +241,7 @@ describe("CardVerifier", function () {
                     card2Encrypted,
                     card2Opener
                 )
-            ).to.be.revertedWith("card1Opener must be 64 bytes");
+            ).to.be.revertedWithCustomError(contract, "IncorrectCardOpener1");
         });
 
         it("should revert if card2Opener has invalid length", async function () {
@@ -259,7 +259,7 @@ describe("CardVerifier", function () {
                     card2Encrypted,
                     card2Opener
                 )
-            ).to.be.revertedWith("card2Opener must be 64 bytes");
+            ).to.be.revertedWithCustomError(contract, "IncorrectCardOpener2");
         });
 
         it("should revert if card2Encrypted has invalid length", async function () {
@@ -277,7 +277,7 @@ describe("CardVerifier", function () {
                     card2Encrypted,
                     card2Opener
                 )
-            ).to.be.revertedWith("card2Encrypted must be 64 bytes");
+            ).to.be.revertedWithCustomError(contract, "IncorrectCardEncrypted2");
         });
     });
 
@@ -348,7 +348,7 @@ describe("CardVerifier", function () {
                     cardAOpener,
                     cardBOpener
                 )
-            ).to.be.revertedWith("cardAOpener must be 64 bytes");
+            ).to.be.revertedWithCustomError(contract, "IncorrectCardOpener1");
         });
 
         it("should revert if cardBOpener has invalid length", async function () {
@@ -366,7 +366,7 @@ describe("CardVerifier", function () {
                     cardAOpener,
                     cardBOpener
                 )
-            ).to.be.revertedWith("cardBOpener must be 64 bytes");
+            ).to.be.revertedWithCustomError(contract, "IncorrectCardOpener2");
         });
 
         it("should revert if cardEncrypted has invalid length", async function () {
@@ -384,7 +384,7 @@ describe("CardVerifier", function () {
                     cardAOpener,
                     cardBOpener
                 )
-            ).to.be.revertedWith("cardEncrypted must be 64 bytes");
+            ).to.be.revertedWithCustomError(contract, "IncorrectCardEncrypted1");
         });
     });
 });

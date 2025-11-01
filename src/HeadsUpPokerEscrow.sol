@@ -12,7 +12,6 @@ import {Action} from "./HeadsUpPokerActions.sol";
 import "./HeadsUpPokerErrors.sol";
 
 /// @title HeadsUpPokerEscrow - Simple escrow contract for heads up poker matches using ETH only
-/// @notice Supports opening channels, joining, settling on fold and basic showdown flow
 contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     using ECDSA for bytes32;
 
@@ -191,10 +190,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit Withdrawn(channelId, msg.sender, amount);
     }
 
-    /// @notice Get revealed card for a specific index for player A
+    /// @notice Get partially revealed card by player A for a specific index
     /// @param channelId The channel identifier
-    /// @param index The card index (0-51)
-    /// @return The revealed card U point, or empty bytes if not revealed
+    /// @param index The card index (0-8)
+    /// @return The partially revealed card, or empty bytes if not revealed
     function getRevealedCardA(
         uint256 channelId,
         uint8 index
@@ -202,10 +201,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return forceReveal.getRevealedCardA(channelId, index);
     }
 
-    /// @notice Get the revealed card for a specific index for player B
+    /// @notice Get partially revealed card by player B for a specific index
     /// @param channelId The channel identifier
-    /// @param index The card index (0-51)
-    /// @return The revealed card U point, or empty bytes if not revealed
+    /// @param index The card index (0-8)
+    /// @return The partially revealed card, or empty bytes if not revealed
     function getRevealedCardB(
         uint256 channelId,
         uint8 index
@@ -218,6 +217,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId
     ) external view returns (HeadsUpPokerForceReveal.ForceRevealState memory) {
         return forceReveal.getForceReveal(channelId);
+    }
+
+    /// @notice Get the address of the force reveal contract
+    function getForceRevealAddress() external view returns (address) {
+        return address(forceReveal);
     }
 
     /// @notice Get public keys for a channel

@@ -149,7 +149,7 @@ describe("Bn254", function () {
             
             await expect(
                 contract.verifyPartialDecrypt(shortU, G1, G2)
-            ).to.be.revertedWith("U must be 64 bytes");
+            ).to.be.revertedWithCustomError(contract, "IncorrectSizeU");
         });
     });
 });

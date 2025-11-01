@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { ACTION } from "../helpers/actions.js";
-import { buildActions, signActions, wallet1, wallet2, startGameWithDeckHash } from "../helpers/test-utils.js";
+import { buildActions, signActions, wallet1, wallet2, startGameWithDeck } from "../helpers/test-utils.js";
 
 const { ethers } = hre;
 
@@ -25,7 +25,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         beforeEach(async function () {
             await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
-            await startGameWithDeckHash(escrow, channelId, player1, player2);
+            await startGameWithDeck(escrow, channelId, player1, player2);
         });
 
         it("should initiate showdown for showdown sequences", async function () {
@@ -56,7 +56,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         beforeEach(async function () {
             await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
-            await startGameWithDeckHash(escrow, channelId, player1, player2);
+            await startGameWithDeck(escrow, channelId, player1, player2);
         });
 
         it("should start dispute with non-terminal sequence", async function () {
@@ -182,7 +182,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         beforeEach(async function () {
             await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
-            await startGameWithDeckHash(escrow, channelId, player1, player2);
+            await startGameWithDeck(escrow, channelId, player1, player2);
         });
 
         it("should finalize dispute after window expires", async function () {
