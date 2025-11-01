@@ -87,10 +87,14 @@ describe("Force Reveal - setup verification", function () {
 
         await escrow.connect(player1).startGame(channelId, deck);
         await escrow.connect(player2).startGame(channelId, deck);
-        
-        // Get deck hash
-        const expectedDeckHash = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes[]"], [deck]));
-        const storedDeckHash = await escrow.getDeckHash(channelId);
+
+        // Get deck hash from the force reveal contract
+        const forceRevealAddress = await escrow.getForceRevealAddress();
+        const forceReveal = await ethers.getContractAt("HeadsUpPokerForceReveal", forceRevealAddress);
+        const expectedDeckHash = ethers.keccak256(
+            ethers.AbiCoder.defaultAbiCoder().encode(["bytes[]"], [deck])
+        );
+        const storedDeckHash = await forceReveal.getDeckHash(channelId);
         
         expect(storedDeckHash).to.equal(expectedDeckHash);
     });

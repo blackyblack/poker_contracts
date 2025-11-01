@@ -4,13 +4,7 @@ import { bn254 } from "@noble/curves/bn254.js";
 
 import { ACTION } from "../helpers/actions.js";
 import { SLOT } from "../helpers/slots.js";
-import {
-    buildActions,
-    signActions,
-    startGameWithDeckHash,
-    wallet1,
-    wallet2,
-} from "../helpers/test-utils.js";
+import { buildActions, signActions, startGameWithDeckHash, wallet1, wallet2 } from "../helpers/test-utils.js";
 import { hashToG1, randomScalar, g1ToBytes, g2ToBytes } from "../helpers/bn254.js";
 import { domainSeparator } from "../helpers/hashes.js";
 
@@ -20,6 +14,7 @@ describe("Force Reveal - answer functions", function () {
     let escrow;
     let player1;
     let player2;
+    let forceRevealAddress;
     const channelId = 1n;
     const deposit = ethers.parseEther("1");
     
@@ -34,6 +29,7 @@ describe("Force Reveal - answer functions", function () {
         [player1, player2] = await ethers.getSigners();
         const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await Escrow.deploy();
+        forceRevealAddress = await escrow.getForceRevealAddress();
 
         // Generate per-hand scalars (use fixed values for reproducibility)
         a = 12345n;
@@ -106,7 +102,7 @@ describe("Force Reveal - answer functions", function () {
 
         // Sign the decrypted card
         const chainId = (await ethers.provider.getNetwork()).chainId;
-        const domain = domainSeparator(await escrow.getAddress(), chainId);
+        const domain = domainSeparator(forceRevealAddress, chainId);
         
         // Build digest manually following EIP712 spec
         const DECRYPTED_CARD_TYPEHASH = ethers.keccak256(
@@ -232,7 +228,7 @@ describe("Force Reveal - answer functions", function () {
 
             // Sign it
             const chainId = (await ethers.provider.getNetwork()).chainId;
-            const domain = domainSeparator(await escrow.getAddress(), chainId);
+            const domain = domainSeparator(forceRevealAddress, chainId);
             const DECRYPTED_CARD_TYPEHASH = ethers.keccak256(
                 ethers.toUtf8Bytes(
                     "DecryptedCard(uint256 channelId,uint256 handId,address player,uint8 index,bytes decryptedCard)"
@@ -295,7 +291,7 @@ describe("Force Reveal - answer functions", function () {
 
             // Sign it
             const chainId = (await ethers.provider.getNetwork()).chainId;
-            const domain = domainSeparator(await escrow.getAddress(), chainId);
+            const domain = domainSeparator(forceRevealAddress, chainId);
             const DECRYPTED_CARD_TYPEHASH = ethers.keccak256(
                 ethers.toUtf8Bytes(
                     "DecryptedCard(uint256 channelId,uint256 handId,address player,uint8 index,bytes decryptedCard)"

@@ -220,6 +220,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return forceReveal.getForceReveal(channelId);
     }
 
+    /// @notice Get the address of the force reveal contract
+    function getForceRevealAddress() external view returns (address) {
+        return address(forceReveal);
+    }
+
     /// @notice Get public keys for a channel
     function getPublicKeys(
         uint256 channelId
