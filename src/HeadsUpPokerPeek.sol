@@ -441,7 +441,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         _requirePeekActive(fr, PeekStage.RIVER);
         _verifySender(ch, helper, fr.obligatedHelper);
 
-         _verifyAndStore(
+        _verifyAndStore(
             channelId,
             fr.obligatedHelper,
             decryptedCard,
