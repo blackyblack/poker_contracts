@@ -15,20 +15,20 @@ import { g1ToBytes, g2ToBytes, hashToG1 } from "../helpers/bn254.js";
 
 const { ethers } = hre;
 
-describe("Force Reveal - Request Validation", function () {
+describe("Peek - Request Validation", function () {
     let escrow;
     let player1;
     let player2;
     const channelId = 1n;
     const deposit = ethers.parseEther("1");
-    let forceRevealContract;
+    let peekContract;
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
         const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await Escrow.deploy();
-        const forceRevealAddress = await escrow.getForceRevealAddress();
-        forceRevealContract = await ethers.getContractAt("HeadsUpPokerForceReveal", forceRevealAddress);
+        const peekAddress = await escrow.getPeekAddress();
+        peekContract = await ethers.getContractAt("HeadsUpPokerPeek", peekAddress);
 
         await escrow.open(
             channelId,
@@ -70,7 +70,7 @@ describe("Force Reveal - Request Validation", function () {
             escrow
                 .connect(player1)
                 .requestHoleA(channelId, actions, signatures)
-        ).to.be.revertedWithCustomError(forceRevealContract, "InvalidGameState");
+        ).to.be.revertedWithCustomError(peekContract, "InvalidGameState");
     });
 
     it("reverts hole A request when game reached showdown", async () => {
@@ -92,10 +92,10 @@ describe("Force Reveal - Request Validation", function () {
             escrow
                 .connect(player1)
                 .requestHoleA(channelId, actions, signatures)
-        ).to.be.revertedWithCustomError(forceRevealContract, "InvalidGameState");
+        ).to.be.revertedWithCustomError(peekContract, "InvalidGameState");
     });
 
-    it("opens hole A force reveal while hand is active", async () => {
+    it("opens hole A peek while hand is active", async () => {
         const specs = [
             { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
             { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
@@ -106,7 +106,7 @@ describe("Force Reveal - Request Validation", function () {
             .connect(player1)
             .requestHoleA(channelId, actions, signatures);
 
-        const state = await escrow.getForceReveal(channelId);
+        const state = await escrow.getPeek(channelId);
         expect(state.stage).to.equal(1); // HOLE_A
         expect(state.inProgress).to.equal(true);
         expect(state.obligatedHelper).to.equal(player2.address);
@@ -124,7 +124,7 @@ describe("Force Reveal - Request Validation", function () {
             escrow
                 .connect(player1)
                 .requestFlop(channelId, actions, signatures, [], [])
-        ).to.be.revertedWithCustomError(forceRevealContract, "InvalidGameState");
+        ).to.be.revertedWithCustomError(peekContract, "InvalidGameState");
     });
 
     it("reverts turn request when flop betting is incomplete", async () => {
@@ -155,11 +155,11 @@ describe("Force Reveal - Request Validation", function () {
                     dummyCard,
                     "0x"
                 )
-        ).to.be.revertedWithCustomError(forceRevealContract, "InvalidGameState");
+        ).to.be.revertedWithCustomError(peekContract, "InvalidGameState");
     });
 });
 
-describe("Force Reveal - View", function () {
+describe("Peek - View", function () {
     let escrow;
     let player1;
     let player2;
@@ -240,13 +240,13 @@ describe("Force Reveal - View", function () {
         await escrow.connect(player1).startGame(channelId, deck);
         await escrow.connect(player2).startGame(channelId, deck);
 
-        // Get deck hash from the force reveal contract
-        const forceRevealAddress = await escrow.getForceRevealAddress();
-        const forceReveal = await ethers.getContractAt("HeadsUpPokerForceReveal", forceRevealAddress);
+        // Get deck hash from the peek contract
+        const peekAddress = await escrow.getPeekAddress();
+        const peek = await ethers.getContractAt("HeadsUpPokerPeek", peekAddress);
         const expectedDeckHash = ethers.keccak256(
             ethers.AbiCoder.defaultAbiCoder().encode(["bytes[]"], [deck])
         );
-        const storedDeckHash = await forceReveal.getDeckHash(channelId);
+        const storedDeckHash = await peek.getDeckHash(channelId);
 
         expect(storedDeckHash).to.equal(expectedDeckHash);
     });
