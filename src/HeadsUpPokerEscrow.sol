@@ -66,6 +66,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 slashAmount;
         bytes32 deckHashPlayer1;
         bytes32 deckHashPlayer2;
+        bytes32 canonicalDeckHashPlayer1;
+        bytes32 canonicalDeckHashPlayer2;
     }
 
     mapping(uint256 => Channel) private channels;
@@ -268,6 +270,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ch.slashAmount = slashAmount;
         ch.deckHashPlayer1 = bytes32(0);
         ch.deckHashPlayer2 = bytes32(0);
+        ch.canonicalDeckHashPlayer1 = bytes32(0);
+        ch.canonicalDeckHashPlayer2 = bytes32(0);
 
         // Reset peek related storage via manager
         peek.resetChannel(channelId);
@@ -322,21 +326,17 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit ChannelJoined(channelId, msg.sender, msg.value);
     }
 
-    /// @notice Both players must call this function with matching encrypted decks to start the game
-    /// @dev The deck must contain 52 canonical base points (full ordered deck) representing all cards.
-    /// The first 9 cards (indices 0-8) are used for the 9 slots:
-    ///   - Slots 0-1: Player A hole cards
-    ///   - Slots 2-3: Player B hole cards
-    ///   - Slots 4-6: Flop cards
-    ///   - Slot 7: Turn card
-    ///   - Slot 8: River card
-    /// The remaining 43 cards (indices 9-51) are available for card-ID resolution during reveal,
-    /// allowing the contract to verify which standard playing card each encrypted point represents.
+    /// @notice Both players must call this function with matching encrypted decks and canonical deck to start the game
+    /// @dev The deck contains 9 encrypted cards for the 9 slots (hole cards + board cards).
+    /// The canonicalDeck contains 52 unencrypted base points representing all possible cards in canonical order.
+    /// This allows card-ID resolution by comparing decrypted G1 points against the canonical deck.
     /// @param channelId The channel identifier
-    /// @param deck The deck to be used for this game (52 G1 encrypted card points, each 64 bytes)
+    /// @param deck The encrypted deck to be used for this game (9 G1 encrypted card points, each 64 bytes)
+    /// @param canonicalDeck The canonical deck (52 unencrypted G1 base points, each 64 bytes) for card-ID resolution
     function startGame(
         uint256 channelId,
-        bytes[] calldata deck
+        bytes[] calldata deck,
+        bytes[] calldata canonicalDeck
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
@@ -344,18 +344,23 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.gameStarted) revert GameAlreadyStarted();
         if (msg.sender != ch.player1 && msg.sender != ch.player2)
             revert NotPlayer();
-        if (deck.length != FULL_DECK_SIZE) revert InvalidDeck();
+        if (deck.length != SLOT_RIVER + 1) revert InvalidDeck();
+        if (canonicalDeck.length != FULL_DECK_SIZE) revert InvalidDeck();
 
         bytes32 deckHash = keccak256(abi.encode(deck));
+        bytes32 canonicalDeckHash = keccak256(abi.encode(canonicalDeck));
 
         if (msg.sender == ch.player1) {
             ch.deckHashPlayer1 = deckHash;
+            ch.canonicalDeckHashPlayer1 = canonicalDeckHash;
         } else {
             ch.deckHashPlayer2 = deckHash;
+            ch.canonicalDeckHashPlayer2 = canonicalDeckHash;
         }
 
         if (
-            ch.deckHashPlayer1 == bytes32(0) || ch.deckHashPlayer2 == bytes32(0)
+            ch.deckHashPlayer1 == bytes32(0) || ch.deckHashPlayer2 == bytes32(0) ||
+            ch.canonicalDeckHashPlayer1 == bytes32(0) || ch.canonicalDeckHashPlayer2 == bytes32(0)
         ) {
             return;
         }
@@ -364,7 +369,12 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             return;
         }
 
+        if (ch.canonicalDeckHashPlayer1 != ch.canonicalDeckHashPlayer2) {
+            return;
+        }
+
         peek.storeDeck(channelId, deck);
+        peek.storeCanonicalDeck(channelId, canonicalDeck);
 
         ch.gameStarted = true;
         emit GameStarted(channelId, deckHash);

@@ -113,8 +113,18 @@ export async function buildCardCommit(a, b, dom, channelId, slot, card, handId =
     return { cc, sigA, sigB, salt, card, slot };
 }
 
-// Helper to create a mock deck (52 cards, each 64 bytes) - full canonical deck
+// Helper to create a mock deck (9 cards, each 64 bytes) - we only use up to RIVER
 export function createMockDeck() {
+    const deck = [];
+    for (let i = 0; i < 9; i++) {
+        // Create a 64-byte mock card
+        deck.push(ethers.hexlify(ethers.randomBytes(64)));
+    }
+    return deck;
+}
+
+// Helper to create a mock canonical deck (52 unencrypted base points, each 64 bytes)
+export function createMockCanonicalDeck() {
     const deck = [];
     for (let i = 0; i < 52; i++) {
         // Create a 64-byte mock card
@@ -128,13 +138,17 @@ export function createMockDeck() {
 // @param channelId - Channel ID
 // @param player1 - Player 1 signer
 // @param player2 - Player 2 signer
-// @param deck - Optional deck array (defaults to mock deck)
-export async function startGameWithDeck(escrow, channelId, player1, player2, deck = null) {
+// @param deck - Optional encrypted deck array (defaults to mock deck)
+// @param canonicalDeck - Optional canonical deck array (defaults to mock canonical deck)
+export async function startGameWithDeck(escrow, channelId, player1, player2, deck = null, canonicalDeck = null) {
     if (!deck) {
         deck = createMockDeck();
     }
-    await escrow.connect(player1).startGame(channelId, deck);
-    await escrow.connect(player2).startGame(channelId, deck);
+    if (!canonicalDeck) {
+        canonicalDeck = createMockCanonicalDeck();
+    }
+    await escrow.connect(player1).startGame(channelId, deck, canonicalDeck);
+    await escrow.connect(player2).startGame(channelId, deck, canonicalDeck);
 }
 
 // Helper to play a basic showdown game where player1 wins 2 chips

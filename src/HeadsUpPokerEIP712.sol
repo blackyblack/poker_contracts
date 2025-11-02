@@ -22,9 +22,8 @@ contract HeadsUpPokerEIP712 is EIP712 {
     uint8 constant SLOT_RIVER = 8;
     
     /// @notice Full deck size representing all 52 cards in a standard deck
-    /// @dev The deck contains 52 canonical base points (elliptic curve points on BN254).
-    /// The first 9 cards are used for the 9 game slots, while the remaining 43 cards
-    /// enable card-ID resolution by providing the complete set of possible card values.
+    /// @dev Used for card-ID resolution. The canonical deck contains 52 unencrypted
+    /// base points that allow identification of card values from decrypted G1 points.
     uint8 constant FULL_DECK_SIZE = 52;
 
     // ---------------------------------------------------------------------

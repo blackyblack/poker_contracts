@@ -230,15 +230,23 @@ describe("Peek - View", function () {
         // Create deck
         const deck = [];
         const context = "test_poker_hand";
-        for (let i = 0; i < 52; i++) {
+        for (let i = 0; i < 9; i++) {
             const R = hashToG1(context, i);
             const aR = R.multiply(a);
             const Y = aR.multiply(b);
             deck.push(g1ToBytes(Y));
         }
 
-        await escrow.connect(player1).startGame(channelId, deck);
-        await escrow.connect(player2).startGame(channelId, deck);
+        // Create canonical deck (52 unencrypted base points)
+        const canonicalDeck = [];
+        const canonicalContext = "canonical_deck";
+        for (let i = 0; i < 52; i++) {
+            const R = hashToG1(canonicalContext, i);
+            canonicalDeck.push(g1ToBytes(R));
+        }
+
+        await escrow.connect(player1).startGame(channelId, deck, canonicalDeck);
+        await escrow.connect(player2).startGame(channelId, deck, canonicalDeck);
 
         // Get deck hash from the peek contract
         const peekAddress = await escrow.getPeekAddress();

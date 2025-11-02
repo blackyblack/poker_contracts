@@ -25,6 +25,7 @@ describe("Peek - answer functions", function () {
     let secretKeyA, secretKeyB;  // scalars (private keys) for players
     let publicKeyA, publicKeyB;  // public keys
     let deck;  // encrypted deck
+    let canonicalDeck;  // canonical unencrypted deck
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
@@ -57,17 +58,25 @@ describe("Peek - answer functions", function () {
             .connect(player2)
             .join(channelId, ethers.ZeroAddress, pkB_G2_bytes, { value: deposit });
 
-        // Create encrypted deck (52 cards)
+        // Create encrypted deck (9 cards)
         deck = [];
         const context = "test_poker_hand";
-        for (let i = 0; i < 52; i++) {
+        for (let i = 0; i < 9; i++) {
             const R = hashToG1(context, i);
             const aR = R.multiply(secretKeyA);
             const Y = aR.multiply(secretKeyB);
             deck.push(g1ToBytes(Y));
         }
 
-        await startGameWithDeck(escrow, channelId, player1, player2, deck);
+        // Create canonical deck (52 unencrypted base points)
+        canonicalDeck = [];
+        const canonicalContext = "canonical_deck";
+        for (let i = 0; i < 52; i++) {
+            const R = hashToG1(canonicalContext, i);
+            canonicalDeck.push(g1ToBytes(R));
+        }
+
+        await startGameWithDeck(escrow, channelId, player1, player2, deck, canonicalDeck);
     });
 
     async function buildSequence(specs) {

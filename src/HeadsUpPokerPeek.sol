@@ -63,8 +63,11 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     mapping(uint256 => mapping(uint8 => bytes)) private revealedCardsA;
     // channelId => slot => revealed card from player B
     mapping(uint256 => mapping(uint8 => bytes)) private revealedCardsB;
-    // channelId => deck of encrypted cards
+    // channelId => deck of encrypted cards (9 cards for the 9 slots)
     mapping(uint256 => bytes[]) private decks;
+    // channelId => canonical deck (52 unencrypted base points for card-ID resolution)
+    // Maps from card index (0-51) to the unencrypted G1 base point
+    mapping(uint256 => mapping(uint8 => bytes)) private canonicalDecks;
     // channelId => public key of player A
     mapping(uint256 => bytes) private publicKeyA;
     // channelId => public key of player B
@@ -105,7 +108,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     }
 
     function isDeckSet(uint256 channelId) external view returns (bool) {
-        return decks[channelId].length == HeadsUpPokerEIP712.FULL_DECK_SIZE;
+        return decks[channelId].length == HeadsUpPokerEIP712.SLOT_RIVER + 1;
     }
 
     // ------------------------------------------------------------------
@@ -132,6 +135,25 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
 
     function storeDeck(uint256 channelId, bytes[] calldata deck) external onlyEscrow {
         decks[channelId] = deck;
+    }
+
+    /// @notice Store the canonical deck (52 unencrypted base points) for card-ID resolution
+    /// @param channelId The channel identifier
+    /// @param canonicalDeck Array of 52 unencrypted G1 base points (each 64 bytes)
+    function storeCanonicalDeck(uint256 channelId, bytes[] calldata canonicalDeck) external onlyEscrow {
+        if (canonicalDeck.length != FULL_DECK_SIZE) revert InvalidDeck();
+        for (uint8 i = 0; i < FULL_DECK_SIZE; i++) {
+            canonicalDecks[channelId][i] = canonicalDeck[i];
+        }
+    }
+
+    /// @notice Get a canonical card by index for card-ID resolution
+    /// @param channelId The channel identifier
+    /// @param cardIndex Index of the card (0-51)
+    /// @return The unencrypted G1 base point for the card
+    function getCanonicalCard(uint256 channelId, uint8 cardIndex) external view returns (bytes memory) {
+        if (cardIndex >= FULL_DECK_SIZE) revert InvalidDeck();
+        return canonicalDecks[channelId][cardIndex];
     }
 
     function requestHoleA(
@@ -707,6 +729,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     }
 
     function _requireDeck(uint256 channelId) internal view {
-        if (decks[channelId].length != HeadsUpPokerEIP712.FULL_DECK_SIZE) revert InvalidDeck();
+        if (decks[channelId].length != HeadsUpPokerEIP712.SLOT_RIVER + 1) revert InvalidDeck();
     }
 }
