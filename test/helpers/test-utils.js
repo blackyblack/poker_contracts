@@ -116,7 +116,7 @@ export async function buildCardCommit(a, b, dom, channelId, slot, card, handId =
 // Helper to create a mock deck (9 cards, each 64 bytes) - we only use up to RIVER
 export function createMockDeck() {
     const deck = [];
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 52; i++) {
         // Create a 64-byte mock card
         deck.push(ethers.hexlify(ethers.randomBytes(64)));
     }

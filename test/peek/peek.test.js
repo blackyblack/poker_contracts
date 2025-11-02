@@ -230,7 +230,7 @@ describe("Peek - View", function () {
         // Create deck
         const deck = [];
         const context = "test_poker_hand";
-        for (let i = 0; i < 9; i++) {
+        for (let i = 0; i < 52; i++) {
             const R = hashToG1(context, i);
             const aR = R.multiply(a);
             const Y = aR.multiply(b);

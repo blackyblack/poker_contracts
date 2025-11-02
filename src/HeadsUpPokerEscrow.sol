@@ -335,7 +335,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.gameStarted) revert GameAlreadyStarted();
         if (msg.sender != ch.player1 && msg.sender != ch.player2)
             revert NotPlayer();
-        if (deck.length != SLOT_RIVER + 1) revert InvalidDeck();
+        if (deck.length != FULL_DECK_SIZE) revert InvalidDeck();
 
         bytes32 deckHash = keccak256(abi.encode(deck));
 

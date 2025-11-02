@@ -57,10 +57,10 @@ describe("Peek - answer functions", function () {
             .connect(player2)
             .join(channelId, ethers.ZeroAddress, pkB_G2_bytes, { value: deposit });
 
-        // Create encrypted deck (9 cards)
+        // Create encrypted deck (52 cards)
         deck = [];
         const context = "test_poker_hand";
-        for (let i = 0; i < 9; i++) {
+        for (let i = 0; i < 52; i++) {
             const R = hashToG1(context, i);
             const aR = R.multiply(secretKeyA);
             const Y = aR.multiply(secretKeyB);

@@ -20,6 +20,9 @@ contract HeadsUpPokerEIP712 is EIP712 {
     uint8 constant SLOT_FLOP3 = 6;
     uint8 constant SLOT_TURN = 7;
     uint8 constant SLOT_RIVER = 8;
+    
+    // Full deck size (52 cards)
+    uint8 constant FULL_DECK_SIZE = 52;
 
     // ---------------------------------------------------------------------
     // Typehashes

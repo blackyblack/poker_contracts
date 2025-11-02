@@ -105,7 +105,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     }
 
     function isDeckSet(uint256 channelId) external view returns (bool) {
-        return decks[channelId].length == HeadsUpPokerEIP712.SLOT_RIVER + 1;
+        return decks[channelId].length == HeadsUpPokerEIP712.FULL_DECK_SIZE;
     }
 
     // ------------------------------------------------------------------
@@ -707,6 +707,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     }
 
     function _requireDeck(uint256 channelId) internal view {
-        if (decks[channelId].length != HeadsUpPokerEIP712.SLOT_RIVER + 1) revert InvalidDeck();
+        if (decks[channelId].length != HeadsUpPokerEIP712.FULL_DECK_SIZE) revert InvalidDeck();
     }
 }
