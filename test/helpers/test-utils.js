@@ -123,18 +123,32 @@ export function createMockDeck() {
     return deck;
 }
 
-// Helper to start a game by having both players submit the same deck
+// Helper to create a mock plaintext deck (52 cards, each 64 bytes)
+export function createMockPlaintextDeck() {
+    const deck = [];
+    for (let i = 0; i < 52; i++) {
+        // Create a 64-byte mock plaintext card
+        deck.push(ethers.hexlify(ethers.randomBytes(64)));
+    }
+    return deck;
+}
+
+// Helper to start a game by having both players submit the same deck and plaintext deck
 // @param escrow - The escrow contract
 // @param channelId - Channel ID
 // @param player1 - Player 1 signer
 // @param player2 - Player 2 signer
 // @param deck - Optional deck array (defaults to mock deck)
-export async function startGameWithDeck(escrow, channelId, player1, player2, deck = null) {
+// @param plaintextDeck - Optional plaintext deck array (defaults to mock plaintext deck)
+export async function startGameWithDeck(escrow, channelId, player1, player2, deck = null, plaintextDeck = null) {
     if (!deck) {
         deck = createMockDeck();
     }
-    await escrow.connect(player1).startGame(channelId, deck);
-    await escrow.connect(player2).startGame(channelId, deck);
+    if (!plaintextDeck) {
+        plaintextDeck = createMockPlaintextDeck();
+    }
+    await escrow.connect(player1).startGame(channelId, deck, plaintextDeck);
+    await escrow.connect(player2).startGame(channelId, deck, plaintextDeck);
 }
 
 // Helper to play a basic showdown game where player1 wins 2 chips

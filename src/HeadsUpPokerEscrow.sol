@@ -806,7 +806,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             uint16 bit = uint16(1) << slot;
             
             // Skip if already verified
-            if (mask & bit == bit) continue;
+            if ((mask & bit) == bit) continue;
             
             uint8 cardIndex = cardIndices[i];
             if (cardIndex >= 52) revert CardIndexOutOfRange();
@@ -860,24 +860,22 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (slot == SLOT_A1 || slot == SLOT_A2) {
             // Player A's hole cards - need B's partial decrypt
             if (partialB.length == 0) revert InvalidPartialDecrypt();
-            // Verify: e(encryptedCard, pkB) == e(partialB, G2_BASE)
+            // Step 1: Verify B removed their layer: e(partialB, pkB) == e(encryptedCard, G2_BASE)
             if (!Bn254.verifyPartialDecrypt(partialB, encryptedCard, pkB)) {
                 revert InvalidPartialDecrypt();
             }
-            // Step 2: Verify plaintext against B's partial
-            // e(partialB, pkA) == e(plaintext, G2_BASE)
+            // Step 2: Verify A removed their layer to get plaintext: e(plaintext, pkA) == e(partialB, G2_BASE)
             if (!Bn254.verifyPartialDecrypt(plaintext, partialB, pkA)) {
                 revert InvalidPlaintext();
             }
         } else if (slot == SLOT_B1 || slot == SLOT_B2) {
             // Player B's hole cards - need A's partial decrypt
             if (partialA.length == 0) revert InvalidPartialDecrypt();
-            // Verify: e(encryptedCard, pkA) == e(partialA, G2_BASE)
+            // Step 1: Verify A removed their layer: e(partialA, pkA) == e(encryptedCard, G2_BASE)
             if (!Bn254.verifyPartialDecrypt(partialA, encryptedCard, pkA)) {
                 revert InvalidPartialDecrypt();
             }
-            // Step 2: Verify plaintext against A's partial
-            // e(partialA, pkB) == e(plaintext, G2_BASE)
+            // Step 2: Verify B removed their layer to get plaintext: e(plaintext, pkB) == e(partialA, G2_BASE)
             if (!Bn254.verifyPartialDecrypt(plaintext, partialA, pkB)) {
                 revert InvalidPlaintext();
             }
@@ -885,20 +883,20 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             // Community cards - need both partial decrypts
             if (partialA.length == 0 || partialB.length == 0) revert InvalidPartialDecrypt();
             
-            // Verify A's partial: e(encryptedCard, pkA) == e(partialA, G2_BASE)
+            // Step 1a: Verify A removed their layer: e(partialA, pkA) == e(encryptedCard, G2_BASE)
             if (!Bn254.verifyPartialDecrypt(partialA, encryptedCard, pkA)) {
                 revert InvalidPartialDecrypt();
             }
             
-            // Verify B's partial: e(encryptedCard, pkB) == e(partialB, G2_BASE)
+            // Step 1b: Verify B removed their layer: e(partialB, pkB) == e(encryptedCard, G2_BASE)
             if (!Bn254.verifyPartialDecrypt(partialB, encryptedCard, pkB)) {
                 revert InvalidPartialDecrypt();
             }
             
-            // Step 2: Verify plaintext
-            // Need intermediate point after A decrypts: e(partialA, pkB) == e(intermediate, G2_BASE)
-            // Then: e(intermediate, G2_BASE) == e(plaintext, G2_BASE) means intermediate == plaintext
-            // Simpler: verify e(partialB, pkA) == e(plaintext, G2_BASE)
+            // Step 2: Verify plaintext after both layers removed
+            // partialA = encryptedCard^(1/a), so we need plaintext = partialA^(1/b)
+            // This is verified by: e(plaintext, pkB) == e(partialA, G2_BASE)
+            // We use partialB for efficiency: e(plaintext, pkA) == e(partialB, G2_BASE)
             if (!Bn254.verifyPartialDecrypt(plaintext, partialB, pkA)) {
                 revert InvalidPlaintext();
             }

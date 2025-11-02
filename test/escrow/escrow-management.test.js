@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { ACTION } from "../helpers/actions.js";
-import { buildActions, signActions, wallet1, wallet2, startGameWithDeck, createMockDeck, settleBasicFold } from "../helpers/test-utils.js";
+import { buildActions, signActions, wallet1, wallet2, startGameWithDeck, createMockDeck, createMockPlaintextDeck, settleBasicFold } from "../helpers/test-utils.js";
 
 const { ethers } = hre;
 
@@ -198,33 +198,35 @@ describe("HeadsUpPokerEscrow Management", function () {
         const channelId = 10n;
         const deposit = ethers.parseEther("1.0");
         let deck;
+        let plaintextDeck;
         let deckHash;
 
         beforeEach(async function () {
             await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
             deck = createMockDeck();
+            plaintextDeck = createMockPlaintextDeck();
             deckHash = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes[]"], [deck]));
         });
 
         it("should allow player1 to submit deck hash", async function () {
-            await escrow.connect(player1).startGame(channelId, deck);
+            await escrow.connect(player1).startGame(channelId, deck, plaintextDeck);
             const channel = await escrow.getChannel(channelId);
             expect(channel.deckHashPlayer1).to.equal(deckHash);
             expect(channel.gameStarted).to.be.false; // Not started yet, waiting for player2
         });
 
         it("should allow player2 to submit deck hash", async function () {
-            await escrow.connect(player2).startGame(channelId, deck);
+            await escrow.connect(player2).startGame(channelId, deck, plaintextDeck);
             const channel = await escrow.getChannel(channelId);
             expect(channel.deckHashPlayer2).to.equal(deckHash);
             expect(channel.gameStarted).to.be.false; // Not started yet, waiting for player1
         });
 
         it("should emit GameStarted when both players submit matching hashes", async function () {
-            await escrow.connect(player1).startGame(channelId, deck);
+            await escrow.connect(player1).startGame(channelId, deck, plaintextDeck);
             
-            const tx = await escrow.connect(player2).startGame(channelId, deck);
+            const tx = await escrow.connect(player2).startGame(channelId, deck, plaintextDeck);
             await expect(tx)
                 .to.emit(escrow, "GameStarted")
                 .withArgs(channelId, deckHash);
@@ -236,9 +238,11 @@ describe("HeadsUpPokerEscrow Management", function () {
         it("should not start game when hashes don't match", async function () {
             const deck1 = createMockDeck();
             const deck2 = createMockDeck();
+            const plaintextDeck1 = createMockPlaintextDeck();
+            const plaintextDeck2 = createMockPlaintextDeck();
 
-            await escrow.connect(player1).startGame(channelId, deck1);
-            await escrow.connect(player2).startGame(channelId, deck2);
+            await escrow.connect(player1).startGame(channelId, deck1, plaintextDeck1);
+            await escrow.connect(player2).startGame(channelId, deck2, plaintextDeck2);
             
             // Game should not have started
             const channel = await escrow.getChannel(channelId);
@@ -246,16 +250,16 @@ describe("HeadsUpPokerEscrow Management", function () {
         });
 
         it("should revert when game already started", async function () {
-            await escrow.connect(player1).startGame(channelId, deck);
-            await escrow.connect(player2).startGame(channelId, deck);
+            await escrow.connect(player1).startGame(channelId, deck, plaintextDeck);
+            await escrow.connect(player2).startGame(channelId, deck, plaintextDeck);
 
-            await expect(escrow.connect(player1).startGame(channelId, deck))
+            await expect(escrow.connect(player1).startGame(channelId, deck, plaintextDeck))
                 .to.be.revertedWithCustomError(escrow, "GameAlreadyStarted");
         });
 
         it("should revert when channel doesn't exist", async function () {
             const nonExistentChannel = 999n;
-            await expect(escrow.connect(player1).startGame(nonExistentChannel, deck))
+            await expect(escrow.connect(player1).startGame(nonExistentChannel, deck, plaintextDeck))
                 .to.be.revertedWithCustomError(escrow, "NoChannel");
         });
 
@@ -263,18 +267,18 @@ describe("HeadsUpPokerEscrow Management", function () {
             const newChannelId = 11n;
             await escrow.connect(player1).open(newChannelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
 
-            await expect(escrow.connect(player1).startGame(newChannelId, deck))
+            await expect(escrow.connect(player1).startGame(newChannelId, deck, plaintextDeck))
                 .to.be.revertedWithCustomError(escrow, "ChannelNotReady");
         });
 
         it("should revert when non-player tries to start game", async function () {
-            await expect(escrow.connect(other).startGame(channelId, deck))
+            await expect(escrow.connect(other).startGame(channelId, deck, plaintextDeck))
                 .to.be.revertedWithCustomError(escrow, "NotPlayer");
         });
 
         it("should reset game state when opening new hand", async function () {
-            await escrow.connect(player1).startGame(channelId, deck);
-            await escrow.connect(player2).startGame(channelId, deck);
+            await escrow.connect(player1).startGame(channelId, deck, plaintextDeck);
+            await escrow.connect(player2).startGame(channelId, deck, plaintextDeck);
 
             const handId = 1n;
             const actions = buildActions([

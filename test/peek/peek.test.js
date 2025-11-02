@@ -227,7 +227,7 @@ describe("Peek - View", function () {
             .connect(player2)
             .join(channelId, ethers.ZeroAddress, pkB_G2_bytes, { value: deposit });
 
-        // Create deck
+        // Create encrypted deck
         const deck = [];
         const context = "test_poker_hand";
         for (let i = 0; i < 9; i++) {
@@ -237,8 +237,15 @@ describe("Peek - View", function () {
             deck.push(g1ToBytes(Y));
         }
 
-        await escrow.connect(player1).startGame(channelId, deck);
-        await escrow.connect(player2).startGame(channelId, deck);
+        // Create plaintext deck (for showdown verification)
+        const plaintextDeck = [];
+        for (let i = 0; i < 52; i++) {
+            const R = hashToG1(context + "_plaintext", i);
+            plaintextDeck.push(g1ToBytes(R));
+        }
+
+        await escrow.connect(player1).startGame(channelId, deck, plaintextDeck);
+        await escrow.connect(player2).startGame(channelId, deck, plaintextDeck);
 
         // Get deck hash from the peek contract
         const peekAddress = await escrow.getPeekAddress();
