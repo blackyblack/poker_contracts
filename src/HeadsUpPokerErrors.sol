@@ -58,3 +58,8 @@ error PrerequisitesNotMet();
 error InvalidDeck();
 error InvalidGameState();
 error NotEscrow();
+error InvalidPlaintextDeck();
+error PlaintextDeckMismatch();
+error CardIndexOutOfRange();
+error InvalidPartialDecrypt();
+error InvalidPlaintext();

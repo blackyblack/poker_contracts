@@ -9,6 +9,7 @@ import {HeadsUpPokerPeek} from "./HeadsUpPokerPeek.sol";
 import {PokerEvaluator} from "./PokerEvaluator.sol";
 import {HeadsUpPokerReplay} from "./HeadsUpPokerReplay.sol";
 import {Action} from "./HeadsUpPokerActions.sol";
+import {Bn254} from "./Bn254.sol";
 import "./HeadsUpPokerErrors.sol";
 
 /// @title HeadsUpPokerEscrow - Simple escrow contract for heads up poker matches using ETH only
@@ -45,11 +46,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 deadline;
         bool inProgress;
         uint8[9] cards;
-        uint16 lockedCommitMask;
+        uint16 verifiedMask; // which cards have been fully verified (both steps)
         uint256 calledAmount;
     }
 
     mapping(uint256 => ShowdownState) private showdowns;
+    
+    // Storage for plaintext G1 points of the 52-card deck (submitted during game start)
+    // channelId => array of 52 plaintext G1 points (each 64 bytes)
+    mapping(uint256 => bytes[]) private plaintextDeck;
 
     struct Channel {
         address player1;
@@ -66,6 +71,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 slashAmount;
         bytes32 deckHashPlayer1;
         bytes32 deckHashPlayer2;
+        bool plaintextDeckSet;
     }
 
     mapping(uint256 => Channel) private channels;
@@ -268,16 +274,20 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         ch.slashAmount = slashAmount;
         ch.deckHashPlayer1 = bytes32(0);
         ch.deckHashPlayer2 = bytes32(0);
+        ch.plaintextDeckSet = false;
 
         // Reset peek related storage via manager
         peek.resetChannel(channelId);
+
+        // Reset plaintext deck
+        delete plaintextDeck[channelId];
 
         // Reset showdown state when reusing channel
         ShowdownState storage sd = showdowns[channelId];
         if (sd.inProgress) {
             sd.inProgress = false;
             sd.deadline = 0;
-            sd.lockedCommitMask = 0;
+            sd.verifiedMask = 0;
         }
 
         // Reset dispute state when reusing channel
@@ -322,12 +332,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit ChannelJoined(channelId, msg.sender, msg.value);
     }
 
-    /// @notice Both players must call this function with matching encrypted decks to start the game
+    /// @notice Both players must call this function with matching encrypted decks and plaintext deck to start the game
     /// @param channelId The channel identifier
     /// @param deck The deck to be used for this game (9 G1 encrypted card points, each 64 bytes)
+    /// @param plaintexts The plaintext G1 points for all 52 cards in standard order (each 64 bytes)
     function startGame(
         uint256 channelId,
-        bytes[] calldata deck
+        bytes[] calldata deck,
+        bytes[] calldata plaintexts
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
@@ -336,8 +348,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (msg.sender != ch.player1 && msg.sender != ch.player2)
             revert NotPlayer();
         if (deck.length != SLOT_RIVER + 1) revert InvalidDeck();
+        if (plaintexts.length != 52) revert InvalidPlaintextDeck();
 
         bytes32 deckHash = keccak256(abi.encode(deck));
+        bytes32 plaintextHash = keccak256(abi.encode(plaintexts));
 
         if (msg.sender == ch.player1) {
             ch.deckHashPlayer1 = deckHash;
@@ -355,7 +369,21 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             return;
         }
 
+        // Both players agreed on the same encrypted deck
         peek.storeDeck(channelId, deck);
+
+        // Store plaintext deck for showdown verification
+        // Both players must agree on the same plaintext deck hash
+        if (!ch.plaintextDeckSet) {
+            plaintextDeck[channelId] = plaintexts;
+            ch.plaintextDeckSet = true;
+        } else {
+            // Verify second player submitted same plaintext deck
+            bytes32 storedHash = keccak256(abi.encode(plaintextDeck[channelId]));
+            if (storedHash != plaintextHash) {
+                revert PlaintextDeckMismatch();
+            }
+        }
 
         ch.gameStarted = true;
         emit GameStarted(channelId, deckHash);
@@ -576,25 +604,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     // Internal helpers
     // ------------------------------------------------------------------
 
-    // Reduce stack pressure: move signer checks into a small helper.
-    function _checkSigners(
-        uint256 channelId,
-        uint8 slot,
-        bytes32 digest,
-        bytes calldata sigA,
-        bytes calldata sigB,
-        address playerA,
-        address playerB
-    ) private view {
-        address actualSignerA = digest.recover(sigA);
-        address actualSignerB = digest.recover(sigB);
-
-        if (!_isAuthorizedSigner(channelId, playerA, actualSignerA))
-            revert CommitWrongSignerA(slot);
-        if (!_isAuthorizedSigner(channelId, playerB, actualSignerB))
-            revert CommitWrongSignerB(slot);
-    }
-
     /// @notice Check if signer is authorized to sign for a player
     /// @param channelId The channel identifier
     /// @param player The player address
@@ -666,88 +675,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
             if (!_isAuthorizedSigner(channelId, action.sender, actualSigner))
                 revert ActionWrongSigner();
-        }
-    }
-
-    // helper function to reduce stack pressure
-    function _validateCardCommitLengths(
-        uint256 commitCount,
-        uint256 sigCount,
-        uint256 cardCount,
-        uint256 saltCount
-    ) private pure {
-        if (commitCount * 2 != sigCount) revert SignatureLengthMismatch();
-        if (commitCount != cardCount) revert CardsLengthMismatch();
-        if (commitCount != saltCount) revert CardSaltsLengthMismatch();
-    }
-
-    // Applies a batch of card commits/openings.
-    /// @param signatures Array of signatures of cards (signed by player1 and player2)
-    function _applyCardCommit(
-        uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
-        bytes[] calldata signatures,
-        uint8[] calldata cards,
-        bytes32[] calldata cardSalts
-    ) internal {
-        Channel storage ch = channels[channelId];
-        ShowdownState storage sd = showdowns[channelId];
-
-        _validateCardCommitLengths(
-            cardCommits.length,
-            signatures.length,
-            cards.length,
-            cardSalts.length
-        );
-
-        uint16 mask = sd.lockedCommitMask;
-        uint16 seenMask;
-
-        for (uint256 i = 0; i < cardCommits.length; i++) {
-            HeadsUpPokerEIP712.CardCommit calldata cc = cardCommits[i];
-            uint8 slot = cc.slot;
-            uint16 bit = uint16(1) << slot;
-
-            if ((MASK_ALL & bit) == 0) revert CommitUnexpected(slot);
-            if ((seenMask & bit) == bit) revert CommitDuplicate(slot);
-            seenMask |= bit;
-
-            if (cards[i] == 0xFF) continue;
-
-            if (mask & bit == bit) continue; // already locked, skip
-
-            if (cc.channelId != channelId) revert CommitWrongChannel(slot);
-
-            _checkSigners(
-                channelId,
-                slot,
-                digestCardCommit(cc),
-                signatures[i * 2],
-                signatures[i * 2 + 1],
-                ch.player1,
-                ch.player2
-            );
-
-            if (
-                keccak256(
-                    abi.encodePacked(
-                        _domainSeparatorV4(),
-                        channelId,
-                        slot,
-                        cards[i],
-                        cardSalts[i]
-                    )
-                ) != cc.commitHash
-            ) revert HashMismatch();
-
-            sd.cards[slot] = cards[i];
-            mask |= bit;
-        }
-        sd.lockedCommitMask = mask;
-
-        // finalize automatically if all cards revealed and commits present
-        if (mask == MASK_ALL) {
-            _rewardShowdown(channelId);
         }
     }
 
@@ -826,7 +753,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     /// @notice Initiates showdown state
-    /// @dev Sets up showdown state without requiring initial card commits
+    /// @dev Sets up showdown state for two-step verification
     /// @param channelId The channel identifier
     function _initiateShowdown(
         uint256 channelId,
@@ -834,10 +761,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     ) internal {
         ShowdownState storage sd = showdowns[channelId];
 
-        // Set up showdown state without requiring initial commits
+        // Set up showdown state for two-step verification
         sd.deadline = block.timestamp + revealWindow;
         sd.inProgress = true;
-        sd.lockedCommitMask = 0;
+        sd.verifiedMask = 0;
         sd.calledAmount = calledAmount;
 
         // Initialize all cards as unrevealed
@@ -848,21 +775,134 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit ShowdownStarted(channelId);
     }
 
-    /// @notice Reveal additional cards and/or commits during reveal window
+    /// @notice Reveal cards during showdown using two-step pairing verification
+    /// @dev Follows canonical order (A1, A2, B1, B2, FLOP1-3, TURN, RIVER) and reuses peek artifacts when available
+    /// @param channelId The channel identifier
+    /// @param cardIndices The indices in the 52-card plaintext deck for each slot being revealed
     function revealCards(
         uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
-        bytes[] calldata signatures,
-        uint8[] calldata cards,
-        bytes32[] calldata cardSalts
+        uint8[] calldata cardIndices
     ) external nonReentrant {
         ShowdownState storage sd = showdowns[channelId];
+        Channel storage ch = channels[channelId];
+        
         if (!sd.inProgress) revert NoShowdownInProgress();
-
         if (block.timestamp > sd.deadline) revert Expired();
+        if (cardIndices.length != 9) revert CardsLengthMismatch();
 
-        _applyCardCommit(channelId, cardCommits, signatures, cards, cardSalts);
-        emit CommitsUpdated(channelId, sd.lockedCommitMask);
+        // Canonical order for verification: A1, A2, B1, B2, FLOP1-3, TURN, RIVER
+        uint8[9] memory canonicalOrder = [
+            SLOT_A1, SLOT_A2, SLOT_B1, SLOT_B2, 
+            SLOT_FLOP1, SLOT_FLOP2, SLOT_FLOP3, SLOT_TURN, SLOT_RIVER
+        ];
+
+        uint16 mask = sd.verifiedMask;
+        bytes memory pkA;
+        bytes memory pkB;
+        (pkA, pkB) = peek.getPublicKeys(channelId);
+
+        for (uint256 i = 0; i < 9; i++) {
+            uint8 slot = canonicalOrder[i];
+            uint16 bit = uint16(1) << slot;
+            
+            // Skip if already verified
+            if (mask & bit == bit) continue;
+            
+            uint8 cardIndex = cardIndices[i];
+            if (cardIndex >= 52) revert CardIndexOutOfRange();
+            
+            // Two-step verification per card
+            _verifyCardTwoStep(channelId, slot, cardIndex, pkA, pkB);
+            
+            // Store the resolved card identity
+            sd.cards[slot] = cardIndex;
+            mask |= bit;
+        }
+        
+        sd.verifiedMask = mask;
+
+        // Auto-finalize if all cards verified
+        if (mask == MASK_ALL) {
+            _rewardShowdown(channelId);
+        }
+
+        emit CommitsUpdated(channelId, mask);
+    }
+
+    /// @notice Performs two-step pairing verification for a single card
+    /// @dev Step 1: Verify opponent's partial decrypt. Step 2: Verify plaintext corresponds to partial
+    /// @param channelId The channel identifier
+    /// @param slot The card slot (0-8)
+    /// @param cardIndex The index in the 52-card plaintext deck
+    /// @param pkA Player A's public key
+    /// @param pkB Player B's public key
+    function _verifyCardTwoStep(
+        uint256 channelId,
+        uint8 slot,
+        uint8 cardIndex,
+        bytes memory pkA,
+        bytes memory pkB
+    ) internal view {
+        // Get the encrypted card from the deck
+        bytes memory encryptedCard = peek.getEncryptedCard(channelId, slot);
+        if (encryptedCard.length == 0) revert InvalidDeck();
+        
+        // Get the plaintext for this card
+        bytes memory plaintext = plaintextDeck[channelId][cardIndex];
+        
+        // Step 1: Verify partial decrypts (opponent removed their layer)
+        // For hole cards, only one player needs to decrypt (opponent)
+        // For community cards, both players decrypt
+        
+        bytes memory partialA = peek.getRevealedCardA(channelId, slot);
+        bytes memory partialB = peek.getRevealedCardB(channelId, slot);
+        
+        if (slot == SLOT_A1 || slot == SLOT_A2) {
+            // Player A's hole cards - need B's partial decrypt
+            if (partialB.length == 0) revert InvalidPartialDecrypt();
+            // Verify: e(encryptedCard, pkB) == e(partialB, G2_BASE)
+            if (!Bn254.verifyPartialDecrypt(partialB, encryptedCard, pkB)) {
+                revert InvalidPartialDecrypt();
+            }
+            // Step 2: Verify plaintext against B's partial
+            // e(partialB, pkA) == e(plaintext, G2_BASE)
+            if (!Bn254.verifyPartialDecrypt(plaintext, partialB, pkA)) {
+                revert InvalidPlaintext();
+            }
+        } else if (slot == SLOT_B1 || slot == SLOT_B2) {
+            // Player B's hole cards - need A's partial decrypt
+            if (partialA.length == 0) revert InvalidPartialDecrypt();
+            // Verify: e(encryptedCard, pkA) == e(partialA, G2_BASE)
+            if (!Bn254.verifyPartialDecrypt(partialA, encryptedCard, pkA)) {
+                revert InvalidPartialDecrypt();
+            }
+            // Step 2: Verify plaintext against A's partial
+            // e(partialA, pkB) == e(plaintext, G2_BASE)
+            if (!Bn254.verifyPartialDecrypt(plaintext, partialA, pkB)) {
+                revert InvalidPlaintext();
+            }
+        } else {
+            // Community cards - need both partial decrypts
+            if (partialA.length == 0 || partialB.length == 0) revert InvalidPartialDecrypt();
+            
+            // Verify A's partial: e(encryptedCard, pkA) == e(partialA, G2_BASE)
+            if (!Bn254.verifyPartialDecrypt(partialA, encryptedCard, pkA)) {
+                revert InvalidPartialDecrypt();
+            }
+            
+            // Verify B's partial: e(encryptedCard, pkB) == e(partialB, G2_BASE)
+            if (!Bn254.verifyPartialDecrypt(partialB, encryptedCard, pkB)) {
+                revert InvalidPartialDecrypt();
+            }
+            
+            // Step 2: Verify plaintext
+            // Need intermediate point after A decrypts: e(partialA, pkB) == e(intermediate, G2_BASE)
+            // Then: e(intermediate, G2_BASE) == e(plaintext, G2_BASE) means intermediate == plaintext
+            // Simpler: verify e(partialB, pkA) == e(plaintext, G2_BASE)
+            if (!Bn254.verifyPartialDecrypt(plaintext, partialB, pkA)) {
+                revert InvalidPlaintext();
+            }
+        }
     }
 
     /// @notice Finalize showdown after reveal window has passed

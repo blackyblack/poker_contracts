@@ -100,6 +100,11 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         return (publicKeyA[channelId], publicKeyB[channelId]);
     }
 
+    function getEncryptedCard(uint256 channelId, uint8 index) external view returns (bytes memory) {
+        if (index >= decks[channelId].length) return "";
+        return decks[channelId][index];
+    }
+
     function getDeckHash(uint256 channelId) external view returns (bytes32) {
         return keccak256(abi.encode(decks[channelId]));
     }
