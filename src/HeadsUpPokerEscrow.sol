@@ -323,8 +323,17 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     /// @notice Both players must call this function with matching encrypted decks to start the game
+    /// @dev The deck must contain 52 canonical base points (full ordered deck) representing all cards.
+    /// The first 9 cards (indices 0-8) are used for the 9 slots:
+    ///   - Slots 0-1: Player A hole cards
+    ///   - Slots 2-3: Player B hole cards
+    ///   - Slots 4-6: Flop cards
+    ///   - Slot 7: Turn card
+    ///   - Slot 8: River card
+    /// The remaining 43 cards (indices 9-51) are available for card-ID resolution during reveal,
+    /// allowing the contract to verify which standard playing card each encrypted point represents.
     /// @param channelId The channel identifier
-    /// @param deck The deck to be used for this game (9 G1 encrypted card points, each 64 bytes)
+    /// @param deck The deck to be used for this game (52 G1 encrypted card points, each 64 bytes)
     function startGame(
         uint256 channelId,
         bytes[] calldata deck
