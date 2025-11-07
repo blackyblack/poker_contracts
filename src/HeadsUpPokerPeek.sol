@@ -66,8 +66,8 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     // channelId => deck of encrypted cards (9 cards for the 9 slots)
     mapping(uint256 => bytes[]) private decks;
     // channelId => canonical deck (52 unencrypted base points for card-ID resolution)
-    // Maps from card index (0-51) to the unencrypted G1 base point
-    mapping(uint256 => mapping(uint8 => bytes)) private canonicalDecks;
+    // Maps from unencrypted card (G1 point, 64 bytes) to canonical card index (1-52)
+    mapping(uint256 => mapping(bytes => uint8)) private canonicalDecks;
     // channelId => public key of player A
     mapping(uint256 => bytes) private publicKeyA;
     // channelId => public key of player B
@@ -118,7 +118,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         delete peeks[channelId];
         delete publicKeyA[channelId];
         delete publicKeyB[channelId];
-        delete decks[channelId];
+        // Skip deleting decks to save gas - they will be reset anyway
         for (uint8 i = HeadsUpPokerEIP712.SLOT_A1; i <= HeadsUpPokerEIP712.SLOT_RIVER; i++) {
             delete revealedCardsA[channelId][i];
             delete revealedCardsB[channelId][i];
@@ -143,17 +143,23 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     function storeCanonicalDeck(uint256 channelId, bytes[] calldata canonicalDeck) external onlyEscrow {
         if (canonicalDeck.length != FULL_DECK_SIZE) revert InvalidDeck();
         for (uint8 i = 0; i < FULL_DECK_SIZE; i++) {
-            canonicalDecks[channelId][i] = canonicalDeck[i];
+            canonicalDecks[channelId][canonicalDeck[i]] = i + 1; // Store index + 1 to avoid default zero value
         }
     }
 
-    /// @notice Get a canonical card by index for card-ID resolution
+    /// @notice Find a canonical card value by its unencrypted G1 base point
     /// @param channelId The channel identifier
-    /// @param cardIndex Index of the card (0-51)
-    /// @return The unencrypted G1 base point for the card
-    function getCanonicalCard(uint256 channelId, uint8 cardIndex) external view returns (bytes memory) {
-        if (cardIndex >= FULL_DECK_SIZE) revert InvalidDeck();
-        return canonicalDecks[channelId][cardIndex];
+    /// @param cardPoint The unencrypted G1 base point for the card
+    /// @return The canonical card value for PokerEvaluator
+    function getCanonicalCard(uint256 channelId, bytes memory cardPoint) external view returns (uint8) {
+        uint8 index = canonicalDecks[channelId][cardPoint];
+        if (index == 0) revert InvalidUnencryptedCard();
+        index -= 1; // Adjust back to zero-based index
+        uint8 suit = index % 4;
+        // rank starts from 1 (Ace) to 13 (King)
+        uint8 rank = index / 4 + 1;
+        // lower 4 bits: rank (1-13), upper 4 bits: suit (0-3)
+        return rank & 0x0F | ((suit & 0x0F) << 4);
     }
 
     function requestHoleA(
@@ -191,7 +197,9 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         PeekState storage fr = peeks[channelId];
 
         _requirePeekActive(fr, PeekStage.HOLE_A);
-        _verifySender(ch, helper, fr.obligatedHelper);
+        if (helper != fr.obligatedHelper) {
+            revert ActionInvalidSender();
+        }
 
         uint8[] memory indices = _indices(
             HeadsUpPokerEIP712.SLOT_A1,
@@ -242,7 +250,9 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         PeekState storage fr = peeks[channelId];
 
         _requirePeekActive(fr, PeekStage.HOLE_B);
-        _verifySender(ch, helper, fr.obligatedHelper);
+        if (helper != fr.obligatedHelper) {
+            revert ActionInvalidSender();
+        }
 
         uint8[] memory indices = _indices(
             HeadsUpPokerEIP712.SLOT_B1,
@@ -324,7 +334,9 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         PeekState storage fr = peeks[channelId];
 
         _requirePeekActive(fr, PeekStage.FLOP);
-        _verifySender(ch, helper, fr.obligatedHelper);
+        if (helper != fr.obligatedHelper) {
+            revert ActionInvalidSender();
+        }
 
         uint8[] memory flopIndices = _indices(
             HeadsUpPokerEIP712.SLOT_FLOP1,
@@ -395,7 +407,9 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         PeekState storage fr = peeks[channelId];
 
         _requirePeekActive(fr, PeekStage.TURN);
-        _verifySender(ch, helper, fr.obligatedHelper);
+        if (helper != fr.obligatedHelper) {
+            revert ActionInvalidSender();
+        }
 
         _verifyAndStore(
             channelId,
@@ -461,7 +475,9 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         PeekState storage fr = peeks[channelId];
 
         _requirePeekActive(fr, PeekStage.RIVER);
-        _verifySender(ch, helper, fr.obligatedHelper);
+        if (helper != fr.obligatedHelper) {
+            revert ActionInvalidSender();
+        }
 
         _verifyAndStore(
             channelId,
@@ -525,7 +541,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         if (decryptedCards.length != length || signatures.length != length) {
             revert InvalidDecryptedCard();
         }
-        bool storeInA = expectedSigner == ch.player1 || expectedSigner == ch.player1Signer;
+        bool storeInA = expectedSigner == ch.player1;
 
         for (uint256 i = 0; i < length; i++) {
             uint8 index = indices[i];
@@ -554,7 +570,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         uint8 index,
         ChannelData calldata ch
     ) internal {
-        bool storeInA = expectedSigner == ch.player1 || expectedSigner == ch.player1Signer;
+        bool storeInA = expectedSigner == ch.player1;
 
         _verifyDecryptedCard(
             channelId,
@@ -601,20 +617,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         arr[0] = a;
         arr[1] = b;
         arr[2] = c;
-    }
-
-    function _verifySender(
-        ChannelData calldata ch,
-        address sender,
-        address expectedSender
-    ) internal pure {
-        address expectedOptionalSigner = expectedSender == ch.player1
-            ? ch.player1Signer
-            : ch.player2Signer;
-
-        if (sender != expectedSender && sender != expectedOptionalSigner) {
-            revert ActionInvalidSender();
-        }
     }
 
     function _verifyDecryptedCard(

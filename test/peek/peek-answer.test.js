@@ -93,9 +93,11 @@ describe("Peek - answer functions", function () {
     }
 
     // Helper to create a decrypted card structure and signature
-    async function createDecryptedCard(signer, secretKey, index, channelId, handId) {
+    async function createDecryptedCard(signer, secretKey, slot, channelId, handId) {
         const context = "test_poker_hand";
-        const R = hashToG1(context, index);
+        // index should correspond to canonical deck order but for simplicity we assume deck is not
+        // shuffled and slot corresponds to canonical deck order
+        const R = hashToG1(context, slot);
         const aR = R.multiply(secretKeyA);
         const Y = aR.multiply(secretKeyB);
 
@@ -107,7 +109,7 @@ describe("Peek - answer functions", function () {
             channelId,
             handId,
             player: signer.address,
-            index,
+            index: slot,
             decryptedCard: g1ToBytes(U),
         };
 

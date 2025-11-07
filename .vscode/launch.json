@@ -43,27 +43,6 @@
             "env": {
                 "FORCE_COLOR": "1"
             }
-        },
-        {
-            "type": "node",
-            "request": "launch",
-            "name": "Hardhat: Debug Tests (grep)",
-            "runtimeExecutable": "npx",
-            "runtimeArgs": [
-                "hardhat",
-                "test"
-            ],
-            "cwd": "${workspaceFolder}",
-            "console": "integratedTerminal",
-            "skipFiles": [
-                "<node_internals>/**",
-                "${workspaceFolder}/node_modules/**"
-            ],
-            "smartStep": true,
-            "autoAttachChildProcesses": true,
-            "env": {
-                "FORCE_COLOR": "1"
-            }
         }
     ]
 }
