@@ -56,5 +56,6 @@ error PeekWrongStage();
 error InvalidDecryptedCard();
 error PrerequisitesNotMet();
 error InvalidDeck();
+error InvalidUnencryptedCard();
 error InvalidGameState();
 error NotEscrow();

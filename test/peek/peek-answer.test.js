@@ -25,6 +25,7 @@ describe("Peek - answer functions", function () {
     let secretKeyA, secretKeyB;  // scalars (private keys) for players
     let publicKeyA, publicKeyB;  // public keys
     let deck;  // encrypted deck
+    let canonicalDeck;  // canonical unencrypted deck
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
@@ -67,7 +68,15 @@ describe("Peek - answer functions", function () {
             deck.push(g1ToBytes(Y));
         }
 
-        await startGameWithDeck(escrow, channelId, player1, player2, deck);
+        // Create canonical deck (52 unencrypted base points)
+        canonicalDeck = [];
+        const canonicalContext = "canonical_deck";
+        for (let i = 0; i < 52; i++) {
+            const R = hashToG1(canonicalContext, i);
+            canonicalDeck.push(g1ToBytes(R));
+        }
+
+        await startGameWithDeck(escrow, channelId, player1, player2, deck, canonicalDeck);
     });
 
     async function buildSequence(specs) {
@@ -84,9 +93,11 @@ describe("Peek - answer functions", function () {
     }
 
     // Helper to create a decrypted card structure and signature
-    async function createDecryptedCard(signer, secretKey, index, channelId, handId) {
+    async function createDecryptedCard(signer, secretKey, slot, channelId, handId) {
         const context = "test_poker_hand";
-        const R = hashToG1(context, index);
+        // index should correspond to canonical deck order but for simplicity we assume deck is not
+        // shuffled and slot corresponds to canonical deck order
+        const R = hashToG1(context, slot);
         const aR = R.multiply(secretKeyA);
         const Y = aR.multiply(secretKeyB);
 
@@ -98,7 +109,7 @@ describe("Peek - answer functions", function () {
             channelId,
             handId,
             player: signer.address,
-            index,
+            index: slot,
             decryptedCard: g1ToBytes(U),
         };
 

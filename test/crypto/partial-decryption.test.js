@@ -227,11 +227,11 @@ describe("Partial Decryption", function () {
             expect(verifiedB).to.be.true;
 
             // Step 7: Each player can finish the decryption
-            // A finishes: R' = b^(-1)·U_A
+            // B finishes: R' = b^(-1)·U_A
             const R_from_A = U_A.multiply(b_inv);
             expect(R_from_A.equals(R)).to.be.true;
 
-            // B finishes: R' = a^(-1)·U_B
+            // A finishes: R' = a^(-1)·U_B
             const R_from_B = U_B.multiply(a_inv);
             expect(R_from_B.equals(R)).to.be.true;
         });

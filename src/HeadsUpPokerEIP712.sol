@@ -20,6 +20,11 @@ contract HeadsUpPokerEIP712 is EIP712 {
     uint8 constant SLOT_FLOP3 = 6;
     uint8 constant SLOT_TURN = 7;
     uint8 constant SLOT_RIVER = 8;
+    
+    /// @notice Full deck size representing all 52 cards in a standard deck
+    /// @dev Used for card-ID resolution. The canonical deck contains 52 unencrypted
+    /// base points that allow identification of card values from decrypted G1 points.
+    uint8 constant FULL_DECK_SIZE = 52;
 
     // ---------------------------------------------------------------------
     // Typehashes

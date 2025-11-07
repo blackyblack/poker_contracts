@@ -123,18 +123,32 @@ export function createMockDeck() {
     return deck;
 }
 
+// Helper to create a mock canonical deck (52 unencrypted base points, each 64 bytes)
+export function createMockCanonicalDeck() {
+    const deck = [];
+    for (let i = 0; i < 52; i++) {
+        // Create a 64-byte mock card
+        deck.push(ethers.hexlify(ethers.randomBytes(64)));
+    }
+    return deck;
+}
+
 // Helper to start a game by having both players submit the same deck
 // @param escrow - The escrow contract
 // @param channelId - Channel ID
 // @param player1 - Player 1 signer
 // @param player2 - Player 2 signer
-// @param deck - Optional deck array (defaults to mock deck)
-export async function startGameWithDeck(escrow, channelId, player1, player2, deck = null) {
+// @param deck - Optional encrypted deck array (defaults to mock deck)
+// @param canonicalDeck - Optional canonical deck array (defaults to mock canonical deck)
+export async function startGameWithDeck(escrow, channelId, player1, player2, deck = null, canonicalDeck = null) {
     if (!deck) {
         deck = createMockDeck();
     }
-    await escrow.connect(player1).startGame(channelId, deck);
-    await escrow.connect(player2).startGame(channelId, deck);
+    if (!canonicalDeck) {
+        canonicalDeck = createMockCanonicalDeck();
+    }
+    await escrow.connect(player1).startGame(channelId, deck, canonicalDeck);
+    await escrow.connect(player2).startGame(channelId, deck, canonicalDeck);
 }
 
 // Helper to play a basic showdown game where player1 wins 2 chips
