@@ -757,31 +757,19 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
                 if (!found) revert InvalidDecryptedCard();
             }
 
-            // Step 2: Verify opener's partial decryption
-            _verifyPartialDecrypt(
-                channelId,
-                slot,
-                cardOpener,
+            // Step 2: Verify opener's decryption of the partial
+            // The opener's submission should be plaintext, verified against the partial
+            _verifyPlaintextFromPartial(
+                cardOpener.decryptedCard,      // The plaintext submitted by opener
+                partialOther,                  // The partial from other player
+                openerIsPlayer1 ? _getPublicKeyA(channelId) : _getPublicKeyB(channelId),
                 signaturesOpener[i],
+                cardOpener,
                 opener,
                 ch
             );
 
-            // Step 3: Verify the two-step decryption chain
-            // opener's partial should decrypt other's partial to get plaintext
-            bytes memory openerPublicKey = openerIsPlayer1
-                ? _getPublicKeyA(channelId)
-                : _getPublicKeyB(channelId);
-            
-            if (openerPublicKey.length != 128) revert InvalidDecryptedCard();
-            
-            if (!Bn254.verifyPartialDecrypt(
-                cardOpener.decryptedCard,  // Final plaintext
-                partialOther,              // Other player's partial
-                openerPublicKey            // Opener's public key
-            )) revert InvalidDecryptedCard();
-
-            // Step 4: Resolve card identity using canonical deck
+            // Step 3: Resolve card identity using canonical deck
             uint8 cardValue = peek.getCanonicalCard(channelId, cardOpener.decryptedCard);
             sd.cards[slot] = cardValue;
             mask |= bit;
@@ -792,6 +780,60 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         // finalize automatically if all cards revealed
         if (mask == MASK_ALL) {
             _rewardShowdown(channelId);
+        }
+    }
+
+    /// @notice Verify that plaintext is the result of removing opener's layer from partial
+    function _verifyPlaintextFromPartial(
+        bytes memory plaintext,
+        bytes memory partialCard,
+        bytes memory openerPublicKey,
+        bytes calldata signature,
+        HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
+        address expectedSigner,
+        Channel storage ch
+    ) internal view {
+        address expectedOptionalSigner = expectedSigner == ch.player1
+            ? ch.player1Signer
+            : ch.player2Signer;
+
+        // Verify signature
+        bytes32 digest = digestDecryptedCard(decryptedCard);
+        if (
+            digest.recover(signature) != expectedSigner &&
+            digest.recover(signature) != expectedOptionalSigner
+        ) {
+            revert InvalidDecryptedCard();
+        }
+
+        // Validate G1 points
+        if (plaintext.length != 64) revert InvalidDecryptedCard();
+        if (partialCard.length != 64) revert InvalidDecryptedCard();
+        if (openerPublicKey.length != 128) revert InvalidDecryptedCard();
+
+        if (Bn254.isInfinity(plaintext)) {
+            revert InvalidDecryptedCard();
+        }
+        if (!Bn254.isG1OnCurve(plaintext)) {
+            revert InvalidDecryptedCard();
+        }
+        if (Bn254.isInfinity(partialCard)) {
+            revert InvalidDecryptedCard();
+        }
+        if (!Bn254.isG1OnCurve(partialCard)) {
+            revert InvalidDecryptedCard();
+        }
+
+        // Verify pairing: e(plaintext, pk_opener) == e(partial, G2_base)
+        // This proves plaintext = partial / sk_opener
+        if (
+            !Bn254.verifyPartialDecrypt(
+                plaintext,
+                partialCard,
+                openerPublicKey
+            )
+        ) {
+            revert InvalidDecryptedCard();
         }
     }
 
