@@ -111,6 +111,16 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         return decks[channelId].length == HeadsUpPokerEIP712.SLOT_RIVER + 1;
     }
 
+    /// @notice Get a specific card from the deck
+    /// @param channelId The channel identifier
+    /// @param index The card index (0-8)
+    /// @return The encrypted card at the specified index
+    function getDeck(uint256 channelId, uint8 index) external view returns (bytes memory) {
+        if (index > HeadsUpPokerEIP712.SLOT_RIVER) revert InvalidDeck();
+        if (decks[channelId].length != HeadsUpPokerEIP712.SLOT_RIVER + 1) revert InvalidDeck();
+        return decks[channelId][index];
+    }
+
     // ------------------------------------------------------------------
     // Channel setup helpers
     // ------------------------------------------------------------------

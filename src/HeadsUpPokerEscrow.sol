@@ -9,6 +9,7 @@ import {HeadsUpPokerPeek} from "./HeadsUpPokerPeek.sol";
 import {PokerEvaluator} from "./PokerEvaluator.sol";
 import {HeadsUpPokerReplay} from "./HeadsUpPokerReplay.sol";
 import {Action} from "./HeadsUpPokerActions.sol";
+import {Bn254} from "./Bn254.sol";
 import "./HeadsUpPokerErrors.sol";
 
 /// @title HeadsUpPokerEscrow - Simple escrow contract for heads up poker matches using ETH only
@@ -595,25 +596,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     // Internal helpers
     // ------------------------------------------------------------------
 
-    // Reduce stack pressure: move signer checks into a small helper.
-    function _checkSigners(
-        uint256 channelId,
-        uint8 slot,
-        bytes32 digest,
-        bytes calldata sigA,
-        bytes calldata sigB,
-        address playerA,
-        address playerB
-    ) private view {
-        address actualSignerA = digest.recover(sigA);
-        address actualSignerB = digest.recover(sigB);
-
-        if (!_isAuthorizedSigner(channelId, playerA, actualSignerA))
-            revert CommitWrongSignerA(slot);
-        if (!_isAuthorizedSigner(channelId, playerB, actualSignerB))
-            revert CommitWrongSignerB(slot);
-    }
-
     /// @notice Check if signer is authorized to sign for a player
     /// @param channelId The channel identifier
     /// @param player The player address
@@ -688,86 +670,210 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
     }
 
-    // helper function to reduce stack pressure
-    function _validateCardCommitLengths(
-        uint256 commitCount,
-        uint256 sigCount,
-        uint256 cardCount,
-        uint256 saltCount
-    ) private pure {
-        if (commitCount * 2 != sigCount) revert SignatureLengthMismatch();
-        if (commitCount != cardCount) revert CardsLengthMismatch();
-        if (commitCount != saltCount) revert CardSaltsLengthMismatch();
-    }
-
-    // Applies a batch of card commits/openings.
-    /// @param signatures Array of signatures of cards (signed by player1 and player2)
-    function _applyCardCommit(
+    /// @notice Apply two-step cryptographic verification for showdown cards
+    /// @dev For each card in canonical order:
+    ///      1. Verify other player removed their layer (pairing check against other player's public key)
+    ///      2. Verify opener's partial to plaintext (pairing check against opener's public key)
+    ///      3. Resolve card identity via getCanonicalCard
+    /// @param channelId The channel identifier
+    /// @param decryptedCardsOther Array of partial decryptions from the other player (can be empty if already in peek storage)
+    /// @param signaturesOther Array of signatures for other player's partial decryptions
+    /// @param decryptedCardsOpener Array of partial decryptions from the opener
+    /// @param signaturesOpener Array of signatures for opener's partial decryptions
+    function _applyCardReveal(
         uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
-        bytes[] calldata signatures,
-        uint8[] calldata cards,
-        bytes32[] calldata cardSalts
+        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCardsOther,
+        bytes[] calldata signaturesOther,
+        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCardsOpener,
+        bytes[] calldata signaturesOpener
     ) internal {
         Channel storage ch = channels[channelId];
         ShowdownState storage sd = showdowns[channelId];
 
-        _validateCardCommitLengths(
-            cardCommits.length,
-            signatures.length,
-            cards.length,
-            cardSalts.length
-        );
+        if (decryptedCardsOther.length != signaturesOther.length) 
+            revert SignatureLengthMismatch();
+        if (decryptedCardsOpener.length != signaturesOpener.length)
+            revert SignatureLengthMismatch();
 
         uint16 mask = sd.lockedCommitMask;
-        uint16 seenMask;
-
-        for (uint256 i = 0; i < cardCommits.length; i++) {
-            HeadsUpPokerEIP712.CardCommit calldata cc = cardCommits[i];
-            uint8 slot = cc.slot;
+        
+        // Process each card in canonical order from the opener's array
+        for (uint256 i = 0; i < decryptedCardsOpener.length; i++) {
+            HeadsUpPokerEIP712.DecryptedCard calldata cardOpener = decryptedCardsOpener[i];
+            uint8 slot = cardOpener.index;
             uint16 bit = uint16(1) << slot;
 
+            // Skip if already verified
+            if (mask & bit == bit) continue;
+
             if ((MASK_ALL & bit) == 0) revert CommitUnexpected(slot);
-            if ((seenMask & bit) == bit) revert CommitDuplicate(slot);
-            seenMask |= bit;
+            if (cardOpener.channelId != channelId) revert CommitWrongChannel(slot);
+            if (cardOpener.handId != ch.handId) revert ActionWrongHand();
 
-            if (cards[i] == 0xFF) continue;
+            // Determine who is the opener and who is the other player
+            address opener = cardOpener.player;
+            address other;
+            bool openerIsPlayer1;
+            
+            if (opener == ch.player1 || opener == ch.player1Signer) {
+                other = ch.player2;
+                openerIsPlayer1 = true;
+            } else if (opener == ch.player2 || opener == ch.player2Signer) {
+                other = ch.player1;
+                openerIsPlayer1 = false;
+            } else {
+                revert ActionInvalidSender();
+            }
 
-            if (mask & bit == bit) continue; // already locked, skip
+            // Step 1: Get or verify other player's partial decryption
+            bytes memory partialOther;
+            
+            // Check if we already have this partial from peek
+            bytes memory existingPartial = openerIsPlayer1 
+                ? peek.getRevealedCardB(channelId, slot)
+                : peek.getRevealedCardA(channelId, slot);
+            
+            if (existingPartial.length == 64) {
+                // Reuse already verified peek artifact
+                partialOther = existingPartial;
+            } else {
+                // Find and verify the other player's partial in the provided array
+                bool found = false;
+                for (uint256 j = 0; j < decryptedCardsOther.length; j++) {
+                    if (decryptedCardsOther[j].index == slot) {
+                        _verifyPartialDecrypt(
+                            channelId,
+                            slot,
+                            decryptedCardsOther[j],
+                            signaturesOther[j],
+                            other,
+                            ch
+                        );
+                        partialOther = decryptedCardsOther[j].decryptedCard;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) revert InvalidDecryptedCard();
+            }
 
-            if (cc.channelId != channelId) revert CommitWrongChannel(slot);
-
-            _checkSigners(
+            // Step 2: Verify opener's partial decryption
+            _verifyPartialDecrypt(
                 channelId,
                 slot,
-                digestCardCommit(cc),
-                signatures[i * 2],
-                signatures[i * 2 + 1],
-                ch.player1,
-                ch.player2
+                cardOpener,
+                signaturesOpener[i],
+                opener,
+                ch
             );
 
-            if (
-                keccak256(
-                    abi.encodePacked(
-                        _domainSeparatorV4(),
-                        channelId,
-                        slot,
-                        cards[i],
-                        cardSalts[i]
-                    )
-                ) != cc.commitHash
-            ) revert HashMismatch();
+            // Step 3: Verify the two-step decryption chain
+            // opener's partial should decrypt other's partial to get plaintext
+            bytes memory openerPublicKey = openerIsPlayer1
+                ? _getPublicKeyA(channelId)
+                : _getPublicKeyB(channelId);
+            
+            if (openerPublicKey.length != 128) revert InvalidDecryptedCard();
+            
+            if (!Bn254.verifyPartialDecrypt(
+                cardOpener.decryptedCard,  // Final plaintext
+                partialOther,              // Other player's partial
+                openerPublicKey            // Opener's public key
+            )) revert InvalidDecryptedCard();
 
-            sd.cards[slot] = cards[i];
+            // Step 4: Resolve card identity using canonical deck
+            uint8 cardValue = peek.getCanonicalCard(channelId, cardOpener.decryptedCard);
+            sd.cards[slot] = cardValue;
             mask |= bit;
         }
+        
         sd.lockedCommitMask = mask;
 
-        // finalize automatically if all cards revealed and commits present
+        // finalize automatically if all cards revealed
         if (mask == MASK_ALL) {
             _rewardShowdown(channelId);
         }
+    }
+
+    /// @notice Verify a partial decryption for showdown
+    function _verifyPartialDecrypt(
+        uint256 channelId,
+        uint8 index,
+        HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
+        bytes calldata signature,
+        address expectedSigner,
+        Channel storage ch
+    ) internal view {
+        address expectedOptionalSigner = expectedSigner == ch.player1
+            ? ch.player1Signer
+            : ch.player2Signer;
+
+        if (
+            decryptedCard.channelId != channelId ||
+            decryptedCard.handId != ch.handId ||
+            decryptedCard.index != index ||
+            (decryptedCard.player != expectedSigner &&
+                decryptedCard.player != expectedOptionalSigner)
+        ) {
+            revert InvalidDecryptedCard();
+        }
+
+        if (decryptedCard.decryptedCard.length != 64) {
+            revert InvalidDecryptedCard();
+        }
+
+        bytes32 digest = digestDecryptedCard(decryptedCard);
+        if (
+            digest.recover(signature) != expectedSigner &&
+            digest.recover(signature) != expectedOptionalSigner
+        ) {
+            revert InvalidDecryptedCard();
+        }
+
+        // Validate G1 point
+        if (Bn254.isInfinity(decryptedCard.decryptedCard)) {
+            revert InvalidDecryptedCard();
+        }
+        if (!Bn254.isG1OnCurve(decryptedCard.decryptedCard)) {
+            revert InvalidDecryptedCard();
+        }
+
+        // Verify pairing against deck entry
+        bytes memory publicKey = expectedSigner == ch.player1
+            ? _getPublicKeyA(channelId)
+            : _getPublicKeyB(channelId);
+        
+        if (publicKey.length != 128) revert InvalidDecryptedCard();
+
+        bytes memory encryptedCard = peek.getDeck(channelId, index);
+        if (encryptedCard.length != 64) revert InvalidDeck();
+
+        if (Bn254.isInfinity(encryptedCard)) {
+            revert InvalidDecryptedCard();
+        }
+        if (!Bn254.isG1OnCurve(encryptedCard)) {
+            revert InvalidDecryptedCard();
+        }
+
+        if (
+            !Bn254.verifyPartialDecrypt(
+                decryptedCard.decryptedCard,
+                encryptedCard,
+                publicKey
+            )
+        ) {
+            revert InvalidDecryptedCard();
+        }
+    }
+
+    function _getPublicKeyA(uint256 channelId) internal view returns (bytes memory) {
+        (bytes memory pkA, ) = peek.getPublicKeys(channelId);
+        return pkA;
+    }
+
+    function _getPublicKeyB(uint256 channelId) internal view returns (bytes memory) {
+        ( , bytes memory pkB) = peek.getPublicKeys(channelId);
+        return pkB;
     }
 
     function _rewardShowdown(uint256 channelId) internal {
@@ -867,20 +973,29 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit ShowdownStarted(channelId);
     }
 
-    /// @notice Reveal additional cards and/or commits during reveal window
+    /// @notice Reveal cards during showdown using two-step cryptographic verification
+    /// @dev Each card requires:
+    ///      1. Other player's partial decryption (reuses peek artifacts when available)
+    ///      2. Opener's partial decryption that produces the plaintext
+    ///      Cards are verified using pairing checks and resolved via canonical deck
+    /// @param channelId The channel identifier
+    /// @param decryptedCardsOther Partial decryptions from other player (only needed if not in peek storage)
+    /// @param signaturesOther Signatures for other player's partials
+    /// @param decryptedCardsOpener Partial decryptions from opener (final step to plaintext)
+    /// @param signaturesOpener Signatures for opener's partials
     function revealCards(
         uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
-        bytes[] calldata signatures,
-        uint8[] calldata cards,
-        bytes32[] calldata cardSalts
+        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCardsOther,
+        bytes[] calldata signaturesOther,
+        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCardsOpener,
+        bytes[] calldata signaturesOpener
     ) external nonReentrant {
         ShowdownState storage sd = showdowns[channelId];
         if (!sd.inProgress) revert NoShowdownInProgress();
 
         if (block.timestamp > sd.deadline) revert Expired();
 
-        _applyCardCommit(channelId, cardCommits, signatures, cards, cardSalts);
+        _applyCardReveal(channelId, decryptedCardsOther, signaturesOther, decryptedCardsOpener, signaturesOpener);
         emit CommitsUpdated(channelId, sd.lockedCommitMask);
     }
 
