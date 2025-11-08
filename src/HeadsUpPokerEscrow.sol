@@ -92,7 +92,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address indexed winner,
         uint256 amount
     );
-    event CommitsUpdated(uint256 indexed channelId, uint16 newMask);
+    event RevealsUpdated(
+        uint256 indexed channelId,
+        bool player1Revealed,
+        bool player2Revealed
+    );
     event Withdrawn(
         uint256 indexed channelId,
         address indexed player,
@@ -695,36 +699,61 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return disputes[channelId];
     }
 
-    function revealCards(
+    function revealCardsPlayer1(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCardsOther,
-        bytes[] calldata signaturesOther,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCardsOpener,
-        bytes[] calldata signaturesOpener
+        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
+        bytes[] calldata signatures
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
 
-        (
-            bool completed,
-            address winner,
-            uint256 wonAmount,
-            uint16 mask
-        ) = showdown.revealCards(
-                channelId,
-                _showdownData(ch),
-                decryptedCardsOther,
-                signaturesOther,
-                decryptedCardsOpener,
-                signaturesOpener
-            );
+        (bool player1Ready, bool player2Ready) = showdown.revealCardsPlayer1(
+            channelId,
+            _showdownData(ch),
+            decryptedCards,
+            signatures
+        );
 
-        emit CommitsUpdated(channelId, mask);
+        emit RevealsUpdated(channelId, player1Ready, player2Ready);
+    }
 
-        if (completed) {
-            _rewardWinner(channelId, winner, wonAmount);
-        }
+    function revealCardsPlayer2(
+        uint256 channelId,
+        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
+        bytes[] calldata signatures
+    ) external nonReentrant {
+        Channel storage ch = channels[channelId];
+        if (ch.player1 == address(0)) revert NoChannel();
+        if (ch.finalized) revert AlreadyFinalized();
+
+        (bool player1Ready, bool player2Ready) = showdown.revealCardsPlayer2(
+            channelId,
+            _showdownData(ch),
+            decryptedCards,
+            signatures
+        );
+
+        emit RevealsUpdated(channelId, player1Ready, player2Ready);
+    }
+
+    function finalizeReveals(
+        uint256 channelId,
+        HeadsUpPokerShowdown.PlaintextCard[] calldata plaintextCards,
+        bytes[] calldata signatures
+    ) external nonReentrant {
+        Channel storage ch = channels[channelId];
+        if (ch.player1 == address(0)) revert NoChannel();
+        if (ch.finalized) revert AlreadyFinalized();
+
+        (address winner, uint256 wonAmount) = showdown.finalizeReveals(
+            channelId,
+            _showdownData(ch),
+            plaintextCards,
+            signatures
+        );
+
+        _rewardWinner(channelId, winner, wonAmount);
     }
 
     function finalizeShowdown(uint256 channelId) external nonReentrant {

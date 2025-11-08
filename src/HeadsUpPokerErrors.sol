@@ -55,6 +55,7 @@ error PeekAlreadyServed();
 error PeekWrongStage();
 error InvalidDecryptedCard();
 error PrerequisitesNotMet();
+error RevealAlreadySubmitted();
 error InvalidDeck();
 error InvalidUnencryptedCard();
 error InvalidGameState();

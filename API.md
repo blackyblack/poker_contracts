@@ -21,7 +21,7 @@ This is the primary contract that tracks channel balances, enforces signed actio
 Backends can subscribe to these topics to react to state transitions:
 - `ChannelOpened`, `ChannelJoined`, `ChannelTopUp`
 - `GameStarted`
-- `Settled`, `ShowdownStarted`, `ShowdownFinalized`, `CommitsUpdated`
+- `Settled`, `ShowdownStarted`, `ShowdownFinalized`, `RevealsUpdated`
 - `DisputeStarted`, `DisputeExtended`, `DisputeFinalized`
 - `Withdrawn`
 Each event carries the channel id and relevant payload such as participant, amount, or the updated commit mask.
@@ -30,7 +30,7 @@ Each event carries the channel id and relevant payload such as participant, amou
 - `stacks(channelId)` -> `(uint256 p1, uint256 p2)`: returns current escrowed balances for both seats.
 - `getHandId(channelId)` -> `uint256`: current hand counter used to salt commitments and action chains.
 - `getMinSmallBlind(channelId)` -> `uint256`: minimum small blind enforced for the channel.
-- `getShowdown(channelId)` -> `ShowdownState`: inspect reveal deadlines, board/hole cards revealed so far, and the commit bitmask.
+- `getShowdown(channelId)` -> `ShowdownState`: inspect reveal deadlines, board/hole cards revealed so far, and whether each player has submitted their reveal.
 - `getDispute(channelId)` -> `DisputeState`: view current dispute deadlines and projected outcomes.
 - `getChannel(channelId)` -> `Channel`: returns the complete channel information including player addresses, deposits, finalization status, hand ID, join status, minimum small blind, and optional signing addresses for both players. Returns `address(0)` for optional signers if no optional signer is set.
 
@@ -46,7 +46,9 @@ Each event carries the channel id and relevant payload such as participant, amou
 - `finalizeDispute(channelId)`: after the dispute window expires finalize a fold payout or trigger the showdown reveal flow for incomplete games.
 
 ### Showdown management
-- `revealCards(channelId, cardCommits, signatures, cards, cardSalts)`: during the reveal window, anyone can submit batched card openings signed by both players. Each card commitment must be signed by both players (or their designated optional signers). Successfully verified openings update the commit mask and may auto-finalize when all nine slots are revealed.
+- `revealCardsPlayer1(channelId, decryptedCards, signatures)`: submit player 1's full set of card openers (their hole cards plus all board cards). The escrow simply forwards the signed partial decrypts to the showdown contract so they can be verified on-chain.
+- `revealCardsPlayer2(channelId, decryptedCards, signatures)`: identical to `revealCardsPlayer1` but for the second seat.
+- `finalizeReveals(channelId, plaintextCards, signatures)`: once both players have submitted their openers, provide the plaintext cards signed by either participant to resolve the hand. Any caller can submit the plaintexts as long as the signatures validate against the stored partial decrypts.
 - `finalizeShowdown(channelId)`: once the reveal window elapses, pay the pot to whichever player revealed while the other did not, or declare a tie if neither side showed valid cards.
 
 ### Withdrawals

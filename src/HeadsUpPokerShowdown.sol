@@ -12,15 +12,14 @@ import "./HeadsUpPokerErrors.sol";
 contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
     using ECDSA for bytes32;
 
-    uint16 constant MASK_ALL = 0x01FF;
-
     uint256 public constant revealWindow = 1 hours;
 
     struct ShowdownState {
         uint256 deadline;
         bool inProgress;
+        bool player1Revealed;
+        bool player2Revealed;
         uint8[9] cards;
-        uint16 lockedCommitMask;
         uint256 calledAmount;
     }
 
@@ -37,6 +36,8 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
     HeadsUpPokerPeek private immutable peek;
 
     mapping(uint256 => ShowdownState) private showdowns;
+    mapping(uint256 => mapping(uint8 => bytes)) private revealedPartialsA;
+    mapping(uint256 => mapping(uint8 => bytes)) private revealedPartialsB;
 
     modifier onlyEscrow() {
         if (msg.sender != escrow) revert NotEscrow();
@@ -58,6 +59,10 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
 
     function resetChannel(uint256 channelId) external onlyEscrow {
         delete showdowns[channelId];
+        for (uint8 i = 0; i < SLOT_RIVER + 1; i++) {
+            delete revealedPartialsA[channelId][i];
+            delete revealedPartialsB[channelId][i];
+        }
     }
 
     function initiateShowdown(uint256 channelId, uint256 calledAmount) external onlyEscrow {
@@ -66,49 +71,115 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
 
         sd.deadline = block.timestamp + revealWindow;
         sd.inProgress = true;
-        sd.lockedCommitMask = 0;
+        sd.player1Revealed = false;
+        sd.player2Revealed = false;
         sd.calledAmount = calledAmount;
 
         for (uint8 i = 0; i < SLOT_RIVER + 1; i++) {
             sd.cards[i] = 0xFF;
+            delete revealedPartialsA[channelId][i];
+            delete revealedPartialsB[channelId][i];
         }
     }
 
-    function revealCards(
+    function revealCardsPlayer1(
         uint256 channelId,
         ChannelData calldata ch,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCardsOther,
-        bytes[] calldata signaturesOther,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCardsOpener,
-        bytes[] calldata signaturesOpener
-    )
-        external
-        onlyEscrow
-        returns (bool completed, address winner, uint256 wonAmount, uint16 mask)
-    {
+        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
+        bytes[] calldata signatures
+    ) external onlyEscrow returns (bool player1Ready, bool player2Ready) {
+        return _revealCards(channelId, ch, decryptedCards, signatures, true);
+    }
+
+    function revealCardsPlayer2(
+        uint256 channelId,
+        ChannelData calldata ch,
+        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
+        bytes[] calldata signatures
+    ) external onlyEscrow returns (bool player1Ready, bool player2Ready) {
+        return _revealCards(channelId, ch, decryptedCards, signatures, false);
+    }
+
+    struct PlaintextCard {
+        uint8 index;
+        bytes plaintext;
+        address opener;
+    }
+
+    function finalizeReveals(
+        uint256 channelId,
+        ChannelData calldata ch,
+        PlaintextCard[] calldata plaintextCards,
+        bytes[] calldata signatures
+    ) external onlyEscrow returns (address winner, uint256 wonAmount) {
         if (ch.player1 == address(0) || ch.player2 == address(0)) revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
 
         ShowdownState storage sd = showdowns[channelId];
         if (!sd.inProgress) revert NoShowdownInProgress();
-        if (block.timestamp > sd.deadline) revert Expired();
+        if (!sd.player1Revealed || !sd.player2Revealed) revert PrerequisitesNotMet();
+        if (plaintextCards.length != signatures.length) revert SignatureLengthMismatch();
 
-        mask = _applyCardReveal(
-            channelId,
-            ch,
-            sd,
-            decryptedCardsOther,
-            signaturesOther,
-            decryptedCardsOpener,
-            signaturesOpener
-        );
+        bool[SLOT_RIVER + 1] memory seen;
 
-        completed = mask == MASK_ALL;
-        if (completed) {
-            (winner, wonAmount) = _calculateShowdownWinner(channelId, ch);
-            sd.inProgress = false;
-            sd.deadline = 0;
+        for (uint256 i = 0; i < plaintextCards.length; i++) {
+            PlaintextCard calldata pc = plaintextCards[i];
+            uint8 slot = pc.index;
+            if (slot > SLOT_RIVER) revert InvalidDecryptedCard();
+            if (seen[slot]) revert InvalidDecryptedCard();
+            seen[slot] = true;
+
+            bytes memory partialOther;
+            bytes memory openerPublicKey;
+
+            if (
+                pc.opener == ch.player1 ||
+                pc.opener == ch.player1Signer
+            ) {
+                partialOther = revealedPartialsB[channelId][slot];
+                openerPublicKey = _getPublicKeyA(channelId);
+            } else if (
+                pc.opener == ch.player2 ||
+                pc.opener == ch.player2Signer
+            ) {
+                partialOther = revealedPartialsA[channelId][slot];
+                openerPublicKey = _getPublicKeyB(channelId);
+            } else {
+                revert ActionInvalidSender();
+            }
+
+            if (partialOther.length != 64) revert InvalidDecryptedCard();
+
+            HeadsUpPokerEIP712.DecryptedCard memory wrapped = HeadsUpPokerEIP712
+                .DecryptedCard({
+                    channelId: channelId,
+                    handId: ch.handId,
+                    player: pc.opener,
+                    index: slot,
+                    decryptedCard: pc.plaintext
+                });
+
+            _verifyPlaintextFromPartial(
+                pc.plaintext,
+                partialOther,
+                openerPublicKey,
+                signatures[i],
+                wrapped,
+                pc.opener,
+                ch
+            );
+
+            uint8 cardValue = peek.getCanonicalCard(channelId, pc.plaintext);
+            sd.cards[slot] = cardValue;
         }
+
+        for (uint8 slot = 0; slot <= SLOT_RIVER; slot++) {
+            if (!seen[slot]) revert PrerequisitesNotMet();
+        }
+
+        (winner, wonAmount) = _calculateShowdownWinner(channelId, ch);
+        sd.inProgress = false;
+        sd.deadline = 0;
     }
 
     function finalizeShowdown(
@@ -122,8 +193,8 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         if (!sd.inProgress) revert NoShowdownInProgress();
         if (block.timestamp <= sd.deadline) revert StillRevealing();
 
-        bool aRevealed = sd.cards[SLOT_A1] != 0xFF && sd.cards[SLOT_A2] != 0xFF;
-        bool bRevealed = sd.cards[SLOT_B1] != 0xFF && sd.cards[SLOT_B2] != 0xFF;
+        bool aRevealed = sd.player1Revealed;
+        bool bRevealed = sd.player2Revealed;
 
         winner = ch.player1;
         wonAmount = 0;
@@ -139,90 +210,80 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         sd.deadline = 0;
     }
 
-    function _applyCardReveal(
+    function _revealCards(
         uint256 channelId,
         ChannelData calldata ch,
-        ShowdownState storage sd,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCardsOther,
-        bytes[] calldata signaturesOther,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCardsOpener,
-        bytes[] calldata signaturesOpener
-    ) internal returns (uint16 mask) {
-        if (decryptedCardsOther.length != signaturesOther.length)
-            revert SignatureLengthMismatch();
-        if (decryptedCardsOpener.length != signaturesOpener.length)
-            revert SignatureLengthMismatch();
+        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
+        bytes[] calldata signatures,
+        bool isPlayer1
+    ) internal returns (bool player1Ready, bool player2Ready) {
+        if (ch.player1 == address(0) || ch.player2 == address(0)) revert NoChannel();
+        if (ch.finalized) revert AlreadyFinalized();
+        if (decryptedCards.length != signatures.length) revert SignatureLengthMismatch();
 
-        mask = sd.lockedCommitMask;
+        ShowdownState storage sd = showdowns[channelId];
+        if (!sd.inProgress) revert NoShowdownInProgress();
+        if (block.timestamp > sd.deadline) revert Expired();
 
-        for (uint256 i = 0; i < decryptedCardsOpener.length; i++) {
-            HeadsUpPokerEIP712.DecryptedCard calldata cardOpener = decryptedCardsOpener[i];
-            uint8 slot = cardOpener.index;
-            uint16 bit = uint16(1) << slot;
+        if (isPlayer1) {
+            if (sd.player1Revealed) revert RevealAlreadySubmitted();
+        } else {
+            if (sd.player2Revealed) revert RevealAlreadySubmitted();
+        }
 
-            if ((mask & bit) == bit) continue;
+        bool[SLOT_RIVER + 1] memory required;
+        if (isPlayer1) {
+            required[SLOT_A1] = true;
+            required[SLOT_A2] = true;
+        } else {
+            required[SLOT_B1] = true;
+            required[SLOT_B2] = true;
+        }
+        required[SLOT_FLOP1] = true;
+        required[SLOT_FLOP2] = true;
+        required[SLOT_FLOP3] = true;
+        required[SLOT_TURN] = true;
+        required[SLOT_RIVER] = true;
 
-            if ((MASK_ALL & bit) == 0) revert CommitUnexpected(slot);
-            if (cardOpener.channelId != channelId) revert CommitWrongChannel(slot);
-            if (cardOpener.handId != ch.handId) revert ActionWrongHand();
+        bool[SLOT_RIVER + 1] memory visited;
 
-            address opener = cardOpener.player;
-            address other;
-            bool openerIsPlayer1;
+        address expectedSigner = isPlayer1 ? ch.player1 : ch.player2;
 
-            if (opener == ch.player1 || opener == ch.player1Signer) {
-                other = ch.player2;
-                openerIsPlayer1 = true;
-            } else if (opener == ch.player2 || opener == ch.player2Signer) {
-                other = ch.player1;
-                openerIsPlayer1 = false;
-            } else {
-                revert ActionInvalidSender();
-            }
+        for (uint256 i = 0; i < decryptedCards.length; i++) {
+            HeadsUpPokerEIP712.DecryptedCard calldata card = decryptedCards[i];
+            uint8 slot = card.index;
+            if (slot > SLOT_RIVER) revert InvalidDecryptedCard();
+            if (!required[slot]) revert CommitUnexpected(slot);
+            if (visited[slot]) revert InvalidDecryptedCard();
+            visited[slot] = true;
 
-            bytes memory partialOther;
-            bytes memory existingPartial = openerIsPlayer1
-                ? peek.getRevealedCardB(channelId, slot)
-                : peek.getRevealedCardA(channelId, slot);
-
-            if (existingPartial.length == 64) {
-                partialOther = existingPartial;
-            } else {
-                bool found = false;
-                for (uint256 j = 0; j < decryptedCardsOther.length; j++) {
-                    if (decryptedCardsOther[j].index == slot) {
-                        _verifyPartialDecrypt(
-                            channelId,
-                            slot,
-                            decryptedCardsOther[j],
-                            signaturesOther[j],
-                            other,
-                            ch
-                        );
-                        partialOther = decryptedCardsOther[j].decryptedCard;
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) revert InvalidDecryptedCard();
-            }
-
-            _verifyPlaintextFromPartial(
-                cardOpener.decryptedCard,
-                partialOther,
-                openerIsPlayer1 ? _getPublicKeyA(channelId) : _getPublicKeyB(channelId),
-                signaturesOpener[i],
-                cardOpener,
-                opener,
+            _verifyPartialDecrypt(
+                channelId,
+                slot,
+                card,
+                signatures[i],
+                expectedSigner,
                 ch
             );
 
-            uint8 cardValue = peek.getCanonicalCard(channelId, cardOpener.decryptedCard);
-            sd.cards[slot] = cardValue;
-            mask |= bit;
+            if (isPlayer1) {
+                revealedPartialsA[channelId][slot] = card.decryptedCard;
+            } else {
+                revealedPartialsB[channelId][slot] = card.decryptedCard;
+            }
         }
 
-        sd.lockedCommitMask = mask;
+        for (uint8 slot = 0; slot <= SLOT_RIVER; slot++) {
+            if (required[slot] && !visited[slot]) revert PrerequisitesNotMet();
+        }
+
+        if (isPlayer1) {
+            sd.player1Revealed = true;
+        } else {
+            sd.player2Revealed = true;
+        }
+
+        return (sd.player1Revealed, sd.player2Revealed);
     }
 
     function _verifyPlaintextFromPartial(
@@ -230,7 +291,7 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         bytes memory partialCard,
         bytes memory openerPublicKey,
         bytes calldata signature,
-        HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
+        HeadsUpPokerEIP712.DecryptedCard memory decryptedCard,
         address expectedSigner,
         ChannelData calldata ch
     ) internal view {
@@ -238,7 +299,17 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
             ? ch.player1Signer
             : ch.player2Signer;
 
-        bytes32 digest = digestDecryptedCard(decryptedCard);
+        bytes32 structHash = keccak256(
+            abi.encode(
+                DECRYPTED_CARD_TYPEHASH,
+                decryptedCard.channelId,
+                decryptedCard.handId,
+                decryptedCard.player,
+                decryptedCard.index,
+                keccak256(decryptedCard.decryptedCard)
+            )
+        );
+        bytes32 digest = _hashTypedDataV4(structHash);
         address recovered = digest.recover(signature);
         if (recovered != expectedSigner && recovered != expectedOptionalSigner) {
             revert InvalidDecryptedCard();
