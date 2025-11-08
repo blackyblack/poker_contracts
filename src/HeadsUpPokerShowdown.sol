@@ -44,7 +44,6 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
     }
 
     constructor(address escrowAddress, HeadsUpPokerPeek peekAddress) {
-        if (escrowAddress == address(0)) revert NotEscrow();
         escrow = escrowAddress;
         peek = peekAddress;
     }
@@ -348,7 +347,6 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         uint256 player1Rank = PokerEvaluator.evaluateHand(player1Cards);
         uint256 player2Rank = PokerEvaluator.evaluateHand(player2Cards);
 
-        winner = ch.player1;
         wonAmount = sd.calledAmount;
 
         if (player1Rank > player2Rank) {
@@ -356,6 +354,7 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         } else if (player2Rank > player1Rank) {
             winner = ch.player2;
         } else {
+            winner = ch.player1;
             wonAmount = 0;
         }
     }
