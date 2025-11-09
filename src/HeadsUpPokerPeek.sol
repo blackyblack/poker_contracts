@@ -36,8 +36,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     struct ChannelData {
         address player1;
         address player2;
-        address player1Signer;
-        address player2Signer;
         bool finalized;
         bool gameStarted;
         uint256 handId;
@@ -87,19 +85,29 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     // ------------------------------------------------------------------
     // View helpers
     // ------------------------------------------------------------------
-    function getPeek(uint256 channelId) external view returns (PeekState memory) {
+    function getPeek(
+        uint256 channelId
+    ) external view returns (PeekState memory) {
         return peeks[channelId];
     }
 
-    function getRevealedCardA(uint256 channelId, uint8 index) external view returns (bytes memory) {
+    function getRevealedCardA(
+        uint256 channelId,
+        uint8 index
+    ) external view returns (bytes memory) {
         return revealedCardsA[channelId][index];
     }
 
-    function getRevealedCardB(uint256 channelId, uint8 index) external view returns (bytes memory) {
+    function getRevealedCardB(
+        uint256 channelId,
+        uint8 index
+    ) external view returns (bytes memory) {
         return revealedCardsB[channelId][index];
     }
 
-    function getPublicKeys(uint256 channelId) external view returns (bytes memory, bytes memory) {
+    function getPublicKeys(
+        uint256 channelId
+    ) external view returns (bytes memory, bytes memory) {
         return (publicKeyA[channelId], publicKeyB[channelId]);
     }
 
@@ -115,9 +123,13 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     /// @param channelId The channel identifier
     /// @param index The card index (0-8)
     /// @return The encrypted card at the specified index
-    function getDeck(uint256 channelId, uint8 index) external view returns (bytes memory) {
+    function getDeck(
+        uint256 channelId,
+        uint8 index
+    ) external view returns (bytes memory) {
         if (index > HeadsUpPokerEIP712.SLOT_RIVER) revert InvalidDeck();
-        if (decks[channelId].length != HeadsUpPokerEIP712.SLOT_RIVER + 1) revert InvalidDeck();
+        if (decks[channelId].length != HeadsUpPokerEIP712.SLOT_RIVER + 1)
+            revert InvalidDeck();
         return decks[channelId][index];
     }
 
@@ -129,28 +141,44 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         delete publicKeyA[channelId];
         delete publicKeyB[channelId];
         // Skip deleting decks to save gas - they will be reset anyway
-        for (uint8 i = HeadsUpPokerEIP712.SLOT_A1; i <= HeadsUpPokerEIP712.SLOT_RIVER; i++) {
+        for (
+            uint8 i = HeadsUpPokerEIP712.SLOT_A1;
+            i <= HeadsUpPokerEIP712.SLOT_RIVER;
+            i++
+        ) {
             delete revealedCardsA[channelId][i];
             delete revealedCardsB[channelId][i];
         }
     }
 
-    function setPublicKeyA(uint256 channelId, bytes calldata key) external onlyEscrow {
+    function setPublicKeyA(
+        uint256 channelId,
+        bytes calldata key
+    ) external onlyEscrow {
         publicKeyA[channelId] = key;
     }
 
-    function setPublicKeyB(uint256 channelId, bytes calldata key) external onlyEscrow {
+    function setPublicKeyB(
+        uint256 channelId,
+        bytes calldata key
+    ) external onlyEscrow {
         publicKeyB[channelId] = key;
     }
 
-    function storeDeck(uint256 channelId, bytes[] calldata deck) external onlyEscrow {
+    function storeDeck(
+        uint256 channelId,
+        bytes[] calldata deck
+    ) external onlyEscrow {
         decks[channelId] = deck;
     }
 
     /// @notice Store the canonical deck (52 unencrypted base points) for card-ID resolution
     /// @param channelId The channel identifier
     /// @param canonicalDeck Array of 52 unencrypted G1 base points (each 64 bytes)
-    function storeCanonicalDeck(uint256 channelId, bytes[] calldata canonicalDeck) external onlyEscrow {
+    function storeCanonicalDeck(
+        uint256 channelId,
+        bytes[] calldata canonicalDeck
+    ) external onlyEscrow {
         if (canonicalDeck.length != FULL_DECK_SIZE) revert InvalidDeck();
         for (uint8 i = 0; i < FULL_DECK_SIZE; i++) {
             canonicalDecks[channelId][canonicalDeck[i]] = i + 1; // Store index + 1 to avoid default zero value
@@ -161,7 +189,10 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     /// @param channelId The channel identifier
     /// @param cardPoint The unencrypted G1 base point for the card
     /// @return The canonical card value for PokerEvaluator
-    function getCanonicalCard(uint256 channelId, bytes memory cardPoint) external view returns (uint8) {
+    function getCanonicalCard(
+        uint256 channelId,
+        bytes memory cardPoint
+    ) external view returns (uint8) {
         uint8 index = canonicalDecks[channelId][cardPoint];
         if (index == 0) revert InvalidUnencryptedCard();
         index -= 1; // Adjust back to zero-based index
@@ -169,7 +200,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         // rank starts from 1 (Ace) to 13 (King)
         uint8 rank = index / 4 + 1;
         // lower 4 bits: rank (1-13), upper 4 bits: suit (0-3)
-        return rank & 0x0F | ((suit & 0x0F) << 4);
+        return (rank & 0x0F) | ((suit & 0x0F) << 4);
     }
 
     function requestHoleA(
@@ -184,7 +215,8 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         if (!ch.gameStarted) revert GameNotStarted();
         _requireDeck(channelId);
         if (ch.finalized) revert AlreadyFinalized();
-        if (fr.inProgress || fr.stage != PeekStage.NONE) revert PeekInProgress();
+        if (fr.inProgress || fr.stage != PeekStage.NONE)
+            revert PeekInProgress();
         if (requester != ch.player1) revert NotPlayer();
 
         _ensureActiveGame(ch, actions);
@@ -201,8 +233,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         uint256 channelId,
         ChannelData calldata ch,
         address helper,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes[] calldata decryptedCards
     ) external onlyEscrow {
         PeekState storage fr = peeks[channelId];
 
@@ -219,7 +250,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
             channelId,
             fr.obligatedHelper,
             decryptedCards,
-            signatures,
             indices,
             ch
         );
@@ -239,7 +269,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         if (!ch.gameStarted) revert GameNotStarted();
         _requireDeck(channelId);
         if (fr.inProgress) revert PeekInProgress();
-        if (requester != ch.player2 && requester != ch.player2Signer) revert NotPlayer();
+        if (requester != ch.player2) revert NotPlayer();
         _ensureActiveGame(ch, actions);
 
         if (revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_B1].length != 0)
@@ -254,8 +284,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         uint256 channelId,
         ChannelData calldata ch,
         address helper,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes[] calldata decryptedCards
     ) external onlyEscrow {
         PeekState storage fr = peeks[channelId];
 
@@ -272,7 +301,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
             channelId,
             fr.obligatedHelper,
             decryptedCards,
-            signatures,
             indices,
             ch
         );
@@ -285,8 +313,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         ChannelData calldata ch,
         address requester,
         Action[] calldata actions,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata requesterDecryptedCards,
-        bytes[] calldata requesterSignatures
+        bytes[] calldata requesterDecryptedCards
     ) external onlyEscrow {
         PeekState storage fr = peeks[channelId];
 
@@ -294,26 +321,38 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         if (!ch.gameStarted) revert GameNotStarted();
         _requireDeck(channelId);
         if (fr.inProgress) revert PeekInProgress();
-        if (requester != ch.player1 && requester != ch.player2) revert NotPlayer();
+        if (requester != ch.player1 && requester != ch.player2)
+            revert NotPlayer();
         _ensureCommunityStage(ch, actions, STREET_FLOP);
-        if (
-            requesterDecryptedCards.length != 3 ||
-            requesterSignatures.length != 3
-        ) revert InvalidDecryptedCard();
+        if (requesterDecryptedCards.length != 3) revert InvalidDecryptedCard();
 
-        address obligatedHelper = requester == ch.player1 ? ch.player2 : ch.player1;
+        address obligatedHelper = requester == ch.player1
+            ? ch.player2
+            : ch.player1;
 
         if (requester == ch.player1) {
             if (
-                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_FLOP1].length != 0 ||
-                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_FLOP2].length != 0 ||
-                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_FLOP3].length != 0
+                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_FLOP1]
+                    .length !=
+                0 ||
+                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_FLOP2]
+                    .length !=
+                0 ||
+                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_FLOP3]
+                    .length !=
+                0
             ) revert PrerequisitesNotMet();
         } else {
             if (
-                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_FLOP1].length != 0 ||
-                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_FLOP2].length != 0 ||
-                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_FLOP3].length != 0
+                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_FLOP1]
+                    .length !=
+                0 ||
+                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_FLOP2]
+                    .length !=
+                0 ||
+                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_FLOP3]
+                    .length !=
+                0
             ) revert PrerequisitesNotMet();
         }
 
@@ -326,7 +365,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
             channelId,
             requester,
             requesterDecryptedCards,
-            requesterSignatures,
             flopIndices,
             ch
         );
@@ -338,8 +376,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         uint256 channelId,
         ChannelData calldata ch,
         address helper,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes[] calldata decryptedCards
     ) external onlyEscrow {
         PeekState storage fr = peeks[channelId];
 
@@ -357,7 +394,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
             channelId,
             fr.obligatedHelper,
             decryptedCards,
-            signatures,
             flopIndices,
             ch
         );
@@ -370,8 +406,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         ChannelData calldata ch,
         address requester,
         Action[] calldata actions,
-        HeadsUpPokerEIP712.DecryptedCard calldata requesterDecryptedCard,
-        bytes calldata requesterSignature
+        bytes calldata requesterDecryptedCard
     ) external onlyEscrow {
         PeekState storage fr = peeks[channelId];
 
@@ -379,18 +414,27 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         if (!ch.gameStarted) revert GameNotStarted();
         _requireDeck(channelId);
         if (fr.inProgress) revert PeekInProgress();
-        if (requester != ch.player1 && requester != ch.player2) revert NotPlayer();
+        if (requester != ch.player1 && requester != ch.player2)
+            revert NotPlayer();
 
         _ensureCommunityStage(ch, actions, STREET_TURN);
 
-        address obligatedHelper = requester == ch.player1 ? ch.player2 : ch.player1;
+        address obligatedHelper = requester == ch.player1
+            ? ch.player2
+            : ch.player1;
 
         if (requester == ch.player1) {
-            if (revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_TURN].length != 0) {
+            if (
+                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_TURN]
+                    .length != 0
+            ) {
                 revert PrerequisitesNotMet();
             }
         } else {
-            if (revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_TURN].length != 0) {
+            if (
+                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_TURN]
+                    .length != 0
+            ) {
                 revert PrerequisitesNotMet();
             }
         }
@@ -399,7 +443,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
             channelId,
             requester,
             requesterDecryptedCard,
-            requesterSignature,
             HeadsUpPokerEIP712.SLOT_TURN,
             ch
         );
@@ -411,8 +454,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         uint256 channelId,
         ChannelData calldata ch,
         address helper,
-        HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
-        bytes calldata signature
+        bytes calldata decryptedCard
     ) external onlyEscrow {
         PeekState storage fr = peeks[channelId];
 
@@ -425,7 +467,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
             channelId,
             fr.obligatedHelper,
             decryptedCard,
-            signature,
             HeadsUpPokerEIP712.SLOT_TURN,
             ch
         );
@@ -438,8 +479,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         ChannelData calldata ch,
         address requester,
         Action[] calldata actions,
-        HeadsUpPokerEIP712.DecryptedCard calldata requesterDecryptedCard,
-        bytes calldata requesterSignature
+        bytes calldata requesterDecryptedCard
     ) external onlyEscrow {
         PeekState storage fr = peeks[channelId];
 
@@ -447,18 +487,27 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         if (!ch.gameStarted) revert GameNotStarted();
         _requireDeck(channelId);
         if (fr.inProgress) revert PeekInProgress();
-        if (requester != ch.player1 && requester != ch.player2) revert NotPlayer();
+        if (requester != ch.player1 && requester != ch.player2)
+            revert NotPlayer();
 
         _ensureCommunityStage(ch, actions, STREET_RIVER);
 
-        address obligatedHelper = requester == ch.player1 ? ch.player2 : ch.player1;
+        address obligatedHelper = requester == ch.player1
+            ? ch.player2
+            : ch.player1;
 
         if (requester == ch.player1) {
-            if (revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_RIVER].length != 0) {
+            if (
+                revealedCardsB[channelId][HeadsUpPokerEIP712.SLOT_RIVER]
+                    .length != 0
+            ) {
                 revert PrerequisitesNotMet();
             }
         } else {
-            if (revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_RIVER].length != 0) {
+            if (
+                revealedCardsA[channelId][HeadsUpPokerEIP712.SLOT_RIVER]
+                    .length != 0
+            ) {
                 revert PrerequisitesNotMet();
             }
         }
@@ -467,7 +516,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
             channelId,
             requester,
             requesterDecryptedCard,
-            requesterSignature,
             HeadsUpPokerEIP712.SLOT_RIVER,
             ch
         );
@@ -479,8 +527,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         uint256 channelId,
         ChannelData calldata ch,
         address helper,
-        HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
-        bytes calldata signature
+        bytes calldata decryptedCard
     ) external onlyEscrow {
         PeekState storage fr = peeks[channelId];
 
@@ -493,7 +540,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
             channelId,
             fr.obligatedHelper,
             decryptedCard,
-            signature,
             HeadsUpPokerEIP712.SLOT_RIVER,
             ch
         );
@@ -501,7 +547,9 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         _completePeek(fr);
     }
 
-    function slashPeek(uint256 channelId) external onlyEscrow returns (address obligatedHelper) {
+    function slashPeek(
+        uint256 channelId
+    ) external onlyEscrow returns (address obligatedHelper) {
         PeekState storage fr = peeks[channelId];
 
         if (!fr.inProgress) revert NoPeekInProgress();
@@ -515,7 +563,10 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     // ------------------------------------------------------------------
     // Internal helpers
     // ------------------------------------------------------------------
-    function _requirePeekActive(PeekState storage fr, PeekStage stage) internal view {
+    function _requirePeekActive(
+        PeekState storage fr,
+        PeekStage stage
+    ) internal view {
         if (!fr.inProgress) revert NoPeekInProgress();
         if (fr.stage != stage) revert PeekWrongStage();
         if (fr.served) revert PeekAlreadyServed();
@@ -541,17 +592,14 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
 
     function _verifyAndStore(
         uint256 channelId,
-        address expectedSigner,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures,
+        address player,
+        bytes[] calldata decryptedCards,
         uint8[] memory indices,
         ChannelData calldata ch
     ) internal {
         uint256 length = indices.length;
-        if (decryptedCards.length != length || signatures.length != length) {
-            revert InvalidDecryptedCard();
-        }
-        bool storeInA = expectedSigner == ch.player1;
+        if (decryptedCards.length != length) revert InvalidDecryptedCard();
+        bool storeInA = player == ch.player1;
 
         for (uint256 i = 0; i < length; i++) {
             uint8 index = indices[i];
@@ -559,55 +607,35 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
                 channelId,
                 index,
                 decryptedCards[i],
-                signatures[i],
-                expectedSigner,
-                ch
-            );
-            _storeCard(
-                channelId,
-                index,
-                decryptedCards[i].decryptedCard,
                 storeInA
             );
+            if (storeInA) {
+                revealedCardsA[channelId][index] = decryptedCards[i];
+            } else {
+                revealedCardsB[channelId][index] = decryptedCards[i];
+            }
         }
     }
 
     function _verifyAndStore(
         uint256 channelId,
-        address expectedSigner,
-        HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
-        bytes calldata signature,
+        address player,
+        bytes calldata decryptedCard,
         uint8 index,
         ChannelData calldata ch
     ) internal {
-        bool storeInA = expectedSigner == ch.player1;
+        bool storeInA = player == ch.player1;
 
         _verifyDecryptedCard(
             channelId,
             index,
             decryptedCard,
-            signature,
-            expectedSigner,
-            ch
-        );
-        _storeCard(
-            channelId,
-            index,
-            decryptedCard.decryptedCard,
             storeInA
         );
-    }
-
-    function _storeCard(
-        uint256 channelId,
-        uint8 index,
-        bytes memory card,
-        bool storeInA
-    ) internal {
         if (storeInA) {
-            revealedCardsA[channelId][index] = card;
+            revealedCardsA[channelId][index] = decryptedCard;
         } else {
-            revealedCardsB[channelId][index] = card;
+            revealedCardsB[channelId][index] = decryptedCard;
         }
     }
 
@@ -616,13 +644,20 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         arr[0] = a;
     }
 
-    function _indices(uint8 a, uint8 b) private pure returns (uint8[] memory arr) {
+    function _indices(
+        uint8 a,
+        uint8 b
+    ) private pure returns (uint8[] memory arr) {
         arr = new uint8[](2);
         arr[0] = a;
         arr[1] = b;
     }
 
-    function _indices(uint8 a, uint8 b, uint8 c) private pure returns (uint8[] memory arr) {
+    function _indices(
+        uint8 a,
+        uint8 b,
+        uint8 c
+    ) private pure returns (uint8[] memory arr) {
         arr = new uint8[](3);
         arr[0] = a;
         arr[1] = b;
@@ -632,51 +667,22 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     function _verifyDecryptedCard(
         uint256 channelId,
         uint8 index,
-        HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
-        bytes calldata signature,
-        address expectedSigner,
-        ChannelData calldata ch
+        bytes calldata decryptedCard,
+        bool isPlayerA
     ) internal view {
-        uint256 handId = ch.handId;
-        address expectedOptionalSigner = expectedSigner == ch.player1
-            ? ch.player1Signer
-            : ch.player2Signer;
-
-        bytes memory publicKey = expectedSigner == ch.player1
-            ? publicKeyA[channelId]
-            : publicKeyB[channelId];
+        bytes memory publicKey = isPlayerA ? publicKeyA[channelId] : publicKeyB[channelId];
 
         bytes storage encryptedCard = decks[channelId][index];
 
-        if (
-            decryptedCard.channelId != channelId ||
-            decryptedCard.handId != handId ||
-            decryptedCard.index != index ||
-            (decryptedCard.player != expectedSigner &&
-                decryptedCard.player != expectedOptionalSigner)
-        ) {
-            revert InvalidDecryptedCard();
-        }
-        if (
-            decryptedCard.decryptedCard.length != 64 ||
-            encryptedCard.length != 64
-        ) {
-            revert InvalidDecryptedCard();
-        }
-
-        bytes32 digest = digestDecryptedCard(decryptedCard);
-        if (
-            digest.recover(signature) != expectedSigner &&
-            digest.recover(signature) != expectedOptionalSigner
-        ) {
+        if (decryptedCard.length != 64 || encryptedCard.length != 64) {
             revert InvalidDecryptedCard();
         }
 
         // Validate G1 points before pairing check
-        if (Bn254.isInfinity(decryptedCard.decryptedCard)) {
+        if (Bn254.isInfinity(decryptedCard)) {
             revert InvalidDecryptedCard();
         }
-        if (!Bn254.isG1OnCurve(decryptedCard.decryptedCard)) {
+        if (!Bn254.isG1OnCurve(decryptedCard)) {
             revert InvalidDecryptedCard();
         }
         if (Bn254.isInfinity(encryptedCard)) {
@@ -687,11 +693,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         }
 
         if (
-            !Bn254.verifyPartialDecrypt(
-                decryptedCard.decryptedCard,
-                encryptedCard,
-                publicKey
-            )
+            !Bn254.verifyPartialDecrypt(decryptedCard, encryptedCard, publicKey)
         ) {
             revert InvalidDecryptedCard();
         }
@@ -741,6 +743,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     }
 
     function _requireDeck(uint256 channelId) internal view {
-        if (decks[channelId].length != HeadsUpPokerEIP712.SLOT_RIVER + 1) revert InvalidDeck();
+        if (decks[channelId].length != HeadsUpPokerEIP712.SLOT_RIVER + 1)
+            revert InvalidDeck();
     }
 }

@@ -92,7 +92,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address indexed winner,
         uint256 amount
     );
-    event CommitsUpdated(uint256 indexed channelId, uint16 newMask);
+    event RevealsUpdated(
+        uint256 indexed channelId,
+        bool player1Revealed,
+        bool player2Revealed
+    );
     event Withdrawn(
         uint256 indexed channelId,
         address indexed player,
@@ -366,8 +370,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     ) internal view returns (HeadsUpPokerPeek.ChannelData memory data) {
         data.player1 = ch.player1;
         data.player2 = ch.player2;
-        data.player1Signer = ch.player1Signer;
-        data.player2Signer = ch.player2Signer;
         data.finalized = ch.finalized;
         data.gameStarted = ch.gameStarted;
         data.handId = ch.handId;
@@ -382,8 +384,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     ) internal view returns (HeadsUpPokerShowdown.ChannelData memory data) {
         data.player1 = ch.player1;
         data.player2 = ch.player2;
-        data.player1Signer = ch.player1Signer;
-        data.player2Signer = ch.player2Signer;
         data.finalized = ch.finalized;
         data.handId = ch.handId;
     }
@@ -697,34 +697,38 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function revealCards(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCardsOther,
-        bytes[] calldata signaturesOther,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCardsOpener,
-        bytes[] calldata signaturesOpener
+        bytes[] calldata decryptedCards
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
 
-        (
-            bool completed,
-            address winner,
-            uint256 wonAmount,
-            uint16 mask
-        ) = showdown.revealCards(
-                channelId,
-                _showdownData(ch),
-                decryptedCardsOther,
-                signaturesOther,
-                decryptedCardsOpener,
-                signaturesOpener
-            );
+        (bool player1Ready, bool player2Ready) = showdown.revealCards(
+            channelId,
+            _showdownData(ch),
+            decryptedCards,
+            msg.sender
+        );
 
-        emit CommitsUpdated(channelId, mask);
+        emit RevealsUpdated(channelId, player1Ready, player2Ready);
+    }
 
-        if (completed) {
-            _rewardWinner(channelId, winner, wonAmount);
-        }
+    function finalizeReveals(
+        uint256 channelId,
+        bytes[] calldata plaintextCards
+    ) external nonReentrant {
+        Channel storage ch = channels[channelId];
+        if (ch.player1 == address(0)) revert NoChannel();
+        if (ch.finalized) revert AlreadyFinalized();
+
+        (address winner, uint256 wonAmount) = showdown.finalizeReveals(
+            channelId,
+            _showdownData(ch),
+            plaintextCards,
+            msg.sender
+        );
+
+        _rewardWinner(channelId, winner, wonAmount);
     }
 
     function finalizeShowdown(uint256 channelId) external nonReentrant {
@@ -772,16 +776,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function answerHoleA(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes[] calldata decryptedCards
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         peek.answerHoleA(
             channelId,
             _channelData(ch),
             msg.sender,
-            decryptedCards,
-            signatures
+            decryptedCards
         );
         emit PeekServed(
             channelId,
@@ -817,16 +819,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function answerHoleB(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes[] calldata decryptedCards
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         peek.answerHoleB(
             channelId,
             _channelData(ch),
             msg.sender,
-            decryptedCards,
-            signatures
+            decryptedCards
         );
         emit PeekServed(
             channelId,
@@ -838,8 +838,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         Action[] calldata actions,
         bytes[] calldata actionSignatures,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata requesterDecryptedCards,
-        bytes[] calldata requesterSignatures
+        bytes[] calldata requesterDecryptedCards
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         _verifyActionSignatures(
@@ -855,8 +854,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             _channelData(ch),
             msg.sender,
             actions,
-            requesterDecryptedCards,
-            requesterSignatures
+            requesterDecryptedCards
         );
         emit PeekOpened(
             channelId,
@@ -866,16 +864,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function answerFlop(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes[] calldata decryptedCards
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         peek.answerFlop(
             channelId,
             _channelData(ch),
             msg.sender,
-            decryptedCards,
-            signatures
+            decryptedCards
         );
         emit PeekServed(
             channelId,
@@ -887,8 +883,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         Action[] calldata actions,
         bytes[] calldata actionSignatures,
-        HeadsUpPokerEIP712.DecryptedCard calldata requesterDecryptedCard,
-        bytes calldata requesterSignature
+        bytes calldata requesterDecryptedCard
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         _verifyActionSignatures(
@@ -904,8 +899,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             _channelData(ch),
             msg.sender,
             actions,
-            requesterDecryptedCard,
-            requesterSignature
+            requesterDecryptedCard
         );
         emit PeekOpened(
             channelId,
@@ -915,16 +909,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function answerTurn(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
-        bytes calldata signature
+        bytes calldata decryptedCard
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         peek.answerTurn(
             channelId,
             _channelData(ch),
             msg.sender,
-            decryptedCard,
-            signature
+            decryptedCard
         );
         emit PeekServed(
             channelId,
@@ -936,8 +928,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         Action[] calldata actions,
         bytes[] calldata actionSignatures,
-        HeadsUpPokerEIP712.DecryptedCard calldata requesterDecryptedCard,
-        bytes calldata requesterSignature
+        bytes calldata requesterDecryptedCard
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         _verifyActionSignatures(
@@ -953,8 +944,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             _channelData(ch),
             msg.sender,
             actions,
-            requesterDecryptedCard,
-            requesterSignature
+            requesterDecryptedCard
         );
         emit PeekOpened(
             channelId,
@@ -964,16 +954,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function answerRiver(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
-        bytes calldata signature
+        bytes calldata decryptedCard
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         peek.answerRiver(
             channelId,
             _channelData(ch),
             msg.sender,
-            decryptedCard,
-            signature
+            decryptedCard
         );
         emit PeekServed(
             channelId,
