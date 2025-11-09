@@ -37,10 +37,6 @@ contract HeadsUpPokerEIP712 is EIP712 {
         keccak256(
             "CardCommit(uint256 channelId,uint256 handId,uint8 slot,bytes32 commitHash,bytes32 prevHash)"
         );
-    bytes32 internal constant DECRYPTED_CARD_TYPEHASH =
-        keccak256(
-            "DecryptedCard(uint256 channelId,uint256 handId,uint8 index,bytes decryptedCard)"
-        );
 
     // ---------------------------------------------------------------------
     // Struct definitions
@@ -53,13 +49,6 @@ contract HeadsUpPokerEIP712 is EIP712 {
         // i.e. keccak256( slot || cardCode || salt )
         bytes32 commitHash;
         bytes32 prevHash;
-    }
-
-    struct DecryptedCard {
-        uint256 channelId;
-        uint256 handId;
-        uint8 index;
-        bytes decryptedCard; // G1 partial decrypt point (64 bytes)
     }
 
     constructor() EIP712("HeadsUpPoker", "1") {}
@@ -106,19 +95,6 @@ contract HeadsUpPokerEIP712 is EIP712 {
         return _hashTypedDataV4(structHash);
     }
 
-    function digestDecryptedCard(DecryptedCard calldata dr) public view returns (bytes32) {
-        bytes32 structHash = keccak256(
-            abi.encode(
-                DECRYPTED_CARD_TYPEHASH,
-                dr.channelId,
-                dr.handId,
-                dr.index,
-                keccak256(dr.decryptedCard)
-            )
-        );
-        return _hashTypedDataV4(structHash);
-    }
-
     // ---------------------------------------------------------------------
     // Signature recovery
     // ---------------------------------------------------------------------
@@ -134,12 +110,5 @@ contract HeadsUpPokerEIP712 is EIP712 {
         bytes calldata sig
     ) external view returns (address) {
         return digestCardCommit(cc).recover(sig);
-    }
-
-    function recoverDecryptedCardSigner(
-        DecryptedCard calldata dr,
-        bytes calldata sig
-    ) external view returns (address) {
-        return digestDecryptedCard(dr).recover(sig);
     }
 }
