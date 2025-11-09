@@ -39,7 +39,7 @@ contract HeadsUpPokerEIP712 is EIP712 {
         );
     bytes32 internal constant DECRYPTED_CARD_TYPEHASH =
         keccak256(
-            "DecryptedCard(uint256 channelId,uint256 handId,address player,uint8 index,bytes decryptedCard)"
+            "DecryptedCard(uint256 channelId,uint256 handId,uint8 index,bytes decryptedCard)"
         );
 
     // ---------------------------------------------------------------------
@@ -58,7 +58,6 @@ contract HeadsUpPokerEIP712 is EIP712 {
     struct DecryptedCard {
         uint256 channelId;
         uint256 handId;
-        address player; // address of the player decrypting the card
         uint8 index;
         bytes decryptedCard; // G1 partial decrypt point (64 bytes)
     }
@@ -113,7 +112,6 @@ contract HeadsUpPokerEIP712 is EIP712 {
                 DECRYPTED_CARD_TYPEHASH,
                 dr.channelId,
                 dr.handId,
-                dr.player,
                 dr.index,
                 keccak256(dr.decryptedCard)
             )
