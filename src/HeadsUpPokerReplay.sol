@@ -2,8 +2,9 @@
 pragma solidity 0.8.24;
 
 import {Action} from "./HeadsUpPokerActions.sol";
+import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
 
-contract HeadsUpPokerReplay {
+contract HeadsUpPokerReplay is HeadsUpPokerEIP712 {
     enum End {
         FOLD,
         SHOWDOWN,
@@ -17,11 +18,6 @@ contract HeadsUpPokerReplay {
     uint8 private constant ACT_BET_RAISE = 4;
 
     uint8 private constant MAX_RAISES_PER_STREET = 4;
-
-    bytes32 private constant ACTION_TYPEHASH =
-        keccak256(
-            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash,address sender)"
-        );
 
     // ------------------------------------------------------------------
     // Errors
@@ -115,7 +111,7 @@ contract HeadsUpPokerReplay {
         if (sb.seq != 0) revert SmallBlindSequenceInvalid();
 
         if (bb.seq != 1) revert BigBlindSequenceInvalid();
-        if (bb.prevHash != _hashAction(sb)) revert BigBlindPrevHashInvalid();
+        if (bb.prevHash != hashAction(sb)) revert BigBlindPrevHashInvalid();
         if (bb.action != ACT_BIG_BLIND) revert BigBlindActionInvalid();
 
         if (bb.amount != sb.amount * 2) revert BigBlindAmountInvalid();
@@ -178,7 +174,7 @@ contract HeadsUpPokerReplay {
         Action calldata prev
     ) internal pure returns (Game memory, ReplayResult memory) {
         if (act.seq <= prev.seq) revert SequenceInvalid();
-        if (act.prevHash != _hashAction(prev)) revert PrevHashInvalid();
+        if (act.prevHash != hashAction(prev)) revert PrevHashInvalid();
         if (act.action <= ACT_BIG_BLIND) revert BlindOnlyStart();
 
         uint256 p = g.actor;
@@ -494,23 +490,5 @@ contract HeadsUpPokerReplay {
         if (res.end == End.NO_BLINDS) revert NoBlinds();
 
         return (res.ended, res.end, g.street);
-    }
-
-    // NOTE: this is a copy of hashing of the Action from HeadsUpPokerEIP712.digestAction.
-    //       We do not reuse it since it's too small to inherit from the EIP712 contract to access it.
-    function _hashAction(Action calldata act) private pure returns (bytes32) {
-        return
-            keccak256(
-                abi.encode(
-                    ACTION_TYPEHASH,
-                    act.channelId,
-                    act.handId,
-                    act.seq,
-                    act.action,
-                    act.amount,
-                    act.prevHash,
-                    act.sender
-                )
-            );
     }
 }

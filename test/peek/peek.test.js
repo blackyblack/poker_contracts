@@ -109,6 +109,25 @@ describe("Peek - Request Validation", function () {
         expect(state.obligatedHelper).to.equal(player2.address);
     });
 
+    it("reverts hole A request with mismatched signatures", async () => {
+        const specs = [
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address }
+        ];
+        const { actions, signatures } = await buildSequence(specs);
+        const badSignatures = signatures.slice();
+        badSignatures[0] = badSignatures[1];
+
+        await expect(
+            escrow
+                .connect(player1)
+                .requestHoleA(channelId, actions, badSignatures)
+        ).to.be.revertedWithCustomError(
+            escrow,
+            "ActionWrongSigner"
+        );
+    });
+
     it("requires requester partial decrypts for flop peek", async () => {
         const specs = [
             { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },

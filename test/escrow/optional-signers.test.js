@@ -127,7 +127,7 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
 
             // Join without optional signer for player2
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, "0x", { value: 10n });
-            
+
             // Start the game
             await startGameWithDeck(escrow, channelId, player1, player2);
         });

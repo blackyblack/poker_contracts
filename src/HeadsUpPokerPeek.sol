@@ -7,10 +7,12 @@ import {Action} from "./HeadsUpPokerActions.sol";
 import {Bn254} from "./Bn254.sol";
 import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
 import {HeadsUpPokerReplay} from "./HeadsUpPokerReplay.sol";
+import {HeadsUpPokerActionVerifier} from "./HeadsUpPokerActionVerifier.sol";
 import "./HeadsUpPokerErrors.sol";
 
 contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     using ECDSA for bytes32;
+    using HeadsUpPokerActionVerifier for Action[];
 
     enum PeekStage {
         NONE,
@@ -76,7 +78,10 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         _;
     }
 
-    constructor(address escrowAddress, HeadsUpPokerReplay replayAddress) {
+    constructor(
+        address escrowAddress,
+        HeadsUpPokerReplay replayAddress
+    ) {
         if (escrowAddress == address(0)) revert NotEscrow();
         escrow = escrowAddress;
         replay = replayAddress;
