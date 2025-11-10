@@ -19,7 +19,12 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         bool inProgress;
         bool player1Revealed;
         bool player2Revealed;
+        // Canonical card codes resolved from plaintext (rank | suit) once
+        // `finalizeReveals` verifies the submitted deck opens. The indices map
+        // to SLOT_* constants inherited from HeadsUpPokerEIP712.
         uint8[9] cards;
+        // Amount currently locked in the showdown pot that should be awarded to
+        // the winner when the reveal flow concludes.
         uint256 calledAmount;
     }
 
@@ -64,6 +69,7 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         ShowdownState storage sd = showdowns[channelId];
         if (sd.inProgress) revert ShowdownInProgress();
 
+        // Start a fresh reveal window and clear any leftover per-card data.
         sd.deadline = block.timestamp + revealWindow;
         sd.inProgress = true;
         sd.player1Revealed = false;
@@ -191,9 +197,11 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         winner = ch.player1;
         wonAmount = 0;
 
-        // TODO: if both revealed, stop showdown timer
-
-        if (aRevealed && !bRevealed) {
+        // Both players revealed the full deck – resolve the actual hand winner
+        // using the verified plaintext cards stored during `finalizeReveals`.
+        if (aRevealed && bRevealed) {
+            (winner, wonAmount) = _calculateShowdownWinner(channelId, ch);
+        } else if (aRevealed && !bRevealed) {
             wonAmount = sd.calledAmount;
         } else if (!aRevealed && bRevealed) {
             winner = ch.player2;
