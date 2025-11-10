@@ -216,11 +216,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return address(peek);
     }
 
-    function getActionVerifierAddress() external pure returns (address) {
-        // Libraries don't have addresses, return zero address
-        return address(0);
-    }
-
     /// @notice Get the address of the Showdown contract
     function getShowdownAddress() external view returns (address) {
         return address(showdown);
