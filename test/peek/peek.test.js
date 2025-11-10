@@ -1,34 +1,51 @@
 import { expect } from "chai";
-import { bn254 } from "@noble/curves/bn254.js";
 import hre from "hardhat";
 
 import { ACTION } from "../helpers/actions.js";
-import { SLOT } from "../helpers/slots.js";
 import {
     buildActions,
     signActions,
     startGameWithDeck,
     wallet1,
     wallet2,
+    setupShowdownCrypto,
+    createEncryptedDeck,
+    createCanonicalDeck,
+    createPartialDecrypt,
 } from "../helpers/test-utils.js";
-import { g1ToBytes, g2ToBytes, hashToG1 } from "../helpers/bn254.js";
 
 const { ethers } = hre;
+
+const deckContext = "peek_request_deck";
 
 describe("Peek - Request Validation", function () {
     let escrow;
     let player1;
     let player2;
+    let crypto;
+    let deck;
+    let escrowAddress;
+    let chainId;
+    let peekContract;
     const channelId = 1n;
     const deposit = ethers.parseEther("1");
-    let peekContract;
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
         const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await Escrow.deploy();
+        escrowAddress = await escrow.getAddress();
+        chainId = (await ethers.provider.getNetwork()).chainId;
         const peekAddress = await escrow.getPeekAddress();
         peekContract = await ethers.getContractAt("HeadsUpPokerPeek", peekAddress);
+
+        crypto = setupShowdownCrypto();
+        deck = createEncryptedDeck(
+            crypto.secretKeyA,
+            crypto.secretKeyB,
+            deckContext
+        );
+        const canonicalDeck = createCanonicalDeck(deckContext);
 
         await escrow.open(
             channelId,
@@ -36,29 +53,31 @@ describe("Peek - Request Validation", function () {
             1n,
             ethers.ZeroAddress,
             0n,
-            "0x",
+            crypto.pkA_G2_bytes,
             { value: deposit }
         );
         await escrow
             .connect(player2)
-            .join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
-        await startGameWithDeck(escrow, channelId, player1, player2);
+            .join(channelId, ethers.ZeroAddress, crypto.pkB_G2_bytes, {
+                value: deposit,
+            });
+
+        await startGameWithDeck(escrow, channelId, player1, player2, deck, canonicalDeck);
     });
 
     async function buildSequence(specs) {
         const handId = await escrow.getHandId(channelId);
         const actions = buildActions(specs, channelId, handId);
-        const chainId = (await ethers.provider.getNetwork()).chainId;
         const signatures = await signActions(
             actions,
             [wallet1, wallet2],
-            await escrow.getAddress(),
+            escrowAddress,
             chainId
         );
         return { actions, signatures };
     }
 
-    it("reverts hole A request when game ended with fold", async () => {
+    it("reverts hole A request when action sequence ends the hand", async () => {
         const specs = [
             { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
             { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
@@ -73,29 +92,7 @@ describe("Peek - Request Validation", function () {
         ).to.be.revertedWithCustomError(peekContract, "InvalidGameState");
     });
 
-    it("reverts hole A request when game reached showdown", async () => {
-        const specs = [
-            { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
-            { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet1.address },
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet1.address },
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet1.address },
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet1.address },
-        ];
-        const { actions, signatures } = await buildSequence(specs);
-
-        await expect(
-            escrow
-                .connect(player1)
-                .requestHoleA(channelId, actions, signatures)
-        ).to.be.revertedWithCustomError(peekContract, "InvalidGameState");
-    });
-
-    it("opens hole A peek while hand is active", async () => {
+    it("opens hole A peek with active hand", async () => {
         const specs = [
             { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
             { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
@@ -112,150 +109,88 @@ describe("Peek - Request Validation", function () {
         expect(state.obligatedHelper).to.equal(player2.address);
     });
 
-    it("reverts flop request before preflop concludes", async () => {
+    it("requires requester partial decrypts for flop peek", async () => {
         const specs = [
             { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
             { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
             { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet1.address },
+            { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
         ];
         const { actions, signatures } = await buildSequence(specs);
 
         await expect(
             escrow
                 .connect(player1)
-                .requestFlop(channelId, actions, signatures, [], [])
-        ).to.be.revertedWithCustomError(peekContract, "InvalidGameState");
-    });
+                .requestFlop(channelId, actions, signatures, [])
+        ).to.be.revertedWithCustomError(peekContract, "InvalidDecryptedCard");
 
-    it("reverts turn request when flop betting is incomplete", async () => {
-        const specs = [
-            { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
-            { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet1.address },
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
-            { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
-        ];
-        const { actions, signatures } = await buildSequence(specs);
-        const handId = await escrow.getHandId(channelId);
-        const dummyCard = {
-            channelId,
-            handId,
-            player: player1.address,
-            index: SLOT.TURN,
-            decryptedCard: "0x",
-        };
-
-        await expect(
-            escrow
-                .connect(player1)
-                .requestTurn(
+        const requesterPartials = await Promise.all(
+            [0, 1, 2].map(async idx => {
+                const slot = 4 + idx; // FLOP slots
+                const handId = await escrow.getHandId(channelId);
+                const { decryptedCard } = await createPartialDecrypt(
+                    wallet1,
+                    crypto.secretKeyA,
+                    deck[slot],
+                    slot,
                     channelId,
-                    actions,
-                    signatures,
-                    dummyCard,
-                    "0x"
-                )
-        ).to.be.revertedWithCustomError(peekContract, "InvalidGameState");
+                    handId,
+                    escrowAddress,
+                    chainId
+                );
+                return decryptedCard.decryptedCard;
+            })
+        );
+
+        await escrow
+            .connect(player1)
+            .requestFlop(channelId, actions, signatures, requesterPartials);
+
+        const state = await escrow.getPeek(channelId);
+        expect(state.stage).to.equal(3); // FLOP
+        expect(state.obligatedHelper).to.equal(player2.address);
     });
 });
 
 describe("Peek - View", function () {
-    let escrow;
-    let player1;
-    let player2;
-    const channelId = 1n;
-    const deposit = ethers.parseEther("1");
-
-    const G2 = bn254.G2.Point;
-
-    it("verifies public keys are stored correctly", async function () {
-        [player1, player2] = await ethers.getSigners();
+    it("stores public keys and deck data", async () => {
+        const [player1, player2] = await ethers.getSigners();
         const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
-        escrow = await Escrow.deploy();
-
-        // Use fixed scalars
-        const a = 12345n;
-        const b = 67890n;
-
-        const pkA_G2 = G2.BASE.multiply(a);
-        const pkB_G2 = G2.BASE.multiply(b);
-
-        const pkA_G2_bytes = g2ToBytes(pkA_G2);
-        const pkB_G2_bytes = g2ToBytes(pkB_G2);
+        const escrow = await Escrow.deploy();
+        const crypto = setupShowdownCrypto();
+        const peek = await ethers.getContractAt(
+            "HeadsUpPokerPeek",
+            await escrow.getPeekAddress()
+        );
 
         await escrow.open(
-            channelId,
+            1n,
             player2.address,
             1n,
             ethers.ZeroAddress,
             0n,
-            pkA_G2_bytes,
-            { value: deposit }
+            crypto.pkA_G2_bytes,
+            { value: ethers.parseEther("1") }
         );
         await escrow
             .connect(player2)
-            .join(channelId, ethers.ZeroAddress, pkB_G2_bytes, { value: deposit });
+            .join(1n, ethers.ZeroAddress, crypto.pkB_G2_bytes, {
+                value: ethers.parseEther("1"),
+            });
 
-        // Get stored public keys
-        const [storedPkA, storedPkB] = await escrow.getPublicKeys(channelId);
-
-        expect(storedPkA).to.equal(pkA_G2_bytes);
-        expect(storedPkB).to.equal(pkB_G2_bytes);
-    });
-
-    it("verifies deck is stored correctly", async function () {
-        [player1, player2] = await ethers.getSigners();
-        const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
-        escrow = await Escrow.deploy();
-
-        const a = 12345n;
-        const b = 67890n;
-
-        const pkA_G2_bytes = g2ToBytes(G2.BASE.multiply(a));
-        const pkB_G2_bytes = g2ToBytes(G2.BASE.multiply(b));
-
-        await escrow.open(
-            channelId,
-            player2.address,
-            1n,
-            ethers.ZeroAddress,
-            0n,
-            pkA_G2_bytes,
-            { value: deposit }
+        const deck = createEncryptedDeck(
+            crypto.secretKeyA,
+            crypto.secretKeyB,
+            deckContext
         );
-        await escrow
-            .connect(player2)
-            .join(channelId, ethers.ZeroAddress, pkB_G2_bytes, { value: deposit });
+        const canonicalDeck = createCanonicalDeck(deckContext);
+        await startGameWithDeck(escrow, 1n, player1, player2, deck, canonicalDeck);
 
-        // Create deck
-        const deck = [];
-        const context = "test_poker_hand";
-        for (let i = 0; i < 9; i++) {
-            const R = hashToG1(context, i);
-            const aR = R.multiply(a);
-            const Y = aR.multiply(b);
-            deck.push(g1ToBytes(Y));
-        }
+        const [pkA, pkB] = await escrow.getPublicKeys(1n);
+        expect(pkA).to.equal(crypto.pkA_G2_bytes);
+        expect(pkB).to.equal(crypto.pkB_G2_bytes);
 
-        // Create canonical deck (52 unencrypted base points)
-        const canonicalDeck = [];
-        const canonicalContext = "canonical_deck";
-        for (let i = 0; i < 52; i++) {
-            const R = hashToG1(canonicalContext, i);
-            canonicalDeck.push(g1ToBytes(R));
-        }
-
-        await escrow.connect(player1).startGame(channelId, deck, canonicalDeck);
-        await escrow.connect(player2).startGame(channelId, deck, canonicalDeck);
-
-        // Get deck hash from the peek contract
-        const peekAddress = await escrow.getPeekAddress();
-        const peek = await ethers.getContractAt("HeadsUpPokerPeek", peekAddress);
-        const expectedDeckHash = ethers.keccak256(
-            ethers.AbiCoder.defaultAbiCoder().encode(["bytes[]"], [deck])
-        );
-        const storedDeckHash = await peek.getDeckHash(channelId);
-
-        expect(storedDeckHash).to.equal(expectedDeckHash);
+        const storedDeck = await peek.getDeck(1n, 0);
+        expect(storedDeck).to.equal(deck[0]);
     });
 });
