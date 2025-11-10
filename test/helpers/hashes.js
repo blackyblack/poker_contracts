@@ -12,11 +12,6 @@ export const ACTION_TYPEHASH = ethers.keccak256(
         "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash,address sender)"
     )
 );
-export const CARD_COMMIT_TYPEHASH = ethers.keccak256(
-    ethers.toUtf8Bytes(
-        "CardCommit(uint256 channelId,uint256 handId,uint8 slot,bytes32 commitHash,bytes32 prevHash)"
-    )
-);
 
 export const GENESIS = ethers.keccak256(
     ethers.solidityPacked(["string", "uint256"], ["HUP_GENESIS", 1n]));
@@ -37,40 +32,6 @@ export function domainSeparator(contract, chainId) {
             [DOMAIN_TYPEHASH, NAME_HASH, VERSION_HASH, chainId, contract]
         )
     );
-}
-
-export function commitHash(dom, channelId, slot, card, salt) {
-    return ethers.keccak256(
-        ethers.solidityPacked(
-            ["bytes32", "uint256", "uint8", "uint8", "bytes32"],
-            [dom, channelId, slot, card, salt]
-        )
-    );
-}
-
-export function cardCommitDigest(dom, cc) {
-    const abi = ethers.AbiCoder.defaultAbiCoder();
-    const structHash = ethers.keccak256(
-        abi.encode(
-            [
-                "bytes32",
-                "uint256",
-                "uint256",
-                "uint8",
-                "bytes32",
-                "bytes32",
-            ],
-            [
-                CARD_COMMIT_TYPEHASH,
-                cc.channelId,
-                cc.handId,
-                cc.slot,
-                cc.commitHash,
-                cc.prevHash,
-            ]
-        )
-    );
-    return ethers.keccak256(ethers.concat(["0x1901", dom, structHash]));
 }
 
 export function actionHash(action) {

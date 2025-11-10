@@ -11,6 +11,13 @@ function makeCard(suit, rank) {
     return (suit << 4) | rank;
 }
 
+// Helper function to get card index (0-51) from card encoding
+export function cardToIndex(card) {
+    const rank = card & 0x0f;
+    const suit = (card >> 4) & 0x0f;
+    return (rank - 1) * 4 + suit;
+}
+
 export const CARD = {
     // Clubs (suit = 0)
     ACE_CLUBS: makeCard(0, 1),

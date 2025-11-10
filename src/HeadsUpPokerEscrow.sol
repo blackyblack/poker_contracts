@@ -6,8 +6,8 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
 import {HeadsUpPokerPeek} from "./HeadsUpPokerPeek.sol";
-import {PokerEvaluator} from "./PokerEvaluator.sol";
 import {HeadsUpPokerReplay} from "./HeadsUpPokerReplay.sol";
+import {HeadsUpPokerShowdown} from "./HeadsUpPokerShowdown.sol";
 import {Action} from "./HeadsUpPokerActions.sol";
 import "./HeadsUpPokerErrors.sol";
 
@@ -20,9 +20,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     // ------------------------------------------------------------------
     // Slot layout constants
     // ------------------------------------------------------------------
-    uint16 constant MASK_ALL = 0x01FF; // bits 0..8
-
-    uint256 public constant revealWindow = 1 hours;
     uint256 public constant disputeWindow = 1 hours;
     // ------------------------------------------------------------------
     // Dispute state
@@ -37,19 +34,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     mapping(uint256 => DisputeState) private disputes;
-
-    // ------------------------------------------------------------------
-    // Showdown state
-    // ------------------------------------------------------------------
-    struct ShowdownState {
-        uint256 deadline;
-        bool inProgress;
-        uint8[9] cards;
-        uint16 lockedCommitMask;
-        uint256 calledAmount;
-    }
-
-    mapping(uint256 => ShowdownState) private showdowns;
 
     struct Channel {
         address player1;
@@ -73,10 +57,12 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     mapping(uint256 => Channel) private channels;
 
     HeadsUpPokerPeek private immutable peek;
+    HeadsUpPokerShowdown private immutable showdown;
 
     constructor() {
         replay = new HeadsUpPokerReplay();
         peek = new HeadsUpPokerPeek(address(this), replay);
+        showdown = new HeadsUpPokerShowdown(address(this), peek);
     }
 
     // ---------------------------------------------------------------------
@@ -106,7 +92,11 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address indexed winner,
         uint256 amount
     );
-    event CommitsUpdated(uint256 indexed channelId, uint16 newMask);
+    event RevealsUpdated(
+        uint256 indexed channelId,
+        bool player1Revealed,
+        bool player2Revealed
+    );
     event Withdrawn(
         uint256 indexed channelId,
         address indexed player,
@@ -221,9 +211,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return peek.getPeek(channelId);
     }
 
-    /// @notice Get the address of the peek contract
+    /// @notice Get the address of the Peek contract
     function getPeekAddress() external view returns (address) {
         return address(peek);
+    }
+
+    /// @notice Get the address of the Showdown contract
+    function getShowdownAddress() external view returns (address) {
+        return address(showdown);
     }
 
     /// @notice Get public keys for a channel
@@ -277,12 +272,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         peek.resetChannel(channelId);
 
         // Reset showdown state when reusing channel
-        ShowdownState storage sd = showdowns[channelId];
-        if (sd.inProgress) {
-            sd.inProgress = false;
-            sd.deadline = 0;
-            sd.lockedCommitMask = 0;
-        }
+        showdown.resetChannel(channelId);
 
         // Reset dispute state when reusing channel
         DisputeState storage ds = disputes[channelId];
@@ -385,8 +375,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     ) internal view returns (HeadsUpPokerPeek.ChannelData memory data) {
         data.player1 = ch.player1;
         data.player2 = ch.player2;
-        data.player1Signer = ch.player1Signer;
-        data.player2Signer = ch.player2Signer;
         data.finalized = ch.finalized;
         data.gameStarted = ch.gameStarted;
         data.handId = ch.handId;
@@ -394,6 +382,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         data.deposit2 = ch.deposit2;
         data.slashAmount = ch.slashAmount;
         data.minSmallBlind = ch.minSmallBlind;
+    }
+
+    function _showdownData(
+        Channel storage ch
+    ) internal view returns (HeadsUpPokerShowdown.ChannelData memory data) {
+        data.player1 = ch.player1;
+        data.player2 = ch.player2;
+        data.finalized = ch.finalized;
+        data.handId = ch.handId;
     }
 
     /// @notice Allows player1 to top up their deposit after player2 has joined
@@ -424,9 +421,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bytes[] calldata signatures
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        ShowdownState storage sd = showdowns[channelId];
-
-        if (sd.inProgress) revert ShowdownInProgress();
+        if (showdown.isInProgress(channelId)) revert ShowdownInProgress();
         if (ch.player1 == address(0)) revert NoChannel();
         if (actions.length == 0) revert NoActionsProvided();
         if (ch.finalized) revert AlreadyFinalized();
@@ -457,8 +452,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             );
 
         if (endType != HeadsUpPokerReplay.End.FOLD) {
-            // Initiate showdown state - players must reveal cards to determine winner
-            _initiateShowdown(channelId, calledAmount);
+            showdown.initiateShowdown(channelId, calledAmount);
+            emit ShowdownStarted(channelId);
             return; // Exit early - settlement will happen after card reveals
         }
 
@@ -491,10 +486,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bytes[] calldata signatures
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        ShowdownState storage sd = showdowns[channelId];
         DisputeState storage ds = disputes[channelId];
 
-        if (sd.inProgress) revert ShowdownInProgress();
+        if (showdown.isInProgress(channelId)) revert ShowdownInProgress();
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
         if (!ch.gameStarted) revert GameNotStarted();
@@ -566,8 +560,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
 
         if (ds.endType != HeadsUpPokerReplay.End.FOLD) {
-            // Initiate showdown state - players must reveal cards to determine winner
-            _initiateShowdown(channelId, ds.calledAmount);
+            showdown.initiateShowdown(channelId, ds.calledAmount);
+            emit ShowdownStarted(channelId);
             return;
         }
 
@@ -594,25 +588,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     // ------------------------------------------------------------------
     // Internal helpers
     // ------------------------------------------------------------------
-
-    // Reduce stack pressure: move signer checks into a small helper.
-    function _checkSigners(
-        uint256 channelId,
-        uint8 slot,
-        bytes32 digest,
-        bytes calldata sigA,
-        bytes calldata sigB,
-        address playerA,
-        address playerB
-    ) private view {
-        address actualSignerA = digest.recover(sigA);
-        address actualSignerB = digest.recover(sigB);
-
-        if (!_isAuthorizedSigner(channelId, playerA, actualSignerA))
-            revert CommitWrongSignerA(slot);
-        if (!_isAuthorizedSigner(channelId, playerB, actualSignerB))
-            revert CommitWrongSignerB(slot);
-    }
 
     /// @notice Check if signer is authorized to sign for a player
     /// @param channelId The channel identifier
@@ -688,138 +663,15 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
     }
 
-    // helper function to reduce stack pressure
-    function _validateCardCommitLengths(
-        uint256 commitCount,
-        uint256 sigCount,
-        uint256 cardCount,
-        uint256 saltCount
-    ) private pure {
-        if (commitCount * 2 != sigCount) revert SignatureLengthMismatch();
-        if (commitCount != cardCount) revert CardsLengthMismatch();
-        if (commitCount != saltCount) revert CardSaltsLengthMismatch();
-    }
-
-    // Applies a batch of card commits/openings.
-    /// @param signatures Array of signatures of cards (signed by player1 and player2)
-    function _applyCardCommit(
-        uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
-        bytes[] calldata signatures,
-        uint8[] calldata cards,
-        bytes32[] calldata cardSalts
-    ) internal {
-        Channel storage ch = channels[channelId];
-        ShowdownState storage sd = showdowns[channelId];
-
-        _validateCardCommitLengths(
-            cardCommits.length,
-            signatures.length,
-            cards.length,
-            cardSalts.length
-        );
-
-        uint16 mask = sd.lockedCommitMask;
-        uint16 seenMask;
-
-        for (uint256 i = 0; i < cardCommits.length; i++) {
-            HeadsUpPokerEIP712.CardCommit calldata cc = cardCommits[i];
-            uint8 slot = cc.slot;
-            uint16 bit = uint16(1) << slot;
-
-            if ((MASK_ALL & bit) == 0) revert CommitUnexpected(slot);
-            if ((seenMask & bit) == bit) revert CommitDuplicate(slot);
-            seenMask |= bit;
-
-            if (cards[i] == 0xFF) continue;
-
-            if (mask & bit == bit) continue; // already locked, skip
-
-            if (cc.channelId != channelId) revert CommitWrongChannel(slot);
-
-            _checkSigners(
-                channelId,
-                slot,
-                digestCardCommit(cc),
-                signatures[i * 2],
-                signatures[i * 2 + 1],
-                ch.player1,
-                ch.player2
-            );
-
-            if (
-                keccak256(
-                    abi.encodePacked(
-                        _domainSeparatorV4(),
-                        channelId,
-                        slot,
-                        cards[i],
-                        cardSalts[i]
-                    )
-                ) != cc.commitHash
-            ) revert HashMismatch();
-
-            sd.cards[slot] = cards[i];
-            mask |= bit;
-        }
-        sd.lockedCommitMask = mask;
-
-        // finalize automatically if all cards revealed and commits present
-        if (mask == MASK_ALL) {
-            _rewardShowdown(channelId);
-        }
-    }
-
-    function _rewardShowdown(uint256 channelId) internal {
-        Channel storage ch = channels[channelId];
-        ShowdownState storage sd = showdowns[channelId];
-
-        // not necessary but saves some gas
-        if (ch.finalized) return;
-
-        uint8[7] memory player1Cards;
-        uint8[7] memory player2Cards;
-
-        player1Cards[0] = sd.cards[SLOT_A1];
-        player1Cards[1] = sd.cards[SLOT_A2];
-        player2Cards[0] = sd.cards[SLOT_B1];
-        player2Cards[1] = sd.cards[SLOT_B2];
-
-        for (uint256 i = 0; i < 5; i++) {
-            uint8 card = sd.cards[uint8(SLOT_FLOP1 + i)];
-            player1Cards[i + 2] = card;
-            player2Cards[i + 2] = card;
-        }
-
-        uint256 player1Rank = PokerEvaluator.evaluateHand(player1Cards);
-        uint256 player2Rank = PokerEvaluator.evaluateHand(player2Cards);
-
-        address winner;
-        uint256 wonAmount = sd.calledAmount;
-        if (player1Rank > player2Rank) {
-            winner = ch.player1;
-        } else if (player2Rank > player1Rank) {
-            winner = ch.player2;
-        } else {
-            // no reward on tie
-            winner = ch.player1;
-            wonAmount = 0;
-        }
-
-        _rewardWinner(channelId, winner, wonAmount);
-    }
-
     function _rewardWinner(
         uint256 channelId,
         address winner,
         uint256 wonAmount
     ) internal {
         Channel storage ch = channels[channelId];
-        ShowdownState storage sd = showdowns[channelId];
 
         if (ch.finalized) return;
         ch.finalized = true;
-        sd.inProgress = false;
 
         if (winner == ch.player1) {
             ch.deposit1 += wonAmount;
@@ -834,8 +686,12 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function getShowdown(
         uint256 channelId
-    ) external view returns (ShowdownState memory) {
-        return showdowns[channelId];
+    )
+        external
+        view
+        returns (HeadsUpPokerShowdown.ShowdownState memory)
+    {
+        return showdown.getShowdown(channelId);
     }
 
     function getDispute(
@@ -844,69 +700,51 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return disputes[channelId];
     }
 
-    /// @notice Initiates showdown state
-    /// @dev Sets up showdown state without requiring initial card commits
-    /// @param channelId The channel identifier
-    function _initiateShowdown(
-        uint256 channelId,
-        uint256 calledAmount
-    ) internal {
-        ShowdownState storage sd = showdowns[channelId];
-
-        // Set up showdown state without requiring initial commits
-        sd.deadline = block.timestamp + revealWindow;
-        sd.inProgress = true;
-        sd.lockedCommitMask = 0;
-        sd.calledAmount = calledAmount;
-
-        // Initialize all cards as unrevealed
-        for (uint8 i = 0; i < 9; i++) {
-            sd.cards[i] = 0xFF;
-        }
-
-        emit ShowdownStarted(channelId);
-    }
-
-    /// @notice Reveal additional cards and/or commits during reveal window
     function revealCards(
         uint256 channelId,
-        HeadsUpPokerEIP712.CardCommit[] calldata cardCommits,
-        bytes[] calldata signatures,
-        uint8[] calldata cards,
-        bytes32[] calldata cardSalts
+        bytes[] calldata decryptedCards
     ) external nonReentrant {
-        ShowdownState storage sd = showdowns[channelId];
-        if (!sd.inProgress) revert NoShowdownInProgress();
+        Channel storage ch = channels[channelId];
+        if (ch.player1 == address(0)) revert NoChannel();
+        if (ch.finalized) revert AlreadyFinalized();
 
-        if (block.timestamp > sd.deadline) revert Expired();
+        (bool player1Ready, bool player2Ready) = showdown.revealCards(
+            channelId,
+            _showdownData(ch),
+            decryptedCards,
+            msg.sender
+        );
 
-        _applyCardCommit(channelId, cardCommits, signatures, cards, cardSalts);
-        emit CommitsUpdated(channelId, sd.lockedCommitMask);
+        emit RevealsUpdated(channelId, player1Ready, player2Ready);
     }
 
-    /// @notice Finalize showdown after reveal window has passed
+    function finalizeReveals(
+        uint256 channelId,
+        bytes[] calldata plaintextCards
+    ) external nonReentrant {
+        Channel storage ch = channels[channelId];
+        if (ch.player1 == address(0)) revert NoChannel();
+        if (ch.finalized) revert AlreadyFinalized();
+
+        (address winner, uint256 wonAmount) = showdown.finalizeReveals(
+            channelId,
+            _showdownData(ch),
+            plaintextCards,
+            msg.sender
+        );
+
+        _rewardWinner(channelId, winner, wonAmount);
+    }
+
     function finalizeShowdown(uint256 channelId) external nonReentrant {
         Channel storage ch = channels[channelId];
-        ShowdownState storage sd = showdowns[channelId];
-
-        // not necessary but saves some gas
+        if (ch.player1 == address(0)) revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
-        if (!sd.inProgress) revert NoShowdownInProgress();
-        if (block.timestamp <= sd.deadline) revert StillRevealing();
 
-        bool aRevealed = sd.cards[SLOT_A1] != 0xFF && sd.cards[SLOT_A2] != 0xFF;
-        bool bRevealed = sd.cards[SLOT_B1] != 0xFF && sd.cards[SLOT_B2] != 0xFF;
-
-        // default case: neither player revealed any cards or both revealed without full board
-        address winner = ch.player1;
-        uint256 wonAmount = 0;
-
-        if (aRevealed && !bRevealed) {
-            wonAmount = sd.calledAmount;
-        } else if (!aRevealed && bRevealed) {
-            winner = ch.player2;
-            wonAmount = sd.calledAmount;
-        }
+        (address winner, uint256 wonAmount) = showdown.finalizeShowdown(
+            channelId,
+            _showdownData(ch)
+        );
 
         _rewardWinner(channelId, winner, wonAmount);
     }
@@ -943,16 +781,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function answerHoleA(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes[] calldata decryptedCards
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         peek.answerHoleA(
             channelId,
             _channelData(ch),
             msg.sender,
-            decryptedCards,
-            signatures
+            decryptedCards
         );
         emit PeekServed(
             channelId,
@@ -988,16 +824,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function answerHoleB(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes[] calldata decryptedCards
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         peek.answerHoleB(
             channelId,
             _channelData(ch),
             msg.sender,
-            decryptedCards,
-            signatures
+            decryptedCards
         );
         emit PeekServed(
             channelId,
@@ -1009,8 +843,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         Action[] calldata actions,
         bytes[] calldata actionSignatures,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata requesterDecryptedCards,
-        bytes[] calldata requesterSignatures
+        bytes[] calldata requesterDecryptedCards
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         _verifyActionSignatures(
@@ -1026,8 +859,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             _channelData(ch),
             msg.sender,
             actions,
-            requesterDecryptedCards,
-            requesterSignatures
+            requesterDecryptedCards
         );
         emit PeekOpened(
             channelId,
@@ -1037,16 +869,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function answerFlop(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard[] calldata decryptedCards,
-        bytes[] calldata signatures
+        bytes[] calldata decryptedCards
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         peek.answerFlop(
             channelId,
             _channelData(ch),
             msg.sender,
-            decryptedCards,
-            signatures
+            decryptedCards
         );
         emit PeekServed(
             channelId,
@@ -1058,8 +888,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         Action[] calldata actions,
         bytes[] calldata actionSignatures,
-        HeadsUpPokerEIP712.DecryptedCard calldata requesterDecryptedCard,
-        bytes calldata requesterSignature
+        bytes calldata requesterDecryptedCard
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         _verifyActionSignatures(
@@ -1075,8 +904,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             _channelData(ch),
             msg.sender,
             actions,
-            requesterDecryptedCard,
-            requesterSignature
+            requesterDecryptedCard
         );
         emit PeekOpened(
             channelId,
@@ -1086,16 +914,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function answerTurn(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
-        bytes calldata signature
+        bytes calldata decryptedCard
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         peek.answerTurn(
             channelId,
             _channelData(ch),
             msg.sender,
-            decryptedCard,
-            signature
+            decryptedCard
         );
         emit PeekServed(
             channelId,
@@ -1107,8 +933,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         Action[] calldata actions,
         bytes[] calldata actionSignatures,
-        HeadsUpPokerEIP712.DecryptedCard calldata requesterDecryptedCard,
-        bytes calldata requesterSignature
+        bytes calldata requesterDecryptedCard
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         _verifyActionSignatures(
@@ -1124,8 +949,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             _channelData(ch),
             msg.sender,
             actions,
-            requesterDecryptedCard,
-            requesterSignature
+            requesterDecryptedCard
         );
         emit PeekOpened(
             channelId,
@@ -1135,16 +959,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     function answerRiver(
         uint256 channelId,
-        HeadsUpPokerEIP712.DecryptedCard calldata decryptedCard,
-        bytes calldata signature
+        bytes calldata decryptedCard
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
         peek.answerRiver(
             channelId,
             _channelData(ch),
             msg.sender,
-            decryptedCard,
-            signature
+            decryptedCard
         );
         emit PeekServed(
             channelId,

@@ -1,5 +1,5 @@
 import hre from "hardhat";
-import { actionHash, actionDigest, handGenesis, domainSeparator, commitHash, cardCommitDigest } from "./hashes.js";
+import { actionHash, actionDigest, handGenesis, domainSeparator } from "./hashes.js";
 import { ACTION } from "./actions.js";
 
 const { ethers } = hre;
@@ -75,42 +75,6 @@ export async function signActions(actions, signers, contractAddress, chainId) {
         signatures.push(sig);
     }
     return signatures;
-}
-
-// Helper to sign a commit for a card
-// @param a - First wallet signer
-// @param b - Second wallet signer
-// @param dom - Domain separator
-// @param cc - Card commit object
-// @returns Array of two signatures [sigA, sigB]
-export async function signCardCommit(a, b, dom, cc) {
-    const digest = cardCommitDigest(dom, cc);
-    const sigA = a.signingKey.sign(digest).serialized;
-    const sigB = b.signingKey.sign(digest).serialized;
-    return [sigA, sigB];
-}
-
-// Helper to build a card commit with signatures
-// @param a - First wallet signer
-// @param b - Second wallet signer
-// @param dom - Domain separator
-// @param channelId - Channel ID
-// @param slot - Card slot
-// @param card - Card value
-// @param handId - Hand ID (default: 1n)
-// @returns Commit object with signatures and metadata
-export async function buildCardCommit(a, b, dom, channelId, slot, card, handId = 1n) {
-    const salt = ethers.hexlify(ethers.randomBytes(32));
-    const cHash = commitHash(dom, channelId, slot, card, salt);
-    const cc = {
-        channelId,
-        handId,
-        slot,
-        commitHash: cHash,
-        prevHash: handGenesis(channelId, handId),
-    };
-    const [sigA, sigB] = await signCardCommit(a, b, dom, cc);
-    return { cc, sigA, sigB, salt, card, slot };
 }
 
 // Helper to create a mock deck (9 cards, each 64 bytes) - we only use up to RIVER
@@ -207,4 +171,106 @@ export async function settleBasicFold(escrow, channelId, winner, wallet1, wallet
 
     const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
     return escrow.settle(channelId, actions, signatures);
+}
+
+// ------------------------------------------------------------------
+// Cryptographic helpers for showdown with DecryptedCard
+// ------------------------------------------------------------------
+
+import { bn254 } from "@noble/curves/bn254.js";
+import { hashToG1, g1ToBytes, g2ToBytes } from "./bn254.js";
+
+const Fr = bn254.fields.Fr;
+const G2 = bn254.G2.Point;
+
+/// @notice Setup crypto keys for testing showdown
+/// @returns Object with secret keys and public keys for both players
+export function setupShowdownCrypto() {
+    const secretKeyA = 12345n;
+    const secretKeyB = 67890n;
+    const publicKeyA = G2.BASE.multiply(secretKeyA);
+    const publicKeyB = G2.BASE.multiply(secretKeyB);
+    
+    return {
+        secretKeyA,
+        secretKeyB,
+        publicKeyA: g2ToBytes(publicKeyA),
+        publicKeyB: g2ToBytes(publicKeyB)
+    };
+}
+
+/// @notice Create an encrypted deck for testing
+/// @param secretKeyA - Player A's secret key
+/// @param secretKeyB - Player B's secret key
+/// @param context - Context string for hashing
+/// @returns Array of 9 encrypted G1 points
+export function createEncryptedDeck(secretKeyA, secretKeyB, context = "test_poker_hand") {
+    const deck = [];
+    for (let i = 0; i < 9; i++) {
+        const R = hashToG1(context, i);
+        const aR = R.multiply(secretKeyA);
+        const Y = aR.multiply(secretKeyB);
+        deck.push(g1ToBytes(Y));
+    }
+    return deck;
+}
+
+/// @notice Create a canonical deck for card ID resolution
+/// @param context - Context string for hashing
+/// @returns Array of 52 unencrypted G1 base points
+export function createCanonicalDeck(context = "canonical_deck") {
+    const canonicalDeck = [];
+    for (let i = 0; i < 52; i++) {
+        const R = hashToG1(context, i);
+        canonicalDeck.push(g1ToBytes(R));
+    }
+    return canonicalDeck;
+}
+
+/// @notice Create a partial decryption (one player removes their layer)
+/// @param secretKey - Secret key of the player
+/// @param encryptedCard - The encrypted card bytes (Y)
+/// @returns Decrypted card bytes
+export async function createPartialDecrypt(secretKey, encryptedCard) {
+    const G1 = bn254.G1.Point;
+    
+    // Convert encrypted card bytes to G1 point
+    // encryptedCard is 64 bytes: x||y (each 32 bytes)
+    const xHex = encryptedCard.slice(0, 66);  // 0x + 64 hex chars (32 bytes)
+    const yHex = '0x' + encryptedCard.slice(66); // Remaining 64 hex chars (32 bytes)
+    
+    const x = BigInt(xHex);
+    const y = BigInt(yHex);
+    
+    const Y = G1.fromAffine({ x, y });
+    
+    // Compute partial decryption: U = scalar^(-1) · Y
+    const scalar_inv = Fr.inv(secretKey);
+    const U = Y.multiply(scalar_inv);
+
+    return g1ToBytes(U);
+}
+
+/// @notice Create the final plaintext (both players' layers removed)
+/// @param secretKey - Secret key of the player
+/// @param partialCard - The partial decryption bytes (U_other)
+/// @returns Plaintext card bytes
+export async function createPlaintext(secretKey, partialCard) {
+    const G1 = bn254.G1.Point;
+    
+    // Convert partial card bytes to G1 point
+    // partialCard is 64 bytes: x||y (each 32 bytes)
+    const xHex = partialCard.slice(0, 66);  // 0x + 64 hex chars (32 bytes)
+    const yHex = '0x' + partialCard.slice(66); // Remaining 64 hex chars (32 bytes)
+    
+    const x = BigInt(xHex);
+    const y = BigInt(yHex);
+    
+    const U_other = G1.fromAffine({ x, y });
+    
+    // Compute final plaintext: R = scalar^(-1) · U_other
+    const scalar_inv = Fr.inv(secretKey);
+    const R = U_other.multiply(scalar_inv);
+
+    return g1ToBytes(R);
 }
