@@ -33,23 +33,6 @@ contract HeadsUpPokerEIP712 is EIP712 {
         keccak256(
             "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash,address sender)"
         );
-    bytes32 internal constant CARD_COMMIT_TYPEHASH =
-        keccak256(
-            "CardCommit(uint256 channelId,uint256 handId,uint8 slot,bytes32 commitHash,bytes32 prevHash)"
-        );
-
-    // ---------------------------------------------------------------------
-    // Struct definitions
-    // ---------------------------------------------------------------------
-    struct CardCommit {
-        uint256 channelId;
-        uint256 handId;
-        // i.e. SLOT_A1, SLOT_A2, SLOT_B1, SLOT_B2, SLOT_FLOP1, SLOT_FLOP2, SLOT_FLOP3, SLOT_TURN, SLOT_RIVER
-        uint8 slot;
-        // i.e. keccak256( slot || cardCode || salt )
-        bytes32 commitHash;
-        bytes32 prevHash;
-    }
 
     constructor() EIP712("HeadsUpPoker", "1") {}
 
@@ -79,22 +62,6 @@ contract HeadsUpPokerEIP712 is EIP712 {
         return _hashTypedDataV4(structHash);
     }
 
-    function digestCardCommit(
-        CardCommit calldata cc
-    ) public view returns (bytes32) {
-        bytes32 structHash = keccak256(
-            abi.encode(
-                CARD_COMMIT_TYPEHASH,
-                cc.channelId,
-                cc.handId,
-                cc.slot,
-                cc.commitHash,
-                cc.prevHash
-            )
-        );
-        return _hashTypedDataV4(structHash);
-    }
-
     // ---------------------------------------------------------------------
     // Signature recovery
     // ---------------------------------------------------------------------
@@ -103,12 +70,5 @@ contract HeadsUpPokerEIP712 is EIP712 {
         bytes calldata sig
     ) external view returns (address) {
         return digestAction(act).recover(sig);
-    }
-
-    function recoverCommitSigner(
-        CardCommit calldata cc,
-        bytes calldata sig
-    ) external view returns (address) {
-        return digestCardCommit(cc).recover(sig);
     }
 }

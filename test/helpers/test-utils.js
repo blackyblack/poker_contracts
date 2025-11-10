@@ -1,5 +1,5 @@
 import hre from "hardhat";
-import { actionHash, actionDigest, handGenesis, domainSeparator, commitHash, cardCommitDigest } from "./hashes.js";
+import { actionHash, actionDigest, handGenesis, domainSeparator } from "./hashes.js";
 import { ACTION } from "./actions.js";
 
 const { ethers } = hre;
@@ -75,42 +75,6 @@ export async function signActions(actions, signers, contractAddress, chainId) {
         signatures.push(sig);
     }
     return signatures;
-}
-
-// Helper to sign a commit for a card
-// @param a - First wallet signer
-// @param b - Second wallet signer
-// @param dom - Domain separator
-// @param cc - Card commit object
-// @returns Array of two signatures [sigA, sigB]
-export async function signCardCommit(a, b, dom, cc) {
-    const digest = cardCommitDigest(dom, cc);
-    const sigA = a.signingKey.sign(digest).serialized;
-    const sigB = b.signingKey.sign(digest).serialized;
-    return [sigA, sigB];
-}
-
-// Helper to build a card commit with signatures
-// @param a - First wallet signer
-// @param b - Second wallet signer
-// @param dom - Domain separator
-// @param channelId - Channel ID
-// @param slot - Card slot
-// @param card - Card value
-// @param handId - Hand ID (default: 1n)
-// @returns Commit object with signatures and metadata
-export async function buildCardCommit(a, b, dom, channelId, slot, card, handId = 1n) {
-    const salt = ethers.hexlify(ethers.randomBytes(32));
-    const cHash = commitHash(dom, channelId, slot, card, salt);
-    const cc = {
-        channelId,
-        handId,
-        slot,
-        commitHash: cHash,
-        prevHash: handGenesis(channelId, handId),
-    };
-    const [sigA, sigB] = await signCardCommit(a, b, dom, cc);
-    return { cc, sigA, sigB, salt, card, slot };
 }
 
 // Helper to create a mock deck (9 cards, each 64 bytes) - we only use up to RIVER
@@ -230,10 +194,8 @@ export function setupShowdownCrypto() {
     return {
         secretKeyA,
         secretKeyB,
-        publicKeyA,
-        publicKeyB,
-        pkA_G2_bytes: g2ToBytes(publicKeyA),
-        pkB_G2_bytes: g2ToBytes(publicKeyB),
+        publicKeyA: g2ToBytes(publicKeyA),
+        publicKeyB: g2ToBytes(publicKeyB)
     };
 }
 
@@ -266,25 +228,10 @@ export function createCanonicalDeck(context = "canonical_deck") {
 }
 
 /// @notice Create a partial decryption (one player removes their layer)
-/// @param signer - Wallet that signs the partial decryption
 /// @param secretKey - Secret key of the player
 /// @param encryptedCard - The encrypted card bytes (Y)
-/// @param slot - Card slot index
-/// @param channelId - Channel ID
-/// @param handId - Hand ID
-/// @param escrowAddress - Address of escrow contract for EIP712 domain
-/// @param chainId - Chain ID for EIP712 domain
-/// @returns Object with decryptedCard struct and signature
-export async function createPartialDecrypt(
-    signer,
-    secretKey,
-    encryptedCard,
-    slot,
-    channelId,
-    handId,
-    escrowAddress,
-    chainId
-) {
+/// @returns Decrypted card bytes
+export async function createPartialDecrypt(secretKey, encryptedCard) {
     const G1 = bn254.G1.Point;
     
     // Convert encrypted card bytes to G1 point
@@ -301,66 +248,14 @@ export async function createPartialDecrypt(
     const scalar_inv = Fr.inv(secretKey);
     const U = Y.multiply(scalar_inv);
 
-    const decryptedCard = {
-        channelId,
-        handId,
-        player: signer.address,
-        index: slot,
-        decryptedCard: g1ToBytes(U),
-    };
-
-    // Sign the decrypted card
-    const domain = domainSeparator(escrowAddress, chainId);
-    
-    const DECRYPTED_CARD_TYPEHASH = ethers.keccak256(
-        ethers.toUtf8Bytes(
-            "DecryptedCard(uint256 channelId,uint256 handId,address player,uint8 index,bytes decryptedCard)"
-        )
-    );
-    
-    const structHash = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(
-            ["bytes32", "uint256", "uint256", "address", "uint8", "bytes32"],
-            [
-                DECRYPTED_CARD_TYPEHASH,
-                decryptedCard.channelId,
-                decryptedCard.handId,
-                decryptedCard.player,
-                decryptedCard.index,
-                ethers.keccak256(decryptedCard.decryptedCard),
-            ]
-        )
-    );
-    
-    const digest = ethers.keccak256(
-        ethers.concat([ethers.toUtf8Bytes("\x19\x01"), domain, structHash])
-    );
-    
-    const signature = signer.signingKey.sign(digest).serialized;
-
-    return { decryptedCard, signature };
+    return g1ToBytes(U);
 }
 
 /// @notice Create the final plaintext (both players' layers removed)
-/// @param signer - Wallet that signs the plaintext
 /// @param secretKey - Secret key of the player
 /// @param partialCard - The partial decryption bytes (U_other)
-/// @param slot - Card slot index
-/// @param channelId - Channel ID
-/// @param handId - Hand ID
-/// @param escrowAddress - Address of escrow contract for EIP712 domain
-/// @param chainId - Chain ID for EIP712 domain
-/// @returns Object with decryptedCard struct (containing plaintext) and signature
-export async function createPlaintext(
-    signer,
-    secretKey,
-    partialCard,
-    slot,
-    channelId,
-    handId,
-    escrowAddress,
-    chainId
-) {
+/// @returns Plaintext card bytes
+export async function createPlaintext(secretKey, partialCard) {
     const G1 = bn254.G1.Point;
     
     // Convert partial card bytes to G1 point
@@ -377,42 +272,5 @@ export async function createPlaintext(
     const scalar_inv = Fr.inv(secretKey);
     const R = U_other.multiply(scalar_inv);
 
-    const decryptedCard = {
-        channelId,
-        handId,
-        player: signer.address,
-        index: slot,
-        decryptedCard: g1ToBytes(R),  // This is the final plaintext
-    };
-
-    // Sign the decrypted card
-    const domain = domainSeparator(escrowAddress, chainId);
-    
-    const DECRYPTED_CARD_TYPEHASH = ethers.keccak256(
-        ethers.toUtf8Bytes(
-            "DecryptedCard(uint256 channelId,uint256 handId,address player,uint8 index,bytes decryptedCard)"
-        )
-    );
-    
-    const structHash = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(
-            ["bytes32", "uint256", "uint256", "address", "uint8", "bytes32"],
-            [
-                DECRYPTED_CARD_TYPEHASH,
-                decryptedCard.channelId,
-                decryptedCard.handId,
-                decryptedCard.player,
-                decryptedCard.index,
-                ethers.keccak256(decryptedCard.decryptedCard),
-            ]
-        )
-    );
-    
-    const digest = ethers.keccak256(
-        ethers.concat([ethers.toUtf8Bytes("\x19\x01"), domain, structHash])
-    );
-    
-    const signature = signer.signingKey.sign(digest).serialized;
-
-    return { decryptedCard, signature };
+    return g1ToBytes(R);
 }

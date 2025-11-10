@@ -211,9 +211,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return peek.getPeek(channelId);
     }
 
-    /// @notice Get the address of the peek contract
+    /// @notice Get the address of the Peek contract
     function getPeekAddress() external view returns (address) {
         return address(peek);
+    }
+
+    /// @notice Get the address of the Showdown contract
+    function getShowdownAddress() external view returns (address) {
+        return address(showdown);
     }
 
     /// @notice Get public keys for a channel

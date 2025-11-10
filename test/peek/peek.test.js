@@ -53,12 +53,12 @@ describe("Peek - Request Validation", function () {
             1n,
             ethers.ZeroAddress,
             0n,
-            crypto.pkA_G2_bytes,
+            crypto.publicKeyA,
             { value: deposit }
         );
         await escrow
             .connect(player2)
-            .join(channelId, ethers.ZeroAddress, crypto.pkB_G2_bytes, {
+            .join(channelId, ethers.ZeroAddress, crypto.publicKeyB, {
                 value: deposit,
             });
 
@@ -127,18 +127,8 @@ describe("Peek - Request Validation", function () {
         const requesterPartials = await Promise.all(
             [0, 1, 2].map(async idx => {
                 const slot = 4 + idx; // FLOP slots
-                const handId = await escrow.getHandId(channelId);
-                const { decryptedCard } = await createPartialDecrypt(
-                    wallet1,
-                    crypto.secretKeyA,
-                    deck[slot],
-                    slot,
-                    channelId,
-                    handId,
-                    escrowAddress,
-                    chainId
-                );
-                return decryptedCard.decryptedCard;
+                const decryptedCard = await createPartialDecrypt(crypto.secretKeyA, deck[slot]);
+                return decryptedCard;
             })
         );
 
@@ -169,12 +159,12 @@ describe("Peek - View", function () {
             1n,
             ethers.ZeroAddress,
             0n,
-            crypto.pkA_G2_bytes,
+            crypto.publicKeyA,
             { value: ethers.parseEther("1") }
         );
         await escrow
             .connect(player2)
-            .join(1n, ethers.ZeroAddress, crypto.pkB_G2_bytes, {
+            .join(1n, ethers.ZeroAddress, crypto.publicKeyB, {
                 value: ethers.parseEther("1"),
             });
 
@@ -187,8 +177,8 @@ describe("Peek - View", function () {
         await startGameWithDeck(escrow, 1n, player1, player2, deck, canonicalDeck);
 
         const [pkA, pkB] = await escrow.getPublicKeys(1n);
-        expect(pkA).to.equal(crypto.pkA_G2_bytes);
-        expect(pkB).to.equal(crypto.pkB_G2_bytes);
+        expect(pkA).to.equal(crypto.publicKeyA);
+        expect(pkB).to.equal(crypto.publicKeyB);
 
         const storedDeck = await peek.getDeck(1n, 0);
         expect(storedDeck).to.equal(deck[0]);

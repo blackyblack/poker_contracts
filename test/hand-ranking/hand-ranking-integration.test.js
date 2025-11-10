@@ -27,8 +27,6 @@ describe("HeadsUpPokerEscrow - Poker Hand Ranking Integration", function () {
     const deposit = ethers.parseEther("1.0");
 
     let crypto;
-    let escrowAddress;
-    let chainId;
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
@@ -36,8 +34,6 @@ describe("HeadsUpPokerEscrow - Poker Hand Ranking Integration", function () {
             "HeadsUpPokerEscrow"
         );
         escrow = await HeadsUpPokerEscrow.deploy();
-        escrowAddress = await escrow.getAddress();
-        chainId = (await ethers.provider.getNetwork()).chainId;
 
         crypto = setupShowdownCrypto();
 
@@ -49,12 +45,12 @@ describe("HeadsUpPokerEscrow - Poker Hand Ranking Integration", function () {
                 1n,
                 ethers.ZeroAddress,
                 0n,
-                crypto.pkA_G2_bytes,
+                crypto.publicKeyA,
                 { value: deposit }
             );
         await escrow
             .connect(player2)
-            .join(channelId, ethers.ZeroAddress, crypto.pkB_G2_bytes, {
+            .join(channelId, ethers.ZeroAddress, crypto.publicKeyB, {
                 value: deposit,
             });
     });
@@ -73,79 +69,43 @@ describe("HeadsUpPokerEscrow - Poker Hand Ranking Integration", function () {
         return { deck, canonicalDeck };
     }
 
-    async function generatePartials(secretKey, wallet, deck) {
-        const handId = await escrow.getHandId(channelId);
+    async function generatePartials(secretKey, deck) {
         const partials = [];
         for (let i = 0; i < deck.length; i++) {
-            const { decryptedCard } = await createPartialDecrypt(
-                wallet,
-                secretKey,
-                deck[i],
-                i,
-                channelId,
-                handId,
-                escrowAddress,
-                chainId
-            );
-            partials.push(decryptedCard.decryptedCard);
+            const decryptedCard = await createPartialDecrypt(secretKey, deck[i]);
+            partials.push(decryptedCard);
         }
         return partials;
     }
 
-    async function generatePlaintexts(secretKey, wallet, otherPartials) {
-        const handId = await escrow.getHandId(channelId);
+    async function generatePlaintexts(secretKey, otherPartials) {
         const plaintexts = [];
         for (let i = 0; i < otherPartials.length; i++) {
-            const { decryptedCard } = await createPlaintext(
-                wallet,
-                secretKey,
-                otherPartials[i],
-                i,
-                channelId,
-                handId,
-                escrowAddress,
-                chainId
-            );
-            plaintexts.push(decryptedCard.decryptedCard);
+            const decryptedCard = await createPlaintext(secretKey, otherPartials[i]);
+            plaintexts.push(decryptedCard);
         }
         return plaintexts;
     }
 
     async function completeRevealFlow(deck, finalizeAsPlayer1 = true) {
-        const player1Partials = await generatePartials(
-            crypto.secretKeyA,
-            wallet1,
-            deck
-        );
+        const player1Partials = await generatePartials(crypto.secretKeyA, deck);
         await escrow
             .connect(player1)
             .revealCards(channelId, player1Partials);
 
-        const player2Partials = await generatePartials(
-            crypto.secretKeyB,
-            wallet2,
-            deck
-        );
+        const player2Partials = await generatePartials(crypto.secretKeyB, deck);
         await escrow
             .connect(player2)
             .revealCards(channelId, player2Partials);
 
         if (finalizeAsPlayer1) {
-            const plaintexts = await generatePlaintexts(
-                crypto.secretKeyA,
-                wallet1,
-                player2Partials
-            );
+            const plaintexts = await generatePlaintexts(crypto.secretKeyA, player2Partials);
             return escrow
                 .connect(player1)
                 .finalizeReveals(channelId, plaintexts);
         }
 
-        const plaintexts = await generatePlaintexts(
-            crypto.secretKeyB,
-            wallet2,
-            player1Partials
-        );
+        const plaintexts = await generatePlaintexts(crypto.secretKeyB, player1Partials);
         return escrow
             .connect(player2)
             .finalizeReveals(channelId, plaintexts);

@@ -51,12 +51,12 @@ describe("Peek - answer functions", function () {
             1n,
             ethers.ZeroAddress,
             0n,
-            crypto.pkA_G2_bytes,
+            crypto.publicKeyA,
             { value: deposit }
         );
         await escrow
             .connect(player2)
-            .join(channelId, ethers.ZeroAddress, crypto.pkB_G2_bytes, {
+            .join(channelId, ethers.ZeroAddress, crypto.publicKeyB, {
                 value: deposit,
             });
 
@@ -75,19 +75,9 @@ describe("Peek - answer functions", function () {
         return { actions, signatures };
     }
 
-    async function partialDecrypt(secretKey, wallet, slot) {
-        const handId = await escrow.getHandId(channelId);
-        const { decryptedCard } = await createPartialDecrypt(
-            wallet,
-            secretKey,
-            deck[slot],
-            slot,
-            channelId,
-            handId,
-            escrowAddress,
-            chainId
-        );
-        return decryptedCard.decryptedCard;
+    async function partialDecrypt(secretKey, slot) {
+        const decryptedCard = await createPartialDecrypt(secretKey, deck[slot]);
+        return decryptedCard;
     }
 
     it("serves hole A peek with helper partial decrypts", async () => {
@@ -101,16 +91,8 @@ describe("Peek - answer functions", function () {
             .connect(player1)
             .requestHoleA(channelId, actions, signatures);
 
-        const partialA1 = await partialDecrypt(
-            crypto.secretKeyB,
-            wallet2,
-            SLOT.A1
-        );
-        const partialA2 = await partialDecrypt(
-            crypto.secretKeyB,
-            wallet2,
-            SLOT.A2
-        );
+        const partialA1 = await partialDecrypt(crypto.secretKeyB, SLOT.A1);
+        const partialA2 = await partialDecrypt(crypto.secretKeyB, SLOT.A2);
 
         await escrow
             .connect(player2)
@@ -134,11 +116,7 @@ describe("Peek - answer functions", function () {
             .connect(player1)
             .requestHoleA(channelId, actions, signatures);
 
-        const partial = await partialDecrypt(
-            crypto.secretKeyB,
-            wallet2,
-            SLOT.A1
-        );
+        const partial = await partialDecrypt(crypto.secretKeyB, SLOT.A1);
 
         await expect(
             escrow.connect(player1).answerHoleA(channelId, [partial, partial])
@@ -155,9 +133,9 @@ describe("Peek - answer functions", function () {
         const { actions, signatures } = await buildSequence(specs);
 
         const requesterPartials = await Promise.all([
-            partialDecrypt(crypto.secretKeyA, wallet1, SLOT.FLOP1),
-            partialDecrypt(crypto.secretKeyA, wallet1, SLOT.FLOP2),
-            partialDecrypt(crypto.secretKeyA, wallet1, SLOT.FLOP3),
+            partialDecrypt(crypto.secretKeyA, SLOT.FLOP1),
+            partialDecrypt(crypto.secretKeyA, SLOT.FLOP2),
+            partialDecrypt(crypto.secretKeyA, SLOT.FLOP3),
         ]);
 
         await escrow
@@ -165,9 +143,9 @@ describe("Peek - answer functions", function () {
             .requestFlop(channelId, actions, signatures, requesterPartials);
 
         const helperPartials = await Promise.all([
-            partialDecrypt(crypto.secretKeyB, wallet2, SLOT.FLOP1),
-            partialDecrypt(crypto.secretKeyB, wallet2, SLOT.FLOP2),
-            partialDecrypt(crypto.secretKeyB, wallet2, SLOT.FLOP3),
+            partialDecrypt(crypto.secretKeyB, SLOT.FLOP1),
+            partialDecrypt(crypto.secretKeyB, SLOT.FLOP2),
+            partialDecrypt(crypto.secretKeyB, SLOT.FLOP3),
         ]);
 
         await escrow

@@ -42,6 +42,7 @@ describe("Showdown - DecryptedCard Verification", function () {
     let deck;
     let escrowAddress;
     let chainId;
+    let showdownContract;
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
@@ -52,19 +53,25 @@ describe("Showdown - DecryptedCard Verification", function () {
 
         crypto = setupShowdownCrypto();
 
+        const showdownAddress = await escrow.getShowdownAddress();
+        showdownContract = await ethers.getContractAt(
+            "HeadsUpPokerShowdown",
+            showdownAddress
+        );
+
         await escrow.open(
             channelId,
             player2.address,
             1n,
             ethers.ZeroAddress,
             0n,
-            crypto.pkA_G2_bytes,
+            crypto.publicKeyA,
             { value: deposit }
         );
         await escrow.connect(player2).join(
             channelId,
             ethers.ZeroAddress,
-            crypto.pkB_G2_bytes,
+            crypto.publicKeyB,
             { value: deposit }
         );
 
@@ -109,40 +116,20 @@ describe("Showdown - DecryptedCard Verification", function () {
         await escrow.connect(player1).settle(channelId, actions, signatures);
     }
 
-    async function generatePartials(secretKey, wallet) {
-        const handId = await escrow.getHandId(channelId);
+    async function generatePartials(secretKey) {
         const partials = [];
         for (let i = 0; i < deck.length; i++) {
-            const { decryptedCard } = await createPartialDecrypt(
-                wallet,
-                secretKey,
-                deck[i],
-                i,
-                channelId,
-                handId,
-                escrowAddress,
-                chainId
-            );
-            partials.push(decryptedCard.decryptedCard);
+            const decryptedCard = await createPartialDecrypt(secretKey, deck[i]);
+            partials.push(decryptedCard);
         }
         return partials;
     }
 
-    async function generatePlaintexts(secretKey, wallet, otherPartials) {
-        const handId = await escrow.getHandId(channelId);
+    async function generatePlaintexts(secretKey, otherPartials) {
         const plaintexts = [];
         for (let i = 0; i < otherPartials.length; i++) {
-            const { decryptedCard } = await createPlaintext(
-                wallet,
-                secretKey,
-                otherPartials[i],
-                i,
-                channelId,
-                handId,
-                escrowAddress,
-                chainId
-            );
-            plaintexts.push(decryptedCard.decryptedCard);
+            const decryptedCard = await createPlaintext(secretKey, otherPartials[i]);
+            plaintexts.push(decryptedCard);
         }
         return plaintexts;
     }
@@ -150,31 +137,21 @@ describe("Showdown - DecryptedCard Verification", function () {
     it("allows both players to reveal and finalize the deck", async () => {
         await initiateShowdown();
 
-        const player1Partials = await generatePartials(
-            crypto.secretKeyA,
-            wallet1
-        );
+        const player1Partials = await generatePartials(crypto.secretKeyA);
         await expect(
             escrow.connect(player1).revealCards(channelId, player1Partials)
         )
             .to.emit(escrow, "RevealsUpdated")
             .withArgs(channelId, true, false);
 
-        const player2Partials = await generatePartials(
-            crypto.secretKeyB,
-            wallet2
-        );
+        const player2Partials = await generatePartials(crypto.secretKeyB);
         await expect(
             escrow.connect(player2).revealCards(channelId, player2Partials)
         )
             .to.emit(escrow, "RevealsUpdated")
             .withArgs(channelId, true, true);
 
-        const plaintexts = await generatePlaintexts(
-            crypto.secretKeyA,
-            wallet1,
-            player2Partials
-        );
+        const plaintexts = await generatePlaintexts(crypto.secretKeyA, player2Partials);
 
         await expect(
             escrow.connect(player1).finalizeReveals(channelId, plaintexts)
@@ -195,33 +172,27 @@ describe("Showdown - DecryptedCard Verification", function () {
     it("requires both players to reveal before finalizing", async () => {
         await initiateShowdown();
 
-        const player1Partials = await generatePartials(
-            crypto.secretKeyA,
-            wallet1
-        );
+        const player1Partials = await generatePartials(crypto.secretKeyA);
         await escrow.connect(player1).revealCards(channelId, player1Partials);
 
-        const bogusPlaintexts = Array.from({ length: deck.length }, () =>
-            "0x" + "11".repeat(64)
-        );
+        const player2Partials = await generatePartials(crypto.secretKeyB);
+
+        const plaintexts = await generatePlaintexts(crypto.secretKeyA, player2Partials);
 
         await expect(
-            escrow.connect(player1).finalizeReveals(channelId, bogusPlaintexts)
-        ).to.be.reverted;
+            escrow.connect(player1).finalizeReveals(channelId, plaintexts)
+        ).to.be.revertedWithCustomError(showdownContract, "PrerequisitesNotMet");
     });
 
     it("rejects reveal calls with incorrect card counts", async () => {
         await initiateShowdown();
 
-        const player1Partials = await generatePartials(
-            crypto.secretKeyA,
-            wallet1
-        );
+        const player1Partials = await generatePartials(crypto.secretKeyA);
 
         await expect(
             escrow
                 .connect(player1)
                 .revealCards(channelId, player1Partials.slice(0, 2))
-        ).to.be.reverted;
+        ).to.be.revertedWithCustomError(showdownContract, "PrerequisitesNotMet");
     });
 });

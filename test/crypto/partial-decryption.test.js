@@ -40,13 +40,13 @@ describe("Partial Decryption", function () {
             // Step 6: Verify using CardVerifier.verifyPartialDecrypt
             const U_bytes = g1ToBytes(U);
             const Y_bytes = g1ToBytes(Y);
-            const pkB_G2_bytes = g2ToBytes(pkB_G2);
+            const publicKeyB = g2ToBytes(pkB_G2);
 
             // This should verify that e(U, pkB_G2) == e(Y, G2_BASE)
             const verified = await contract.verifyPartialDecrypt(
                 U_bytes,
                 Y_bytes,
-                pkB_G2_bytes
+                publicKeyB
             );
 
             expect(verified).to.be.true;
@@ -78,12 +78,12 @@ describe("Partial Decryption", function () {
 
                 const U_bytes = g1ToBytes(U);
                 const Y_bytes = g1ToBytes(Y);
-                const pkB_G2_bytes = g2ToBytes(pkB_G2);
+                const publicKeyB = g2ToBytes(pkB_G2);
 
                 const verified = await contract.verifyPartialDecrypt(
                     U_bytes,
                     Y_bytes,
-                    pkB_G2_bytes
+                    publicKeyB
                 );
 
                 expect(verified).to.be.true;
@@ -120,13 +120,13 @@ describe("Partial Decryption", function () {
             // Step 6: Verify using CardVerifier.verifyPartialDecrypt
             const U_bytes = g1ToBytes(U);
             const Y_bytes = g1ToBytes(Y);
-            const pkA_G2_bytes = g2ToBytes(pkA_G2);
+            const publicKeyA = g2ToBytes(pkA_G2);
 
             // This should verify that e(U, pkA_G2) == e(Y, G2_BASE)
             const verified = await contract.verifyPartialDecrypt(
                 U_bytes,
                 Y_bytes,
-                pkA_G2_bytes
+                publicKeyA
             );
 
             expect(verified).to.be.true;
@@ -158,12 +158,12 @@ describe("Partial Decryption", function () {
 
             const U_bytes = g1ToBytes(U);
             const Y_bytes = g1ToBytes(Y);
-            const pkA_G2_bytes = g2ToBytes(pkA_G2);
+            const publicKeyA = g2ToBytes(pkA_G2);
 
             const verified = await contract.verifyPartialDecrypt(
                 U_bytes,
                 Y_bytes,
-                pkA_G2_bytes
+                publicKeyA
             );
 
             expect(verified).to.be.true;
@@ -206,21 +206,21 @@ describe("Partial Decryption", function () {
             const Y_bytes = g1ToBytes(Y);
             const U_A_bytes = g1ToBytes(U_A);
             const U_B_bytes = g1ToBytes(U_B);
-            const pkA_G2_bytes = g2ToBytes(pkA_G2);
-            const pkB_G2_bytes = g2ToBytes(pkB_G2);
+            const publicKeyA = g2ToBytes(pkA_G2);
+            const publicKeyB = g2ToBytes(pkB_G2);
 
             // Verify A's partial decryption
             const verifiedA = await contract.verifyPartialDecrypt(
                 U_A_bytes,
                 Y_bytes,
-                pkA_G2_bytes
+                publicKeyA
             );
 
             // Verify B's partial decryption
             const verifiedB = await contract.verifyPartialDecrypt(
                 U_B_bytes,
                 Y_bytes,
-                pkB_G2_bytes
+                publicKeyB
             );
 
             expect(verifiedA).to.be.true;
@@ -256,12 +256,12 @@ describe("Partial Decryption", function () {
 
             const U_wrong_bytes = g1ToBytes(U_wrong);
             const Y_bytes = g1ToBytes(Y);
-            const pkB_G2_bytes = g2ToBytes(pkB_G2);
+            const publicKeyB = g2ToBytes(pkB_G2);
 
             const verified = await contract.verifyPartialDecrypt(
                 U_wrong_bytes,
                 Y_bytes,
-                pkB_G2_bytes
+                publicKeyB
             );
 
             expect(verified).to.be.false;
@@ -285,12 +285,12 @@ describe("Partial Decryption", function () {
 
             const U_wrong_bytes = g1ToBytes(U_wrong);
             const Y_bytes = g1ToBytes(Y);
-            const pkA_G2_bytes = g2ToBytes(pkA_G2);
+            const publicKeyA = g2ToBytes(pkA_G2);
 
             const verified = await contract.verifyPartialDecrypt(
                 U_wrong_bytes,
                 Y_bytes,
-                pkA_G2_bytes
+                publicKeyA
             );
 
             expect(verified).to.be.false;
