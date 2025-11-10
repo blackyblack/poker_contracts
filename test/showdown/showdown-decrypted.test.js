@@ -43,6 +43,7 @@ describe("Showdown - DecryptedCard Verification", function () {
     let escrowAddress;
     let chainId;
     let showdownContract;
+    let view;
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
@@ -50,10 +51,14 @@ describe("Showdown - DecryptedCard Verification", function () {
         escrow = await Escrow.deploy();
         escrowAddress = await escrow.getAddress();
         chainId = (await ethers.provider.getNetwork()).chainId;
+        view = await ethers.getContractAt(
+            "HeadsUpPokerView",
+            await escrow.viewContract()
+        );
 
         crypto = setupShowdownCrypto();
 
-        const showdownAddress = await escrow.getShowdownAddress();
+        const showdownAddress = await view.getShowdownAddress();
         showdownContract = await ethers.getContractAt(
             "HeadsUpPokerShowdown",
             showdownAddress
@@ -159,7 +164,7 @@ describe("Showdown - DecryptedCard Verification", function () {
             .to.emit(escrow, "ShowdownFinalized")
             .withArgs(channelId, player1.address, 2n);
 
-        const sd = await escrow.getShowdown(channelId);
+        const sd = await view.getShowdown(channelId);
         expect(sd.inProgress).to.equal(false);
         expect(sd.player1Revealed).to.equal(true);
         expect(sd.player2Revealed).to.equal(true);

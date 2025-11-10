@@ -10,6 +10,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
     let escrow;
     let player1, player2;
     let chainId;
+    let view;
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
@@ -17,6 +18,10 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
 
         const HeadsUpPokerEscrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await HeadsUpPokerEscrow.deploy();
+        view = await ethers.getContractAt(
+            "HeadsUpPokerView",
+            await escrow.viewContract()
+        );
     });
 
     describe("Fold Settlement", function () {
@@ -213,7 +218,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
             await expect(tx).to.emit(escrow, "ShowdownStarted").withArgs(channelId);
 
             // Verify showdown state was set up
-            const showdownState = await escrow.getShowdown(channelId);
+            const showdownState = await view.getShowdown(channelId);
             expect(showdownState.inProgress).to.be.true;
 
             // Channel should not be finalized yet - requires card reveals

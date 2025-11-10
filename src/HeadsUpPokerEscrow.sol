@@ -10,6 +10,7 @@ import {HeadsUpPokerShowdown} from "./HeadsUpPokerShowdown.sol";
 import {Action} from "./HeadsUpPokerActions.sol";
 import {HeadsUpPokerActionVerifier} from "./HeadsUpPokerActionVerifier.sol";
 import "./HeadsUpPokerErrors.sol";
+import {HeadsUpPokerView} from "./HeadsUpPokerView.sol";
 
 /// @title HeadsUpPokerEscrow - Simple escrow contract for heads up poker matches using ETH only
 contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
@@ -58,11 +59,17 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     HeadsUpPokerPeek private immutable peek;
     HeadsUpPokerShowdown private immutable showdown;
+    HeadsUpPokerView public immutable viewContract;
 
     constructor() {
         replay = new HeadsUpPokerReplay();
         peek = new HeadsUpPokerPeek(address(this), replay);
         showdown = new HeadsUpPokerShowdown(address(this), peek);
+        viewContract = new HeadsUpPokerView(
+            address(this),
+            peek,
+            showdown
+        );
     }
 
     // ---------------------------------------------------------------------
@@ -186,47 +193,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     /// @param channelId The channel identifier
     /// @param index The card index (0-8)
     /// @return The partially revealed card, or empty bytes if not revealed
-    function getRevealedCardA(
-        uint256 channelId,
-        uint8 index
-    ) external view returns (bytes memory) {
-        return peek.getRevealedCardA(channelId, index);
-    }
-
-    /// @notice Get partially revealed card by player B for a specific index
-    /// @param channelId The channel identifier
-    /// @param index The card index (0-8)
-    /// @return The partially revealed card, or empty bytes if not revealed
-    function getRevealedCardB(
-        uint256 channelId,
-        uint8 index
-    ) external view returns (bytes memory) {
-        return peek.getRevealedCardB(channelId, index);
-    }
-
-    /// @notice Get the peek state for a channel
-    function getPeek(
-        uint256 channelId
-    ) external view returns (HeadsUpPokerPeek.PeekState memory) {
-        return peek.getPeek(channelId);
-    }
-
-    /// @notice Get the address of the Peek contract
-    function getPeekAddress() external view returns (address) {
-        return address(peek);
-    }
-
-    /// @notice Get the address of the Showdown contract
-    function getShowdownAddress() external view returns (address) {
-        return address(showdown);
-    }
-
-    /// @notice Get public keys for a channel
-    function getPublicKeys(
-        uint256 channelId
-    ) external view returns (bytes memory, bytes memory) {
-        return peek.getPublicKeys(channelId);
-    }
 
     // ---------------------------------------------------------------------
     // Channel flow
@@ -628,16 +594,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
 
         emit ShowdownFinalized(channelId, winner, wonAmount);
-    }
-
-    function getShowdown(
-        uint256 channelId
-    )
-        external
-        view
-        returns (HeadsUpPokerShowdown.ShowdownState memory)
-    {
-        return showdown.getShowdown(channelId);
     }
 
     function getDispute(
