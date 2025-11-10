@@ -12,6 +12,7 @@ import "./HeadsUpPokerErrors.sol";
 
 contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
     using ECDSA for bytes32;
+    using HeadsUpPokerActionVerifier for Action[];
 
     enum PeekStage {
         NONE,
@@ -55,7 +56,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
 
     address private immutable escrow;
     HeadsUpPokerReplay private immutable replay;
-    HeadsUpPokerActionVerifier private immutable actionVerifier;
 
     // channelId => PeekState
     mapping(uint256 => PeekState) private peeks;
@@ -80,13 +80,11 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
 
     constructor(
         address escrowAddress,
-        HeadsUpPokerReplay replayAddress,
-        HeadsUpPokerActionVerifier verifierAddress
+        HeadsUpPokerReplay replayAddress
     ) {
         if (escrowAddress == address(0)) revert NotEscrow();
         escrow = escrowAddress;
         replay = replayAddress;
-        actionVerifier = verifierAddress;
     }
 
     // ------------------------------------------------------------------

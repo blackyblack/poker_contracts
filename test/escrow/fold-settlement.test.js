@@ -98,7 +98,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
             const badSignatures = [sig, signatures[1], signatures[2]];
 
             await expect(escrow.settle(channelId, actions, badSignatures))
-                .to.be.revertedWithCustomError(actionVerifier, "ActionWrongSigner");
+                .to.be.revertedWithCustomError(escrow, "ActionWrongSigner");
         });
 
         it("should reject settlement with wrong channel ID in actions", async function () {
@@ -112,7 +112,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
             await expect(escrow.settle(channelId, actions, signatures))
-                .to.be.revertedWithCustomError(actionVerifier, "ActionWrongChannel");
+                .to.be.revertedWithCustomError(escrow, "ActionWrongChannel");
         });
 
         it("should reject settlement with wrong hand ID in actions", async function () {
@@ -126,7 +126,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
             await expect(escrow.settle(channelId, actions, signatures))
-                .to.be.revertedWithCustomError(actionVerifier, "ActionWrongHand");
+                .to.be.revertedWithCustomError(escrow, "ActionWrongHand");
         });
 
         it("should reject settlement with empty actions array", async function () {
@@ -150,7 +150,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
             const badSignatures = signatures.slice(0, 2);
 
             await expect(escrow.settle(channelId, actions, badSignatures))
-                .to.be.revertedWithCustomError(actionVerifier, "ActionSignatureLengthMismatch");
+                .to.be.revertedWithCustomError(escrow, "ActionSignatureLengthMismatch");
         });
 
         it("should reject duplicate settlement", async function () {
