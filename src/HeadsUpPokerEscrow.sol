@@ -11,9 +11,14 @@ import {Action} from "./HeadsUpPokerActions.sol";
 import {HeadsUpPokerActionVerifier} from "./HeadsUpPokerActionVerifier.sol";
 import "./HeadsUpPokerErrors.sol";
 import {HeadsUpPokerView} from "./HeadsUpPokerView.sol";
+import {IHeadsUpPokerEscrow} from "./interfaces/IHeadsUpPokerEscrow.sol";
 
 /// @title HeadsUpPokerEscrow - Simple escrow contract for heads up poker matches using ETH only
-contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
+contract HeadsUpPokerEscrow is
+    ReentrancyGuard,
+    HeadsUpPokerEIP712,
+    IHeadsUpPokerEscrow
+{
     using HeadsUpPokerActionVerifier for Action[];
     
     HeadsUpPokerReplay private immutable replay;
@@ -109,13 +114,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         address indexed player,
         uint256 amount
     );
-    event PeekOpened(uint256 indexed channelId, uint8 indexed stage);
-    event PeekServed(uint256 indexed channelId, uint8 indexed stage);
-    event PeekSlashed(
-        uint256 indexed channelId,
-        uint8 indexed stage,
-        address indexed obligatedHelper
-    );
     event DisputeStarted(
         uint256 indexed channelId,
         address indexed submitter,
@@ -165,6 +163,32 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId
     ) external view returns (Channel memory) {
         return channels[channelId];
+    }
+
+    function getChannelData(
+        uint256 channelId
+    ) external view override returns (ChannelData memory data) {
+        Channel storage ch = channels[channelId];
+        data.player1 = ch.player1;
+        data.player2 = ch.player2;
+        data.finalized = ch.finalized;
+        data.gameStarted = ch.gameStarted;
+        data.handId = ch.handId;
+        data.deposit1 = ch.deposit1;
+        data.deposit2 = ch.deposit2;
+        data.slashAmount = ch.slashAmount;
+        data.minSmallBlind = ch.minSmallBlind;
+        data.player1Signer = ch.player1Signer;
+        data.player2Signer = ch.player2Signer;
+    }
+
+    function domainSeparator()
+        external
+        view
+        override
+        returns (bytes32)
+    {
+        return DOMAIN_SEPARATOR();
     }
 
     /// @notice Player withdraws their deposit from a finalized channel
@@ -336,20 +360,6 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         emit GameStarted(channelId, deckHash);
     }
 
-    function _channelData(
-        Channel storage ch
-    ) internal view returns (HeadsUpPokerPeek.ChannelData memory data) {
-        data.player1 = ch.player1;
-        data.player2 = ch.player2;
-        data.finalized = ch.finalized;
-        data.gameStarted = ch.gameStarted;
-        data.handId = ch.handId;
-        data.deposit1 = ch.deposit1;
-        data.deposit2 = ch.deposit2;
-        data.slashAmount = ch.slashAmount;
-        data.minSmallBlind = ch.minSmallBlind;
-    }
-
     function _showdownData(
         Channel storage ch
     ) internal view returns (HeadsUpPokerShowdown.ChannelData memory data) {
@@ -393,14 +403,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.finalized) revert AlreadyFinalized();
         if (!ch.gameStarted) revert GameNotStarted();
 
-        bytes32 domainSeparator = DOMAIN_SEPARATOR();
+        bytes32 escrowDomainSeparator = DOMAIN_SEPARATOR();
 
         _verifyActionsWithHelper(
             ch,
             channelId,
             actions,
             signatures,
-            domainSeparator
+            escrowDomainSeparator
         );
 
         // Replay actions to verify they are terminal and get end state
@@ -459,14 +469,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.finalized) revert AlreadyFinalized();
         if (!ch.gameStarted) revert GameNotStarted();
 
-        bytes32 domainSeparator = DOMAIN_SEPARATOR();
+        bytes32 escrowDomainSeparator = DOMAIN_SEPARATOR();
 
         _verifyActionsWithHelper(
             ch,
             channelId,
             actions,
             signatures,
-            domainSeparator
+            escrowDomainSeparator
         );
 
         // Must provide a longer sequence to extend dispute
@@ -560,7 +570,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         uint256 channelId,
         Action[] calldata actions,
         bytes[] calldata signatures,
-        bytes32 domainSeparator
+        bytes32 channelDomainSeparator
     ) private view {
         HeadsUpPokerActionVerifier.verifyActions(
             actions,
@@ -571,7 +581,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
             ch.player2,
             ch.player1Signer,
             ch.player2Signer,
-            domainSeparator
+            channelDomainSeparator
         );
     }
 
@@ -651,241 +661,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         _rewardWinner(channelId, winner, wonAmount);
     }
 
-    // ------------------------------------------------------------------
-    // Peek Functions
-    // ------------------------------------------------------------------
-
-    function requestHoleA(
-        uint256 channelId,
-        Action[] calldata actions,
-        bytes[] calldata actionSignatures
-    ) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        bytes32 domainSeparator = DOMAIN_SEPARATOR();
-
-        _verifyActionsWithHelper(
-            ch,
-            channelId,
-            actions,
-            actionSignatures,
-            domainSeparator
-        );
-        peek.requestHoleA(
-            channelId,
-            _channelData(ch),
-            msg.sender,
-            actions
-        );
-        emit PeekOpened(
-            channelId,
-            uint8(HeadsUpPokerPeek.PeekStage.HOLE_A)
-        );
-    }
-
-    function answerHoleA(
-        uint256 channelId,
-        bytes[] calldata decryptedCards
-    ) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        peek.answerHoleA(
-            channelId,
-            _channelData(ch),
-            msg.sender,
-            decryptedCards
-        );
-        emit PeekServed(
-            channelId,
-            uint8(HeadsUpPokerPeek.PeekStage.HOLE_A)
-        );
-    }
-
-    function requestHoleB(
-        uint256 channelId,
-        Action[] calldata actions,
-        bytes[] calldata actionSignatures
-    ) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        bytes32 domainSeparator = DOMAIN_SEPARATOR();
-
-        _verifyActionsWithHelper(
-            ch,
-            channelId,
-            actions,
-            actionSignatures,
-            domainSeparator
-        );
-        peek.requestHoleB(
-            channelId,
-            _channelData(ch),
-            msg.sender,
-            actions
-        );
-        emit PeekOpened(
-            channelId,
-            uint8(HeadsUpPokerPeek.PeekStage.HOLE_B)
-        );
-    }
-
-    function answerHoleB(
-        uint256 channelId,
-        bytes[] calldata decryptedCards
-    ) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        peek.answerHoleB(
-            channelId,
-            _channelData(ch),
-            msg.sender,
-            decryptedCards
-        );
-        emit PeekServed(
-            channelId,
-            uint8(HeadsUpPokerPeek.PeekStage.HOLE_B)
-        );
-    }
-
-    function requestFlop(
-        uint256 channelId,
-        Action[] calldata actions,
-        bytes[] calldata actionSignatures,
-        bytes[] calldata requesterDecryptedCards
-    ) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        bytes32 domainSeparator = DOMAIN_SEPARATOR();
-
-        _verifyActionsWithHelper(
-            ch,
-            channelId,
-            actions,
-            actionSignatures,
-            domainSeparator
-        );
-        peek.requestFlop(
-            channelId,
-            _channelData(ch),
-            msg.sender,
-            actions,
-            requesterDecryptedCards
-        );
-        emit PeekOpened(
-            channelId,
-            uint8(HeadsUpPokerPeek.PeekStage.FLOP)
-        );
-    }
-
-    function answerFlop(
-        uint256 channelId,
-        bytes[] calldata decryptedCards
-    ) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        peek.answerFlop(
-            channelId,
-            _channelData(ch),
-            msg.sender,
-            decryptedCards
-        );
-        emit PeekServed(
-            channelId,
-            uint8(HeadsUpPokerPeek.PeekStage.FLOP)
-        );
-    }
-
-    function requestTurn(
-        uint256 channelId,
-        Action[] calldata actions,
-        bytes[] calldata actionSignatures,
-        bytes calldata requesterDecryptedCard
-    ) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        bytes32 domainSeparator = DOMAIN_SEPARATOR();
-
-        _verifyActionsWithHelper(
-            ch,
-            channelId,
-            actions,
-            actionSignatures,
-            domainSeparator
-        );
-        peek.requestTurn(
-            channelId,
-            _channelData(ch),
-            msg.sender,
-            actions,
-            requesterDecryptedCard
-        );
-        emit PeekOpened(
-            channelId,
-            uint8(HeadsUpPokerPeek.PeekStage.TURN)
-        );
-    }
-
-    function answerTurn(
-        uint256 channelId,
-        bytes calldata decryptedCard
-    ) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        peek.answerTurn(
-            channelId,
-            _channelData(ch),
-            msg.sender,
-            decryptedCard
-        );
-        emit PeekServed(
-            channelId,
-            uint8(HeadsUpPokerPeek.PeekStage.TURN)
-        );
-    }
-
-    function requestRiver(
-        uint256 channelId,
-        Action[] calldata actions,
-        bytes[] calldata actionSignatures,
-        bytes calldata requesterDecryptedCard
-    ) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        bytes32 domainSeparator = DOMAIN_SEPARATOR();
-
-        _verifyActionsWithHelper(
-            ch,
-            channelId,
-            actions,
-            actionSignatures,
-            domainSeparator
-        );
-        peek.requestRiver(
-            channelId,
-            _channelData(ch),
-            msg.sender,
-            actions,
-            requesterDecryptedCard
-        );
-        emit PeekOpened(
-            channelId,
-            uint8(HeadsUpPokerPeek.PeekStage.RIVER)
-        );
-    }
-
-    function answerRiver(
-        uint256 channelId,
-        bytes calldata decryptedCard
-    ) external nonReentrant {
-        Channel storage ch = channels[channelId];
-        peek.answerRiver(
-            channelId,
-            _channelData(ch),
-            msg.sender,
-            decryptedCard
-        );
-        emit PeekServed(
-            channelId,
-            uint8(HeadsUpPokerPeek.PeekStage.RIVER)
-        );
-    }
-
     function slashPeek(uint256 channelId) external nonReentrant {
         Channel storage ch = channels[channelId];
         address obligatedHelper = peek.slashPeek(channelId);
-        HeadsUpPokerPeek.PeekState memory frState = peek
-            .getPeek(channelId);
 
         uint256 slashAmt = ch.slashAmount;
         if (obligatedHelper == ch.player1) {
@@ -899,10 +677,5 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         }
 
         ch.finalized = true;
-        emit PeekSlashed(
-            channelId,
-            uint8(frState.stage),
-            obligatedHelper
-        );
     }
 }

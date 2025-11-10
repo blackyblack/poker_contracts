@@ -89,7 +89,7 @@ describe("Peek - Request Validation", function () {
         const { actions, signatures } = await buildSequence(specs);
 
         await expect(
-            escrow
+            peekContract
                 .connect(player1)
                 .requestHoleA(channelId, actions, signatures)
         ).to.be.revertedWithCustomError(peekContract, "InvalidGameState");
@@ -102,9 +102,13 @@ describe("Peek - Request Validation", function () {
         ];
         const { actions, signatures } = await buildSequence(specs);
 
-        await escrow
-            .connect(player1)
-            .requestHoleA(channelId, actions, signatures);
+        await expect(
+            peekContract
+                .connect(player1)
+                .requestHoleA(channelId, actions, signatures)
+        )
+            .to.emit(peekContract, "PeekOpened")
+            .withArgs(channelId, 1);
 
         const state = await view.getPeek(channelId);
         expect(state.stage).to.equal(1); // HOLE_A
@@ -122,11 +126,11 @@ describe("Peek - Request Validation", function () {
         badSignatures[0] = badSignatures[1];
 
         await expect(
-            escrow
+            peekContract
                 .connect(player1)
                 .requestHoleA(channelId, actions, badSignatures)
         ).to.be.revertedWithCustomError(
-            escrow,
+            peekContract,
             "ActionWrongSigner"
         );
     });
@@ -141,7 +145,7 @@ describe("Peek - Request Validation", function () {
         const { actions, signatures } = await buildSequence(specs);
 
         await expect(
-            escrow
+            peekContract
                 .connect(player1)
                 .requestFlop(channelId, actions, signatures, [])
         ).to.be.revertedWithCustomError(peekContract, "InvalidDecryptedCard");
@@ -154,9 +158,18 @@ describe("Peek - Request Validation", function () {
             })
         );
 
-        await escrow
-            .connect(player1)
-            .requestFlop(channelId, actions, signatures, requesterPartials);
+        await expect(
+            peekContract
+                .connect(player1)
+                .requestFlop(
+                    channelId,
+                    actions,
+                    signatures,
+                    requesterPartials
+                )
+        )
+            .to.emit(peekContract, "PeekOpened")
+            .withArgs(channelId, 3);
 
         const state = await view.getPeek(channelId);
         expect(state.stage).to.equal(3); // FLOP
