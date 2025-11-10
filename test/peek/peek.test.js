@@ -27,6 +27,7 @@ describe("Peek - Request Validation", function () {
     let escrowAddress;
     let chainId;
     let peekContract;
+    let view;
     const channelId = 1n;
     const deposit = ethers.parseEther("1");
 
@@ -36,7 +37,9 @@ describe("Peek - Request Validation", function () {
         escrow = await Escrow.deploy();
         escrowAddress = await escrow.getAddress();
         chainId = (await ethers.provider.getNetwork()).chainId;
-        const peekAddress = await escrow.getPeekAddress();
+        const viewAddress = await escrow.viewContract();
+        view = await ethers.getContractAt("HeadsUpPokerView", viewAddress);
+        const peekAddress = await view.getPeekAddress();
         peekContract = await ethers.getContractAt("HeadsUpPokerPeek", peekAddress);
 
         crypto = setupShowdownCrypto();
@@ -103,7 +106,7 @@ describe("Peek - Request Validation", function () {
             .connect(player1)
             .requestHoleA(channelId, actions, signatures);
 
-        const state = await escrow.getPeek(channelId);
+        const state = await view.getPeek(channelId);
         expect(state.stage).to.equal(1); // HOLE_A
         expect(state.inProgress).to.equal(true);
         expect(state.obligatedHelper).to.equal(player2.address);
@@ -155,7 +158,7 @@ describe("Peek - Request Validation", function () {
             .connect(player1)
             .requestFlop(channelId, actions, signatures, requesterPartials);
 
-        const state = await escrow.getPeek(channelId);
+        const state = await view.getPeek(channelId);
         expect(state.stage).to.equal(3); // FLOP
         expect(state.obligatedHelper).to.equal(player2.address);
     });
@@ -167,9 +170,13 @@ describe("Peek - View", function () {
         const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         const escrow = await Escrow.deploy();
         const crypto = setupShowdownCrypto();
+        const view = await ethers.getContractAt(
+            "HeadsUpPokerView",
+            await escrow.viewContract()
+        );
         const peek = await ethers.getContractAt(
             "HeadsUpPokerPeek",
-            await escrow.getPeekAddress()
+            await view.getPeekAddress()
         );
 
         await escrow.open(
@@ -195,7 +202,7 @@ describe("Peek - View", function () {
         const canonicalDeck = createCanonicalDeck(deckContext);
         await startGameWithDeck(escrow, 1n, player1, player2, deck, canonicalDeck);
 
-        const [pkA, pkB] = await escrow.getPublicKeys(1n);
+        const [pkA, pkB] = await view.getPublicKeys(1n);
         expect(pkA).to.equal(crypto.publicKeyA);
         expect(pkB).to.equal(crypto.publicKeyB);
 

@@ -30,9 +30,9 @@ Each event carries the channel id and relevant payload such as participant, amou
 - `stacks(channelId)` -> `(uint256 p1, uint256 p2)`: returns current escrowed balances for both seats.
 - `getHandId(channelId)` -> `uint256`: current hand counter used to salt commitments and action chains.
 - `getMinSmallBlind(channelId)` -> `uint256`: minimum small blind enforced for the channel.
-- `getShowdown(channelId)` -> `ShowdownState`: inspect reveal deadlines, board/hole cards revealed so far, and whether each player has submitted their reveal.
 - `getDispute(channelId)` -> `DisputeState`: view current dispute deadlines and projected outcomes.
 - `getChannel(channelId)` -> `Channel`: returns the complete channel information including player addresses, deposits, finalization status, hand ID, join status, minimum small blind, and optional signing addresses for both players. Returns `address(0)` for optional signers if no optional signer is set.
+- `viewContract()` -> `address`: returns the dedicated read-only facade for peek and showdown data.
 
 ### Channel lifecycle
 - `open(channelId, opponent, minSmallBlind, player1Signer)` (payable): seat player 1, set the opponent address, optionally deposit ETH, and start a new hand id. The `player1Signer` parameter allows setting an optional additional signer address that can sign actions and card commits on behalf of player 1. Pass `address(0)` if no additional signer is needed. Reuses existing balances when reopening a finished channel and resets showdown/dispute state.
@@ -52,6 +52,15 @@ Each event carries the channel id and relevant payload such as participant, amou
 
 ### Withdrawals
 - `withdraw(channelId)`: after a hand has been finalized, each player can pull their remaining escrow. The function zeroes their stored balance and emits `Withdrawn` on success.
+
+## `HeadsUpPokerView`
+`HeadsUpPokerView` is deployed by `HeadsUpPokerEscrow` and exposes read-only helpers for peek and showdown state without duplicating business logic in the escrow.
+
+- `getPeek(channelId)` -> `PeekState`: inspect the current peek request, helper obligations, and deck availability.
+- `getRevealedCardA(channelId, slot)` / `getRevealedCardB(channelId, slot)` -> `bytes`: retrieve partially decrypted cards submitted by each player.
+- `getPublicKeys(channelId)` -> `(bytes, bytes)`: fetch the encrypted deck public keys registered by both players.
+- `getShowdown(channelId)` -> `ShowdownState`: inspect reveal deadlines, board/hole cards revealed so far, and whether each player has submitted their reveal.
+- `getPeekAddress()` / `getShowdownAddress()` -> `address`: expose the underlying helper contract addresses for integrations that need the full ABI.
 
 ## `HeadsUpPokerEIP712`
 This helper contract exposes EIP-712 hash builders so the backend can mirror the exact digests used on-chain:
