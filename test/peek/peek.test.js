@@ -27,6 +27,7 @@ describe("Peek - Request Validation", function () {
     let escrowAddress;
     let chainId;
     let peekContract;
+    let actionVerifier;
     const channelId = 1n;
     const deposit = ethers.parseEther("1");
 
@@ -38,6 +39,11 @@ describe("Peek - Request Validation", function () {
         chainId = (await ethers.provider.getNetwork()).chainId;
         const peekAddress = await escrow.getPeekAddress();
         peekContract = await ethers.getContractAt("HeadsUpPokerPeek", peekAddress);
+        const verifierAddress = await escrow.getActionVerifierAddress();
+        actionVerifier = await ethers.getContractAt(
+            "HeadsUpPokerActionVerifier",
+            verifierAddress
+        );
 
         crypto = setupShowdownCrypto();
         deck = createEncryptedDeck(
@@ -77,6 +83,15 @@ describe("Peek - Request Validation", function () {
         return { actions, signatures };
     }
 
+    it("shares the verifier between escrow and peek", async () => {
+        expect(await peekContract.getActionVerifier()).to.equal(
+            await escrow.getActionVerifierAddress()
+        );
+        expect(await actionVerifier.getAddress()).to.equal(
+            await escrow.getActionVerifierAddress()
+        );
+    });
+
     it("reverts hole A request when action sequence ends the hand", async () => {
         const specs = [
             { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
@@ -107,6 +122,25 @@ describe("Peek - Request Validation", function () {
         expect(state.stage).to.equal(1); // HOLE_A
         expect(state.inProgress).to.equal(true);
         expect(state.obligatedHelper).to.equal(player2.address);
+    });
+
+    it("reverts hole A request with mismatched signatures", async () => {
+        const specs = [
+            { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
+            { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address }
+        ];
+        const { actions, signatures } = await buildSequence(specs);
+        const badSignatures = signatures.slice();
+        badSignatures[0] = badSignatures[1];
+
+        await expect(
+            escrow
+                .connect(player1)
+                .requestHoleA(channelId, actions, badSignatures)
+        ).to.be.revertedWithCustomError(
+            actionVerifier,
+            "ActionWrongSigner"
+        );
     });
 
     it("requires requester partial decrypts for flop peek", async () => {

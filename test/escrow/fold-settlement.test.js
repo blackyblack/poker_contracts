@@ -10,6 +10,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
     let escrow;
     let player1, player2;
     let chainId;
+    let actionVerifier;
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
@@ -17,6 +18,10 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
 
         const HeadsUpPokerEscrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await HeadsUpPokerEscrow.deploy();
+        actionVerifier = await ethers.getContractAt(
+            "HeadsUpPokerActionVerifier",
+            await escrow.getActionVerifierAddress()
+        );
     });
 
     describe("Fold Settlement", function () {
@@ -93,7 +98,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
             const badSignatures = [sig, signatures[1], signatures[2]];
 
             await expect(escrow.settle(channelId, actions, badSignatures))
-                .to.be.revertedWithCustomError(escrow, "ActionWrongSigner");
+                .to.be.revertedWithCustomError(actionVerifier, "ActionWrongSigner");
         });
 
         it("should reject settlement with wrong channel ID in actions", async function () {
@@ -107,7 +112,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
             await expect(escrow.settle(channelId, actions, signatures))
-                .to.be.revertedWithCustomError(escrow, "ActionWrongChannel");
+                .to.be.revertedWithCustomError(actionVerifier, "ActionWrongChannel");
         });
 
         it("should reject settlement with wrong hand ID in actions", async function () {
@@ -121,7 +126,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
             const signatures = await signActions(actions, [wallet1, wallet2], await escrow.getAddress(), chainId);
 
             await expect(escrow.settle(channelId, actions, signatures))
-                .to.be.revertedWithCustomError(escrow, "ActionWrongHand");
+                .to.be.revertedWithCustomError(actionVerifier, "ActionWrongHand");
         });
 
         it("should reject settlement with empty actions array", async function () {
@@ -145,7 +150,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
             const badSignatures = signatures.slice(0, 2);
 
             await expect(escrow.settle(channelId, actions, badSignatures))
-                .to.be.revertedWithCustomError(escrow, "ActionSignatureLengthMismatch");
+                .to.be.revertedWithCustomError(actionVerifier, "ActionSignatureLengthMismatch");
         });
 
         it("should reject duplicate settlement", async function () {

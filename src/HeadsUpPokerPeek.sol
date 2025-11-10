@@ -7,6 +7,7 @@ import {Action} from "./HeadsUpPokerActions.sol";
 import {Bn254} from "./Bn254.sol";
 import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
 import {HeadsUpPokerReplay} from "./HeadsUpPokerReplay.sol";
+import {HeadsUpPokerActionVerifier} from "./HeadsUpPokerActionVerifier.sol";
 import "./HeadsUpPokerErrors.sol";
 
 contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
@@ -54,6 +55,7 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
 
     address private immutable escrow;
     HeadsUpPokerReplay private immutable replay;
+    HeadsUpPokerActionVerifier private immutable actionVerifier;
 
     // channelId => PeekState
     mapping(uint256 => PeekState) private peeks;
@@ -76,10 +78,19 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         _;
     }
 
-    constructor(address escrowAddress, HeadsUpPokerReplay replayAddress) {
+    constructor(
+        address escrowAddress,
+        HeadsUpPokerReplay replayAddress,
+        HeadsUpPokerActionVerifier verifierAddress
+    ) {
         if (escrowAddress == address(0)) revert NotEscrow();
         escrow = escrowAddress;
         replay = replayAddress;
+        actionVerifier = verifierAddress;
+    }
+
+    function getActionVerifier() external view returns (address) {
+        return address(actionVerifier);
     }
 
     // ------------------------------------------------------------------

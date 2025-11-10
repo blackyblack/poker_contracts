@@ -2,20 +2,19 @@
 pragma solidity 0.8.24;
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
 import {HeadsUpPokerPeek} from "./HeadsUpPokerPeek.sol";
 import {HeadsUpPokerReplay} from "./HeadsUpPokerReplay.sol";
 import {HeadsUpPokerShowdown} from "./HeadsUpPokerShowdown.sol";
 import {Action} from "./HeadsUpPokerActions.sol";
+import {HeadsUpPokerActionVerifier} from "./HeadsUpPokerActionVerifier.sol";
 import "./HeadsUpPokerErrors.sol";
 
 /// @title HeadsUpPokerEscrow - Simple escrow contract for heads up poker matches using ETH only
 contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
-    using ECDSA for bytes32;
-
     HeadsUpPokerReplay private immutable replay;
+    HeadsUpPokerActionVerifier private immutable actionVerifier;
 
     // ------------------------------------------------------------------
     // Slot layout constants
@@ -61,7 +60,8 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     constructor() {
         replay = new HeadsUpPokerReplay();
-        peek = new HeadsUpPokerPeek(address(this), replay);
+        actionVerifier = new HeadsUpPokerActionVerifier();
+        peek = new HeadsUpPokerPeek(address(this), replay, actionVerifier);
         showdown = new HeadsUpPokerShowdown(address(this), peek);
     }
 
@@ -214,6 +214,10 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     /// @notice Get the address of the Peek contract
     function getPeekAddress() external view returns (address) {
         return address(peek);
+    }
+
+    function getActionVerifierAddress() external view returns (address) {
+        return address(actionVerifier);
     }
 
     /// @notice Get the address of the Showdown contract
@@ -427,14 +431,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.finalized) revert AlreadyFinalized();
         if (!ch.gameStarted) revert GameNotStarted();
 
-        // Verify signatures for all actions
-        _verifyActionSignatures(
+        bytes32 domainSeparator = DOMAIN_SEPARATOR();
+
+        _verifyActionsWithHelper(
+            ch,
             channelId,
-            ch.handId,
             actions,
             signatures,
-            ch.player1,
-            ch.player2
+            domainSeparator
         );
 
         // Replay actions to verify they are terminal and get end state
@@ -493,14 +497,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         if (ch.finalized) revert AlreadyFinalized();
         if (!ch.gameStarted) revert GameNotStarted();
 
-        // Verify signatures for all actions
-        _verifyActionSignatures(
+        bytes32 domainSeparator = DOMAIN_SEPARATOR();
+
+        _verifyActionsWithHelper(
+            ch,
             channelId,
-            ch.handId,
             actions,
             signatures,
-            ch.player1,
-            ch.player2
+            domainSeparator
         );
 
         // Must provide a longer sequence to extend dispute
@@ -589,78 +593,24 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
     // Internal helpers
     // ------------------------------------------------------------------
 
-    /// @notice Check if signer is authorized to sign for a player
-    /// @param channelId The channel identifier
-    /// @param player The player address
-    /// @param signer The signer address
-    /// @return True if signer is authorized to sign for the player
-    function _isAuthorizedSigner(
+    function _verifyActionsWithHelper(
+        Channel storage ch,
         uint256 channelId,
-        address player,
-        address signer
-    ) private view returns (bool) {
-        Channel storage ch = channels[channelId];
-
-        if (player == ch.player1) {
-            return
-                signer == ch.player1 ||
-                (ch.player1Signer != address(0) && signer == ch.player1Signer);
-        }
-        if (player == ch.player2) {
-            return
-                signer == ch.player2 ||
-                (ch.player2Signer != address(0) && signer == ch.player2Signer);
-        }
-
-        return false;
-    }
-
-    /// @notice Verifies that all actions are signed by the action sender
-    /// @param channelId The channel identifier
-    /// @param handId The hand identifier
-    /// @param actions Array of actions to verify
-    /// @param signatures Array of signatures of the corresponding actions (signed by the sender of each action)
-    /// @param player1 Address of player1
-    /// @param player2 Address of player2
-    function _verifyActionSignatures(
-        uint256 channelId,
-        uint256 handId,
         Action[] calldata actions,
         bytes[] calldata signatures,
-        address player1,
-        address player2
+        bytes32 domainSeparator
     ) private view {
-        if (actions.length != signatures.length)
-            revert ActionSignatureLengthMismatch();
-
-        address player1Signer = channels[channelId].player1Signer;
-        address player2Signer = channels[channelId].player2Signer;
-
-        for (uint256 i = 0; i < actions.length; i++) {
-            Action calldata action = actions[i];
-
-            // Verify action belongs to correct channel and hand
-            if (action.channelId != channelId) revert ActionWrongChannel();
-            if (action.handId != handId) revert ActionWrongHand();
-
-            // Verify sender is one of the valid players
-            if (
-                action.sender != player1 &&
-                action.sender != player2 &&
-                action.sender != player1Signer &&
-                action.sender != player2Signer
-            ) revert ActionInvalidSender();
-
-            // Get EIP712 digest for this action
-            bytes32 digest = digestAction(action);
-
-            // Verify the sender signed this action OR an authorized signer signed it
-            bytes calldata sig = signatures[i];
-            address actualSigner = digest.recover(sig);
-
-            if (!_isAuthorizedSigner(channelId, action.sender, actualSigner))
-                revert ActionWrongSigner();
-        }
+        actionVerifier.verifyActions(
+            actions,
+            signatures,
+            channelId,
+            ch.handId,
+            ch.player1,
+            ch.player2,
+            ch.player1Signer,
+            ch.player2Signer,
+            domainSeparator
+        );
     }
 
     function _rewardWinner(
@@ -759,13 +709,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bytes[] calldata actionSignatures
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        _verifyActionSignatures(
+        bytes32 domainSeparator = DOMAIN_SEPARATOR();
+
+        _verifyActionsWithHelper(
+            ch,
             channelId,
-            ch.handId,
             actions,
             actionSignatures,
-            ch.player1,
-            ch.player2
+            domainSeparator
         );
         peek.requestHoleA(
             channelId,
@@ -802,13 +753,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bytes[] calldata actionSignatures
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        _verifyActionSignatures(
+        bytes32 domainSeparator = DOMAIN_SEPARATOR();
+
+        _verifyActionsWithHelper(
+            ch,
             channelId,
-            ch.handId,
             actions,
             actionSignatures,
-            ch.player1,
-            ch.player2
+            domainSeparator
         );
         peek.requestHoleB(
             channelId,
@@ -846,13 +798,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bytes[] calldata requesterDecryptedCards
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        _verifyActionSignatures(
+        bytes32 domainSeparator = DOMAIN_SEPARATOR();
+
+        _verifyActionsWithHelper(
+            ch,
             channelId,
-            ch.handId,
             actions,
             actionSignatures,
-            ch.player1,
-            ch.player2
+            domainSeparator
         );
         peek.requestFlop(
             channelId,
@@ -891,13 +844,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bytes calldata requesterDecryptedCard
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        _verifyActionSignatures(
+        bytes32 domainSeparator = DOMAIN_SEPARATOR();
+
+        _verifyActionsWithHelper(
+            ch,
             channelId,
-            ch.handId,
             actions,
             actionSignatures,
-            ch.player1,
-            ch.player2
+            domainSeparator
         );
         peek.requestTurn(
             channelId,
@@ -936,13 +890,14 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bytes calldata requesterDecryptedCard
     ) external nonReentrant {
         Channel storage ch = channels[channelId];
-        _verifyActionSignatures(
+        bytes32 domainSeparator = DOMAIN_SEPARATOR();
+
+        _verifyActionsWithHelper(
+            ch,
             channelId,
-            ch.handId,
             actions,
             actionSignatures,
-            ch.player1,
-            ch.player2
+            domainSeparator
         );
         peek.requestRiver(
             channelId,
