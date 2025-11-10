@@ -26,13 +26,9 @@ contract HeadsUpPokerEIP712 is EIP712 {
     /// base points that allow identification of card values from decrypted G1 points.
     uint8 constant FULL_DECK_SIZE = 52;
 
-    // ---------------------------------------------------------------------
-    // Typehashes
-    // ---------------------------------------------------------------------
-    bytes32 internal constant ACTION_TYPEHASH =
-        keccak256(
-            "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash,address sender)"
-        );
+    bytes32 internal constant ACTION_TYPEHASH = keccak256(
+        "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash,address sender)"
+    );
 
     constructor() EIP712("HeadsUpPoker", "1") {}
 
@@ -43,32 +39,19 @@ contract HeadsUpPokerEIP712 is EIP712 {
         return _domainSeparatorV4();
     }
 
-    // ---------------------------------------------------------------------
-    // Digest helpers
-    // ---------------------------------------------------------------------
-    function digestAction(Action calldata act) public view returns (bytes32) {
-        bytes32 structHash = keccak256(
-            abi.encode(
-                ACTION_TYPEHASH,
-                act.channelId,
-                act.handId,
-                act.seq,
-                act.action,
-                act.amount,
-                act.prevHash,
-                act.sender
-            )
-        );
-        return _hashTypedDataV4(structHash);
-    }
-
-    // ---------------------------------------------------------------------
-    // Signature recovery
-    // ---------------------------------------------------------------------
-    function recoverActionSigner(
-        Action calldata act,
-        bytes calldata sig
-    ) external view returns (address) {
-        return digestAction(act).recover(sig);
+    function hashAction(Action calldata action) public pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    ACTION_TYPEHASH,
+                    action.channelId,
+                    action.handId,
+                    action.seq,
+                    action.action,
+                    action.amount,
+                    action.prevHash,
+                    action.sender
+                )
+            );
     }
 }

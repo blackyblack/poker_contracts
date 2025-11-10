@@ -112,6 +112,12 @@ describe("Peek - answer functions", function () {
         ];
         const { actions, signatures } = await buildSequence(specs);
 
+        const verifierAddress = await escrow.getActionVerifierAddress();
+        const actionVerifier = await ethers.getContractAt(
+            "HeadsUpPokerActionVerifier",
+            verifierAddress
+        );
+
         await escrow
             .connect(player1)
             .requestHoleA(channelId, actions, signatures);
@@ -120,7 +126,7 @@ describe("Peek - answer functions", function () {
 
         await expect(
             escrow.connect(player1).answerHoleA(channelId, [partial, partial])
-        ).to.be.revertedWithCustomError(escrow, "ActionInvalidSender");
+        ).to.be.revertedWithCustomError(actionVerifier, "ActionInvalidSender");
     });
 
     it("allows flop peek when requester supplies own partials", async () => {

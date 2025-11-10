@@ -89,10 +89,6 @@ contract HeadsUpPokerPeek is HeadsUpPokerEIP712 {
         actionVerifier = verifierAddress;
     }
 
-    function getActionVerifier() external view returns (address) {
-        return address(actionVerifier);
-    }
-
     // ------------------------------------------------------------------
     // View helpers
     // ------------------------------------------------------------------

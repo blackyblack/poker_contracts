@@ -127,7 +127,7 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
 
             // Join without optional signer for player2
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, "0x", { value: 10n });
-            
+
             // Start the game
             await startGameWithDeck(escrow, channelId, player1, player2);
         });
@@ -166,6 +166,12 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
         });
 
         it("should reject actions signed by unauthorized addresses", async function () {
+            const verifierAddress = await escrow.getActionVerifierAddress();
+            const actionVerifier = await ethers.getContractAt(
+                "HeadsUpPokerActionVerifier",
+                verifierAddress
+            );
+
             const actions = buildActions([
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: player1.address },
                 { action: ACTION.BIG_BLIND, amount: 2n, sender: player2.address },
@@ -184,7 +190,7 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
             const unauthorizedSignatures = [signatures[0], signatures[1], sig];
 
             await expect(escrow.connect(player1).settle(channelId, actions, unauthorizedSignatures))
-                .to.be.revertedWithCustomError(escrow, "ActionWrongSigner");
+                .to.be.revertedWithCustomError(actionVerifier, "ActionWrongSigner");
         });
     });
 });

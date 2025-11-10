@@ -83,15 +83,6 @@ describe("Peek - Request Validation", function () {
         return { actions, signatures };
     }
 
-    it("shares the verifier between escrow and peek", async () => {
-        expect(await peekContract.getActionVerifier()).to.equal(
-            await escrow.getActionVerifierAddress()
-        );
-        expect(await actionVerifier.getAddress()).to.equal(
-            await escrow.getActionVerifierAddress()
-        );
-    });
-
     it("reverts hole A request when action sequence ends the hand", async () => {
         const specs = [
             { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },

@@ -4,16 +4,13 @@ pragma solidity 0.8.24;
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import {Action} from "./HeadsUpPokerActions.sol";
+import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
 import "./HeadsUpPokerErrors.sol";
 
 /// @title HeadsUpPokerActionVerifier
 /// @notice Stateless helper that validates action signatures bound to the escrow EIP712 domain.
-contract HeadsUpPokerActionVerifier {
+contract HeadsUpPokerActionVerifier is HeadsUpPokerEIP712 {
     using ECDSA for bytes32;
-
-    bytes32 internal constant ACTION_TYPEHASH = keccak256(
-        "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash,address sender)"
-    );
 
     /// @notice Verifies that each action in `actions` is signed by an authorized signer.
     /// @param actions Array of actions to verify.
@@ -59,7 +56,7 @@ contract HeadsUpPokerActionVerifier {
                 abi.encodePacked(
                     "\x19\x01",
                     domainSeparator,
-                    _hashAction(action)
+                    hashAction(action)
                 )
             );
 
@@ -75,22 +72,6 @@ contract HeadsUpPokerActionVerifier {
                 )
             ) revert ActionWrongSigner();
         }
-    }
-
-    function _hashAction(Action calldata action) private pure returns (bytes32) {
-        return
-            keccak256(
-                abi.encode(
-                    ACTION_TYPEHASH,
-                    action.channelId,
-                    action.handId,
-                    action.seq,
-                    action.action,
-                    action.amount,
-                    action.prevHash,
-                    action.sender
-                )
-            );
     }
 
     function _isAuthorizedSigner(
