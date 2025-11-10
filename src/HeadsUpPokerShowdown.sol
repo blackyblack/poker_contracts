@@ -132,6 +132,12 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
             sd.player2Revealed = true;
         }
 
+        if (sd.player1Revealed && sd.player2Revealed) {
+            // Both players have revealed - extend the deadline to allow
+            // for finalization.
+            sd.deadline = block.timestamp + revealWindow;
+        }
+
         return (sd.player1Revealed, sd.player2Revealed);
     }
 
@@ -197,16 +203,15 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         winner = ch.player1;
         wonAmount = 0;
 
-        // Both players revealed the full deck – resolve the actual hand winner
-        // using the verified plaintext cards stored during `finalizeReveals`.
-        if (aRevealed && bRevealed) {
-            (winner, wonAmount) = _calculateShowdownWinner(channelId, ch);
-        } else if (aRevealed && !bRevealed) {
+        if (aRevealed && !bRevealed) {
             wonAmount = sd.calledAmount;
         } else if (!aRevealed && bRevealed) {
             winner = ch.player2;
             wonAmount = sd.calledAmount;
         }
+
+        // If both players revealed the full deck but failed to provide valid plaintexts
+        // result in tie
 
         sd.inProgress = false;
         sd.deadline = 0;
