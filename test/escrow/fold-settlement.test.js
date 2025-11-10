@@ -10,7 +10,6 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
     let escrow;
     let player1, player2;
     let chainId;
-    let actionVerifier;
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
@@ -18,10 +17,6 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
 
         const HeadsUpPokerEscrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
         escrow = await HeadsUpPokerEscrow.deploy();
-        actionVerifier = await ethers.getContractAt(
-            "HeadsUpPokerActionVerifier",
-            await escrow.getActionVerifierAddress()
-        );
     });
 
     describe("Fold Settlement", function () {

@@ -112,12 +112,6 @@ describe("Peek - answer functions", function () {
         ];
         const { actions, signatures } = await buildSequence(specs);
 
-        const verifierAddress = await escrow.getActionVerifierAddress();
-        const actionVerifier = await ethers.getContractAt(
-            "HeadsUpPokerActionVerifier",
-            verifierAddress
-        );
-
         await escrow
             .connect(player1)
             .requestHoleA(channelId, actions, signatures);

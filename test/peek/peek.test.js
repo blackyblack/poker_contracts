@@ -27,7 +27,6 @@ describe("Peek - Request Validation", function () {
     let escrowAddress;
     let chainId;
     let peekContract;
-    let actionVerifier;
     const channelId = 1n;
     const deposit = ethers.parseEther("1");
 
@@ -39,11 +38,6 @@ describe("Peek - Request Validation", function () {
         chainId = (await ethers.provider.getNetwork()).chainId;
         const peekAddress = await escrow.getPeekAddress();
         peekContract = await ethers.getContractAt("HeadsUpPokerPeek", peekAddress);
-        const verifierAddress = await escrow.getActionVerifierAddress();
-        actionVerifier = await ethers.getContractAt(
-            "HeadsUpPokerActionVerifier",
-            verifierAddress
-        );
 
         crypto = setupShowdownCrypto();
         deck = createEncryptedDeck(
