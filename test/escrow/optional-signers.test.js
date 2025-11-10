@@ -190,7 +190,7 @@ describe("HeadsUpPokerEscrow - Optional Signers", function () {
             const unauthorizedSignatures = [signatures[0], signatures[1], sig];
 
             await expect(escrow.connect(player1).settle(channelId, actions, unauthorizedSignatures))
-                .to.be.revertedWithCustomError(actionVerifier, "ActionWrongSigner");
+                .to.be.revertedWithCustomError(escrow, "ActionWrongSigner");
         });
     });
 });
