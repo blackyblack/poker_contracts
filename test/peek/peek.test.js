@@ -129,7 +129,7 @@ describe("Peek - Request Validation", function () {
                 .connect(player1)
                 .requestHoleA(channelId, actions, badSignatures)
         ).to.be.revertedWithCustomError(
-            actionVerifier,
+            escrow,
             "ActionWrongSigner"
         );
     });

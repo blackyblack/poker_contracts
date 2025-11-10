@@ -13,8 +13,9 @@ import "./HeadsUpPokerErrors.sol";
 
 /// @title HeadsUpPokerEscrow - Simple escrow contract for heads up poker matches using ETH only
 contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
+    using HeadsUpPokerActionVerifier for Action[];
+    
     HeadsUpPokerReplay private immutable replay;
-    HeadsUpPokerActionVerifier private immutable actionVerifier;
 
     // ------------------------------------------------------------------
     // Slot layout constants
@@ -60,8 +61,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     constructor() {
         replay = new HeadsUpPokerReplay();
-        actionVerifier = new HeadsUpPokerActionVerifier();
-        peek = new HeadsUpPokerPeek(address(this), replay, actionVerifier);
+        peek = new HeadsUpPokerPeek(address(this), replay);
         showdown = new HeadsUpPokerShowdown(address(this), peek);
     }
 
@@ -216,8 +216,9 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         return address(peek);
     }
 
-    function getActionVerifierAddress() external view returns (address) {
-        return address(actionVerifier);
+    function getActionVerifierAddress() external pure returns (address) {
+        // Libraries don't have addresses, return zero address
+        return address(0);
     }
 
     /// @notice Get the address of the Showdown contract
@@ -600,7 +601,7 @@ contract HeadsUpPokerEscrow is ReentrancyGuard, HeadsUpPokerEIP712 {
         bytes[] calldata signatures,
         bytes32 domainSeparator
     ) private view {
-        actionVerifier.verifyActions(
+        HeadsUpPokerActionVerifier.verifyActions(
             actions,
             signatures,
             channelId,

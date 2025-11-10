@@ -8,9 +8,13 @@ import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
 import "./HeadsUpPokerErrors.sol";
 
 /// @title HeadsUpPokerActionVerifier
-/// @notice Stateless helper that validates action signatures bound to the escrow EIP712 domain.
-contract HeadsUpPokerActionVerifier is HeadsUpPokerEIP712 {
+/// @notice Stateless helper library that validates action signatures bound to the escrow EIP712 domain.
+library HeadsUpPokerActionVerifier {
     using ECDSA for bytes32;
+
+    bytes32 internal constant ACTION_TYPEHASH = keccak256(
+        "Action(uint256 channelId,uint256 handId,uint32 seq,uint8 action,uint128 amount,bytes32 prevHash,address sender)"
+    );
 
     /// @notice Verifies that each action in `actions` is signed by an authorized signer.
     /// @param actions Array of actions to verify.
@@ -32,7 +36,7 @@ contract HeadsUpPokerActionVerifier is HeadsUpPokerEIP712 {
         address player1Signer,
         address player2Signer,
         bytes32 domainSeparator
-    ) external pure {
+    ) internal pure {
         if (actions.length != signatures.length) revert ActionSignatureLengthMismatch();
 
         for (uint256 i = 0; i < actions.length; i++) {
@@ -56,7 +60,7 @@ contract HeadsUpPokerActionVerifier is HeadsUpPokerEIP712 {
                 abi.encodePacked(
                     "\x19\x01",
                     domainSeparator,
-                    hashAction(action)
+                    _hashAction(action)
                 )
             );
 
@@ -90,5 +94,21 @@ contract HeadsUpPokerActionVerifier is HeadsUpPokerEIP712 {
         }
 
         return false;
+    }
+
+    function _hashAction(Action calldata action) private pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    ACTION_TYPEHASH,
+                    action.channelId,
+                    action.handId,
+                    action.seq,
+                    action.action,
+                    action.amount,
+                    action.prevHash,
+                    action.sender
+                )
+            );
     }
 }

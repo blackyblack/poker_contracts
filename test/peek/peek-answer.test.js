@@ -126,7 +126,7 @@ describe("Peek - answer functions", function () {
 
         await expect(
             escrow.connect(player1).answerHoleA(channelId, [partial, partial])
-        ).to.be.revertedWithCustomError(actionVerifier, "ActionInvalidSender");
+        ).to.be.revertedWithCustomError(escrow, "ActionInvalidSender");
     });
 
     it("allows flop peek when requester supplies own partials", async () => {
