@@ -69,7 +69,6 @@ contract HeadsUpPokerEscrow is
     HeadsUpPokerView public viewContract;
 
     bool private helpersInitialized;
-    bool private helpersWired;
 
     event HelpersInitialized(
         address replay,
@@ -77,8 +76,6 @@ contract HeadsUpPokerEscrow is
         address showdown,
         address viewContract
     );
-
-    event HelpersWired();
 
     constructor() Ownable(msg.sender) {}
 
@@ -114,26 +111,8 @@ contract HeadsUpPokerEscrow is
         );
     }
 
-    function wireHelpers() external onlyOwner {
-        if (!helpersInitialized) revert HelpersNotConfigured();
-        if (helpersWired) revert HelpersAlreadyWired();
-
-        HeadsUpPokerReplay replay_ = _replay();
-        HeadsUpPokerPeek peek_ = _peek();
-        HeadsUpPokerShowdown showdown_ = _showdown();
-        HeadsUpPokerView viewContract_ = _view();
-
-        peek_.setEscrow(address(this), replay_);
-        showdown_.setPeek(address(this), peek_);
-        viewContract_.setContracts(address(this), peek_, showdown_);
-
-        helpersWired = true;
-
-        emit HelpersWired();
-    }
-
     function helpersConfigured() public view returns (bool) {
-        return helpersInitialized && helpersWired;
+        return helpersInitialized;
     }
 
     modifier helpersReady() {
