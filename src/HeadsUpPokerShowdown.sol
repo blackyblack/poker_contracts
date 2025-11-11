@@ -48,11 +48,17 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
     }
 
     constructor(address escrowAddress, HeadsUpPokerPeek peekAddress) {
+        if (escrowAddress == address(0) || address(peekAddress) == address(0)) {
+            revert HelpersNotConfigured();
+        }
+
         escrow = escrowAddress;
         peek = peekAddress;
     }
 
-    function getShowdown(uint256 channelId) external view returns (ShowdownState memory) {
+    function getShowdown(
+        uint256 channelId
+    ) external view returns (ShowdownState memory) {
         return showdowns[channelId];
     }
 
@@ -65,7 +71,10 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         // don't delete revealed cards - they will be reset in initiateShowdown
     }
 
-    function initiateShowdown(uint256 channelId, uint256 calledAmount) external onlyEscrow {
+    function initiateShowdown(
+        uint256 channelId,
+        uint256 calledAmount
+    ) external onlyEscrow {
         ShowdownState storage sd = showdowns[channelId];
         if (sd.inProgress) revert ShowdownInProgress();
 
@@ -88,14 +97,16 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         bytes[] calldata decryptedCards,
         address player
     ) external onlyEscrow returns (bool player1Ready, bool player2Ready) {
-        if (ch.player1 == address(0) || ch.player2 == address(0)) revert NoChannel();
+        if (ch.player1 == address(0) || ch.player2 == address(0))
+            revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
 
         ShowdownState storage sd = showdowns[channelId];
         if (!sd.inProgress) revert NoShowdownInProgress();
         if (block.timestamp > sd.deadline) revert Expired();
 
-        if (decryptedCards.length != SLOT_RIVER + 1) revert PrerequisitesNotMet();
+        if (decryptedCards.length != SLOT_RIVER + 1)
+            revert PrerequisitesNotMet();
 
         bytes memory openerPublicKey;
 
@@ -112,12 +123,7 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         for (uint8 i = 0; i <= SLOT_RIVER; i++) {
             bytes calldata card = decryptedCards[i];
 
-            _verifyPartialDecrypt(
-                channelId,
-                i,
-                openerPublicKey,
-                card
-            );
+            _verifyPartialDecrypt(channelId, i, openerPublicKey, card);
 
             if (player == ch.player1) {
                 revealedPartialsA[channelId][i] = card;
@@ -147,13 +153,16 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         bytes[] calldata plaintextCards,
         address player
     ) external onlyEscrow returns (address winner, uint256 wonAmount) {
-        if (ch.player1 == address(0) || ch.player2 == address(0)) revert NoChannel();
+        if (ch.player1 == address(0) || ch.player2 == address(0))
+            revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
 
         ShowdownState storage sd = showdowns[channelId];
         if (!sd.inProgress) revert NoShowdownInProgress();
-        if (!sd.player1Revealed || !sd.player2Revealed) revert PrerequisitesNotMet();
-        if (plaintextCards.length != SLOT_RIVER + 1) revert PrerequisitesNotMet();
+        if (!sd.player1Revealed || !sd.player2Revealed)
+            revert PrerequisitesNotMet();
+        if (plaintextCards.length != SLOT_RIVER + 1)
+            revert PrerequisitesNotMet();
 
         for (uint8 i = 0; i <= SLOT_RIVER; i++) {
             bytes calldata pc = plaintextCards[i];
@@ -171,11 +180,7 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
                 revert ActionInvalidSender();
             }
 
-            _verifyPlaintextFromPartial(
-                pc,
-                partialOther,
-                openerPublicKey
-            );
+            _verifyPlaintextFromPartial(pc, partialOther, openerPublicKey);
 
             uint8 cardValue = peek.getCanonicalCard(channelId, pc);
             sd.cards[i] = cardValue;
@@ -190,7 +195,8 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         uint256 channelId,
         ChannelData calldata ch
     ) external onlyEscrow returns (address winner, uint256 wonAmount) {
-        if (ch.player1 == address(0) || ch.player2 == address(0)) revert NoChannel();
+        if (ch.player1 == address(0) || ch.player2 == address(0))
+            revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
 
         ShowdownState storage sd = showdowns[channelId];
@@ -231,7 +237,9 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         if (Bn254.isInfinity(partialCard)) revert InvalidDecryptedCard();
         if (!Bn254.isG1OnCurve(partialCard)) revert InvalidDecryptedCard();
 
-        if (!Bn254.verifyPartialDecrypt(plaintext, partialCard, openerPublicKey)) {
+        if (
+            !Bn254.verifyPartialDecrypt(plaintext, partialCard, openerPublicKey)
+        ) {
             revert InvalidDecryptedCard();
         }
     }
@@ -266,12 +274,16 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         }
     }
 
-    function _getPublicKeyA(uint256 channelId) internal view returns (bytes memory) {
+    function _getPublicKeyA(
+        uint256 channelId
+    ) internal view returns (bytes memory) {
         (bytes memory pkA, ) = peek.getPublicKeys(channelId);
         return pkA;
     }
 
-    function _getPublicKeyB(uint256 channelId) internal view returns (bytes memory) {
+    function _getPublicKeyB(
+        uint256 channelId
+    ) internal view returns (bytes memory) {
         (, bytes memory pkB) = peek.getPublicKeys(channelId);
         return pkB;
     }

@@ -4,7 +4,6 @@ pragma solidity 0.8.24;
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import {Action} from "./HeadsUpPokerActions.sol";
-import {HeadsUpPokerEIP712} from "./HeadsUpPokerEIP712.sol";
 import "./HeadsUpPokerErrors.sol";
 
 /// @title HeadsUpPokerActionVerifier

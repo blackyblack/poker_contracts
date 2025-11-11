@@ -15,6 +15,7 @@ import {
     createCanonicalDeck,
     createPartialDecrypt,
     createPlaintext,
+    deployAndWireContracts,
 } from "../helpers/test-utils.js";
 
 const { ethers } = hre;
@@ -43,26 +44,14 @@ describe("Showdown - DecryptedCard Verification", function () {
     let escrowAddress;
     let chainId;
     let showdownContract;
-    let view;
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
-        const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
-        escrow = await Escrow.deploy();
+        ({ escrow, showdown: showdownContract } = await deployAndWireContracts());
         escrowAddress = await escrow.getAddress();
         chainId = (await ethers.provider.getNetwork()).chainId;
-        view = await ethers.getContractAt(
-            "HeadsUpPokerView",
-            await escrow.viewContract()
-        );
 
         crypto = setupShowdownCrypto();
-
-        const showdownAddress = await view.getShowdownAddress();
-        showdownContract = await ethers.getContractAt(
-            "HeadsUpPokerShowdown",
-            showdownAddress
-        );
 
         await escrow.open(
             channelId,
@@ -164,7 +153,7 @@ describe("Showdown - DecryptedCard Verification", function () {
             .to.emit(escrow, "ShowdownFinalized")
             .withArgs(channelId, player1.address, 2n);
 
-        const sd = await view.getShowdown(channelId);
+        const sd = await showdownContract.getShowdown(channelId);
         expect(sd.inProgress).to.equal(false);
         expect(sd.player1Revealed).to.equal(true);
         expect(sd.player2Revealed).to.equal(true);

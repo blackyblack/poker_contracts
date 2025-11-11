@@ -8,11 +8,6 @@ export default {
             viaIR: true,
         }
     },
-    networks: {
-        hardhat: {
-            allowUnlimitedContractSize: true,
-        },
-    },
     gasReporter: {
         enabled: false,
     },

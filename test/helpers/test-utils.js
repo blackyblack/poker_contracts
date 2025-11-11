@@ -4,6 +4,41 @@ import { ACTION } from "./actions.js";
 
 const { ethers } = hre;
 
+export async function deployAndWireContracts() {
+    const HeadsUpPokerEscrow = await ethers.getContractFactory(
+        "HeadsUpPokerEscrow"
+    );
+    const HeadsUpPokerReplay = await ethers.getContractFactory(
+        "HeadsUpPokerReplay"
+    );
+    const HeadsUpPokerPeek = await ethers.getContractFactory("HeadsUpPokerPeek");
+    const HeadsUpPokerShowdown = await ethers.getContractFactory(
+        "HeadsUpPokerShowdown"
+    );
+
+    const replay = await HeadsUpPokerReplay.deploy();
+    const escrow = await HeadsUpPokerEscrow.deploy();
+    
+    // Deploy helpers with escrow address in their constructors
+    const peek = await HeadsUpPokerPeek.deploy(
+        await escrow.getAddress(),
+        await replay.getAddress()
+    );
+    const showdown = await HeadsUpPokerShowdown.deploy(
+        await escrow.getAddress(),
+        await peek.getAddress()
+    );
+
+    // Initialize helpers in escrow
+    await escrow.initializeHelpers(
+        await replay.getAddress(),
+        await peek.getAddress(),
+        await showdown.getAddress()
+    );
+
+    return { escrow, replay, peek, showdown };
+}
+
 // Standard test wallet private keys
 export const wallet1 = new ethers.Wallet(
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"

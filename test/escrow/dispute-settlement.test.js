@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { ACTION } from "../helpers/actions.js";
-import { buildActions, signActions, wallet1, wallet2, startGameWithDeck } from "../helpers/test-utils.js";
+import { buildActions, signActions, wallet1, wallet2, startGameWithDeck, deployAndWireContracts } from "../helpers/test-utils.js";
 
 const { ethers } = hre;
 
@@ -14,8 +14,7 @@ describe("HeadsUpPokerEscrow - Dispute Settlement", function () {
         [player1, player2] = await ethers.getSigners();
         chainId = (await ethers.provider.getNetwork()).chainId;
 
-        const HeadsUpPokerEscrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
-        escrow = await HeadsUpPokerEscrow.deploy();
+        ({ escrow } = await deployAndWireContracts());
     });
 
     describe("Settle Function", function () {

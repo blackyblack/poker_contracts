@@ -77,7 +77,10 @@ contract HeadsUpPokerPeek is ReentrancyGuard, HeadsUpPokerEIP712 {
     }
 
     constructor(address escrowAddress, HeadsUpPokerReplay replayAddress) {
-        if (escrowAddress == address(0)) revert NotEscrow();
+        if (escrowAddress == address(0) || address(replayAddress) == address(0)) {
+            revert HelpersNotConfigured();
+        }
+
         escrow = IHeadsUpPokerEscrow(escrowAddress);
         replay = replayAddress;
     }

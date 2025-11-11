@@ -60,3 +60,5 @@ error InvalidDeck();
 error InvalidUnencryptedCard();
 error InvalidGameState();
 error NotEscrow();
+error HelpersNotConfigured();
+error HelpersAlreadyConfigured();
