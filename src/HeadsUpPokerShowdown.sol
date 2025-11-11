@@ -36,50 +36,32 @@ contract HeadsUpPokerShowdown is Ownable, HeadsUpPokerEIP712 {
         uint256 handId;
     }
 
-    address private escrow;
-    HeadsUpPokerPeek private peek;
+    address private immutable escrow;
+    HeadsUpPokerPeek private immutable peek;
 
-    bool private peekInitialized;
-
-    event PeekConfigured(address escrow, address peek);
+    event ShowdownInitiated(uint256 indexed channelId, uint256 calledAmount);
+    event CardsRevealed(uint256 indexed channelId, address indexed player);
 
     mapping(uint256 => ShowdownState) private showdowns;
     mapping(uint256 => mapping(uint8 => bytes)) private revealedPartialsA;
     mapping(uint256 => mapping(uint8 => bytes)) private revealedPartialsB;
 
     modifier onlyEscrow() {
-        address escrowAddress = escrow;
-        if (escrowAddress == address(0)) revert HelpersNotConfigured();
-        if (msg.sender != escrowAddress) revert NotEscrow();
+        if (msg.sender != escrow) revert NotEscrow();
         _;
     }
 
-    constructor() Ownable(msg.sender) {}
-
-    function setPeek(
-        address escrowAddress,
-        HeadsUpPokerPeek peekAddress
-    ) external onlyOwner {
-        if (peekInitialized) revert HelpersAlreadyConfigured();
+    constructor(address escrowAddress, HeadsUpPokerPeek peekAddress) Ownable(msg.sender) {
         if (escrowAddress == address(0) || address(peekAddress) == address(0)) {
             revert HelpersNotConfigured();
         }
 
         escrow = escrowAddress;
         peek = peekAddress;
-        peekInitialized = true;
-
-        emit PeekConfigured(escrowAddress, address(peekAddress));
     }
 
     function _peek() private view returns (HeadsUpPokerPeek) {
-        HeadsUpPokerPeek peekAddress = peek;
-        if (address(peekAddress) == address(0)) revert HelpersNotConfigured();
-        return peekAddress;
-    }
-
-    function helpersConfigured() external view returns (bool) {
-        return peekInitialized;
+        return peek;
     }
 
     function getShowdown(uint256 channelId) external view returns (ShowdownState memory) {

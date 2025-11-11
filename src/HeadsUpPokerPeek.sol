@@ -45,12 +45,8 @@ contract HeadsUpPokerPeek is Ownable, ReentrancyGuard, HeadsUpPokerEIP712 {
 
     uint256 public constant peekWindow = 1 hours;
 
-    IHeadsUpPokerEscrow private escrow;
-    HeadsUpPokerReplay private replay;
-
-    bool private escrowInitialized;
-
-    event EscrowConfigured(address escrow, address replay);
+    IHeadsUpPokerEscrow private immutable escrow;
+    HeadsUpPokerReplay private immutable replay;
 
     event PeekOpened(uint256 indexed channelId, uint8 indexed stage);
     event PeekServed(uint256 indexed channelId, uint8 indexed stage);
@@ -77,38 +73,21 @@ contract HeadsUpPokerPeek is Ownable, ReentrancyGuard, HeadsUpPokerEIP712 {
     mapping(uint256 => bytes) private publicKeyB;
 
     modifier onlyEscrow() {
-        IHeadsUpPokerEscrow escrow_ = escrow;
-        if (address(escrow_) == address(0)) revert HelpersNotConfigured();
-        if (msg.sender != address(escrow_)) revert NotEscrow();
+        if (msg.sender != address(escrow)) revert NotEscrow();
         _;
     }
 
-    constructor() Ownable(msg.sender) {}
-
-    function setEscrow(
-        address escrowAddress,
-        HeadsUpPokerReplay replayAddress
-    ) external onlyOwner {
-        if (escrowInitialized) revert HelpersAlreadyConfigured();
+    constructor(address escrowAddress, HeadsUpPokerReplay replayAddress) Ownable(msg.sender) {
         if (escrowAddress == address(0) || address(replayAddress) == address(0)) {
             revert HelpersNotConfigured();
         }
 
         escrow = IHeadsUpPokerEscrow(escrowAddress);
         replay = replayAddress;
-        escrowInitialized = true;
-
-        emit EscrowConfigured(escrowAddress, address(replayAddress));
-    }
-
-    function helpersConfigured() public view returns (bool) {
-        return escrowInitialized;
     }
 
     function _replay() private view returns (HeadsUpPokerReplay) {
-        HeadsUpPokerReplay replayAddress = replay;
-        if (address(replayAddress) == address(0)) revert HelpersNotConfigured();
-        return replayAddress;
+        return replay;
     }
 
     // ------------------------------------------------------------------

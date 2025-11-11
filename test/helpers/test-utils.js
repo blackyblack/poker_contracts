@@ -18,23 +18,30 @@ export async function deployAndWireContracts() {
     const HeadsUpPokerView = await ethers.getContractFactory("HeadsUpPokerView");
 
     const replay = await HeadsUpPokerReplay.deploy();
-    const peek = await HeadsUpPokerPeek.deploy();
-    const showdown = await HeadsUpPokerShowdown.deploy();
-    const view = await HeadsUpPokerView.deploy();
     const escrow = await HeadsUpPokerEscrow.deploy();
+    
+    // Deploy helpers with escrow address in their constructors
+    const peek = await HeadsUpPokerPeek.deploy(
+        await escrow.getAddress(),
+        await replay.getAddress()
+    );
+    const showdown = await HeadsUpPokerShowdown.deploy(
+        await escrow.getAddress(),
+        await peek.getAddress()
+    );
+    const view = await HeadsUpPokerView.deploy(
+        await escrow.getAddress(),
+        await peek.getAddress(),
+        await showdown.getAddress()
+    );
 
-    await peek.transferOwnership(await escrow.getAddress());
-    await showdown.transferOwnership(await escrow.getAddress());
-    await view.transferOwnership(await escrow.getAddress());
-
+    // Initialize helpers in escrow
     await escrow.initializeHelpers(
         await replay.getAddress(),
         await peek.getAddress(),
         await showdown.getAddress(),
         await view.getAddress()
     );
-
-    await escrow.wireHelpers();
 
     return { escrow, replay, peek, showdown, view };
 }

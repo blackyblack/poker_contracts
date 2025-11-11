@@ -62,4 +62,3 @@ error InvalidGameState();
 error NotEscrow();
 error HelpersNotConfigured();
 error HelpersAlreadyConfigured();
-error HelpersAlreadyWired();
