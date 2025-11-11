@@ -53,15 +53,6 @@ Each event carries the channel id and relevant payload such as participant, amou
 ### Withdrawals
 - `withdraw(channelId)`: after a hand has been finalized, each player can pull their remaining escrow. The function zeroes their stored balance and emits `Withdrawn` on success.
 
-## `HeadsUpPokerView`
-`HeadsUpPokerView` is deployed by `HeadsUpPokerEscrow` and exposes read-only helpers for peek and showdown state without duplicating business logic in the escrow.
-
-- `getPeek(channelId)` -> `PeekState`: inspect the current peek request, helper obligations, and deck availability.
-- `getRevealedCardA(channelId, slot)` / `getRevealedCardB(channelId, slot)` -> `bytes`: retrieve partially decrypted cards submitted by each player.
-- `getPublicKeys(channelId)` -> `(bytes, bytes)`: fetch the encrypted deck public keys registered by both players.
-- `getShowdown(channelId)` -> `ShowdownState`: inspect reveal deadlines, board/hole cards revealed so far, and whether each player has submitted their reveal.
-- `getPeekAddress()` / `getShowdownAddress()` -> `address`: expose the underlying helper contract addresses for integrations that need the full ABI.
-
 ## `HeadsUpPokerEIP712`
 This helper contract exposes EIP-712 hash builders so the backend can mirror the exact digests used on-chain:
 - `DOMAIN_SEPARATOR()` returns the live EIP-712 domain separator.
