@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import {HeadsUpPokerPeek} from "./HeadsUpPokerPeek.sol";
@@ -9,7 +10,7 @@ import {PokerEvaluator} from "./PokerEvaluator.sol";
 import {Bn254} from "./Bn254.sol";
 import "./HeadsUpPokerErrors.sol";
 
-contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
+contract HeadsUpPokerShowdown is Ownable, HeadsUpPokerEIP712 {
     using ECDSA for bytes32;
 
     uint256 public constant revealWindow = 1 hours;
@@ -35,21 +36,50 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         uint256 handId;
     }
 
-    address private immutable escrow;
-    HeadsUpPokerPeek private immutable peek;
+    address private escrow;
+    HeadsUpPokerPeek private peek;
+
+    bool private peekInitialized;
+
+    event PeekConfigured(address escrow, address peek);
 
     mapping(uint256 => ShowdownState) private showdowns;
     mapping(uint256 => mapping(uint8 => bytes)) private revealedPartialsA;
     mapping(uint256 => mapping(uint8 => bytes)) private revealedPartialsB;
 
     modifier onlyEscrow() {
-        if (msg.sender != escrow) revert NotEscrow();
+        address escrowAddress = escrow;
+        if (escrowAddress == address(0)) revert HelpersNotConfigured();
+        if (msg.sender != escrowAddress) revert NotEscrow();
         _;
     }
 
-    constructor(address escrowAddress, HeadsUpPokerPeek peekAddress) {
+    constructor() Ownable(msg.sender) {}
+
+    function setPeek(
+        address escrowAddress,
+        HeadsUpPokerPeek peekAddress
+    ) external onlyOwner {
+        if (peekInitialized) revert HelpersAlreadyConfigured();
+        if (escrowAddress == address(0) || address(peekAddress) == address(0)) {
+            revert HelpersNotConfigured();
+        }
+
         escrow = escrowAddress;
         peek = peekAddress;
+        peekInitialized = true;
+
+        emit PeekConfigured(escrowAddress, address(peekAddress));
+    }
+
+    function _peek() private view returns (HeadsUpPokerPeek) {
+        HeadsUpPokerPeek peekAddress = peek;
+        if (address(peekAddress) == address(0)) revert HelpersNotConfigured();
+        return peekAddress;
+    }
+
+    function helpersConfigured() external view returns (bool) {
+        return peekInitialized;
     }
 
     function getShowdown(uint256 channelId) external view returns (ShowdownState memory) {
@@ -177,7 +207,7 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
                 openerPublicKey
             );
 
-            uint8 cardValue = peek.getCanonicalCard(channelId, pc);
+            uint8 cardValue = _peek().getCanonicalCard(channelId, pc);
             sd.cards[i] = cardValue;
         }
 
@@ -249,7 +279,7 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
 
         if (openerPublicKey.length != 128) revert InvalidDecryptedCard();
 
-        bytes memory encryptedCard = peek.getDeck(channelId, index);
+        bytes memory encryptedCard = _peek().getDeck(channelId, index);
         if (encryptedCard.length != 64) revert InvalidDeck();
 
         if (Bn254.isInfinity(encryptedCard)) revert InvalidDecryptedCard();
@@ -267,12 +297,12 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
     }
 
     function _getPublicKeyA(uint256 channelId) internal view returns (bytes memory) {
-        (bytes memory pkA, ) = peek.getPublicKeys(channelId);
+        (bytes memory pkA, ) = _peek().getPublicKeys(channelId);
         return pkA;
     }
 
     function _getPublicKeyB(uint256 channelId) internal view returns (bytes memory) {
-        (, bytes memory pkB) = peek.getPublicKeys(channelId);
+        (, bytes memory pkB) = _peek().getPublicKeys(channelId);
         return pkB;
     }
 

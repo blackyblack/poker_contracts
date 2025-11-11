@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -12,7 +13,7 @@ import {HeadsUpPokerActionVerifier} from "./HeadsUpPokerActionVerifier.sol";
 import "./HeadsUpPokerErrors.sol";
 import {IHeadsUpPokerEscrow} from "./interfaces/IHeadsUpPokerEscrow.sol";
 
-contract HeadsUpPokerPeek is ReentrancyGuard, HeadsUpPokerEIP712 {
+contract HeadsUpPokerPeek is Ownable, ReentrancyGuard, HeadsUpPokerEIP712 {
     using ECDSA for bytes32;
     using HeadsUpPokerActionVerifier for Action[];
 
@@ -44,8 +45,12 @@ contract HeadsUpPokerPeek is ReentrancyGuard, HeadsUpPokerEIP712 {
 
     uint256 public constant peekWindow = 1 hours;
 
-    IHeadsUpPokerEscrow private immutable escrow;
-    HeadsUpPokerReplay private immutable replay;
+    IHeadsUpPokerEscrow private escrow;
+    HeadsUpPokerReplay private replay;
+
+    bool private escrowInitialized;
+
+    event EscrowConfigured(address escrow, address replay);
 
     event PeekOpened(uint256 indexed channelId, uint8 indexed stage);
     event PeekServed(uint256 indexed channelId, uint8 indexed stage);
@@ -72,14 +77,38 @@ contract HeadsUpPokerPeek is ReentrancyGuard, HeadsUpPokerEIP712 {
     mapping(uint256 => bytes) private publicKeyB;
 
     modifier onlyEscrow() {
-        if (msg.sender != address(escrow)) revert NotEscrow();
+        IHeadsUpPokerEscrow escrow_ = escrow;
+        if (address(escrow_) == address(0)) revert HelpersNotConfigured();
+        if (msg.sender != address(escrow_)) revert NotEscrow();
         _;
     }
 
-    constructor(address escrowAddress, HeadsUpPokerReplay replayAddress) {
-        if (escrowAddress == address(0)) revert NotEscrow();
+    constructor() Ownable(msg.sender) {}
+
+    function setEscrow(
+        address escrowAddress,
+        HeadsUpPokerReplay replayAddress
+    ) external onlyOwner {
+        if (escrowInitialized) revert HelpersAlreadyConfigured();
+        if (escrowAddress == address(0) || address(replayAddress) == address(0)) {
+            revert HelpersNotConfigured();
+        }
+
         escrow = IHeadsUpPokerEscrow(escrowAddress);
         replay = replayAddress;
+        escrowInitialized = true;
+
+        emit EscrowConfigured(escrowAddress, address(replayAddress));
+    }
+
+    function helpersConfigured() public view returns (bool) {
+        return escrowInitialized;
+    }
+
+    function _replay() private view returns (HeadsUpPokerReplay) {
+        HeadsUpPokerReplay replayAddress = replay;
+        if (address(replayAddress) == address(0)) revert HelpersNotConfigured();
+        return replayAddress;
     }
 
     // ------------------------------------------------------------------
@@ -772,7 +801,8 @@ contract HeadsUpPokerPeek is ReentrancyGuard, HeadsUpPokerEIP712 {
     ) internal view {
         if (actions.length == 0) revert NoActionsProvided();
         GameValidation memory gv;
-        (gv.ended, , gv.street) = replay.replayState(
+        HeadsUpPokerReplay replayContract = _replay();
+        (gv.ended, , gv.street) = replayContract.replayState(
             actions,
             ch.deposit1,
             ch.deposit2,
@@ -795,7 +825,8 @@ contract HeadsUpPokerPeek is ReentrancyGuard, HeadsUpPokerEIP712 {
     ) internal view {
         if (actions.length == 0) revert NoActionsProvided();
         GameValidation memory gv;
-        (gv.ended, , gv.street) = replay.replayState(
+        HeadsUpPokerReplay replayContract = _replay();
+        (gv.ended, , gv.street) = replayContract.replayState(
             actions,
             ch.deposit1,
             ch.deposit2,

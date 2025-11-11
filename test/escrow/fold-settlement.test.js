@@ -2,7 +2,7 @@ import { expect } from "chai";
 import hre from "hardhat";
 import { ACTION } from "../helpers/actions.js";
 import { domainSeparator, actionDigest } from "../helpers/hashes.js";
-import { buildActions, signActions, wallet1, wallet2, wallet3, startGameWithDeck } from "../helpers/test-utils.js";
+import { buildActions, signActions, wallet1, wallet2, wallet3, startGameWithDeck, deployAndWireContracts } from "../helpers/test-utils.js";
 
 const { ethers } = hre;
 
@@ -16,12 +16,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
         [player1, player2] = await ethers.getSigners();
         chainId = (await ethers.provider.getNetwork()).chainId;
 
-        const HeadsUpPokerEscrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
-        escrow = await HeadsUpPokerEscrow.deploy();
-        view = await ethers.getContractAt(
-            "HeadsUpPokerView",
-            await escrow.viewContract()
-        );
+        ({ escrow, view } = await deployAndWireContracts());
     });
 
     describe("Fold Settlement", function () {

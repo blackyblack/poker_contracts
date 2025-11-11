@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { ACTION } from "../helpers/actions.js";
-import { buildActions, signActions, wallet1, wallet2, startGameWithDeck, createMockDeck, createMockCanonicalDeck, settleBasicFold } from "../helpers/test-utils.js";
+import { buildActions, signActions, wallet1, wallet2, startGameWithDeck, createMockDeck, createMockCanonicalDeck, settleBasicFold, deployAndWireContracts } from "../helpers/test-utils.js";
 
 const { ethers } = hre;
 
@@ -14,8 +14,34 @@ describe("HeadsUpPokerEscrow Management", function () {
         [player1, player2, other] = await ethers.getSigners();
         chainId = (await ethers.provider.getNetwork()).chainId;
 
-        const HeadsUpPokerEscrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
-        escrow = await HeadsUpPokerEscrow.deploy();
+        ({ escrow } = await deployAndWireContracts());
+    });
+
+    describe("Helper configuration", function () {
+        const channelId = 1n;
+        const deposit = ethers.parseEther("1.0");
+
+        it("should revert channel operations before helpers are wired", async function () {
+            const HeadsUpPokerEscrow = await ethers.getContractFactory(
+                "HeadsUpPokerEscrow"
+            );
+            const unconfiguredEscrow = await HeadsUpPokerEscrow.deploy();
+
+            await expect(
+                unconfiguredEscrow
+                    .connect(player1)
+                    .open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", {
+                        value: deposit
+                    })
+            ).to.be.revertedWithCustomError(
+                unconfiguredEscrow,
+                "HelpersNotConfigured"
+            );
+        });
+
+        it("should report helpers configured after wiring", async function () {
+            expect(await escrow.helpersConfigured()).to.equal(true);
+        });
     });
 
     describe("Channel Creation", function () {

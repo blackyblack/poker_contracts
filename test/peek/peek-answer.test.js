@@ -13,6 +13,7 @@ import {
     createEncryptedDeck,
     createCanonicalDeck,
     createPartialDecrypt,
+    deployAndWireContracts,
 } from "../helpers/test-utils.js";
 
 const { ethers } = hre;
@@ -34,16 +35,7 @@ describe("Peek - answer functions", function () {
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
-        const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
-        escrow = await Escrow.deploy();
-        view = await ethers.getContractAt(
-            "HeadsUpPokerView",
-            await escrow.viewContract()
-        );
-        peekContract = await ethers.getContractAt(
-            "HeadsUpPokerPeek",
-            await view.getPeekAddress()
-        );
+        ({ escrow, view, peek: peekContract } = await deployAndWireContracts());
         escrowAddress = await escrow.getAddress();
         chainId = (await ethers.provider.getNetwork()).chainId;
 

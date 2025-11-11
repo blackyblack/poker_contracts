@@ -15,6 +15,7 @@ import {
     createCanonicalDeck,
     createPartialDecrypt,
     createPlaintext,
+    deployAndWireContracts,
 } from "../helpers/test-utils.js";
 
 const { ethers } = hre;
@@ -47,22 +48,11 @@ describe("Showdown - DecryptedCard Verification", function () {
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
-        const Escrow = await ethers.getContractFactory("HeadsUpPokerEscrow");
-        escrow = await Escrow.deploy();
+        ({ escrow, view, showdown: showdownContract } = await deployAndWireContracts());
         escrowAddress = await escrow.getAddress();
         chainId = (await ethers.provider.getNetwork()).chainId;
-        view = await ethers.getContractAt(
-            "HeadsUpPokerView",
-            await escrow.viewContract()
-        );
 
         crypto = setupShowdownCrypto();
-
-        const showdownAddress = await view.getShowdownAddress();
-        showdownContract = await ethers.getContractAt(
-            "HeadsUpPokerShowdown",
-            showdownAddress
-        );
 
         await escrow.open(
             channelId,

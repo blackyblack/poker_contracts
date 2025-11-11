@@ -4,6 +4,41 @@ import { ACTION } from "./actions.js";
 
 const { ethers } = hre;
 
+export async function deployAndWireContracts() {
+    const HeadsUpPokerEscrow = await ethers.getContractFactory(
+        "HeadsUpPokerEscrow"
+    );
+    const HeadsUpPokerReplay = await ethers.getContractFactory(
+        "HeadsUpPokerReplay"
+    );
+    const HeadsUpPokerPeek = await ethers.getContractFactory("HeadsUpPokerPeek");
+    const HeadsUpPokerShowdown = await ethers.getContractFactory(
+        "HeadsUpPokerShowdown"
+    );
+    const HeadsUpPokerView = await ethers.getContractFactory("HeadsUpPokerView");
+
+    const replay = await HeadsUpPokerReplay.deploy();
+    const peek = await HeadsUpPokerPeek.deploy();
+    const showdown = await HeadsUpPokerShowdown.deploy();
+    const view = await HeadsUpPokerView.deploy();
+    const escrow = await HeadsUpPokerEscrow.deploy();
+
+    await peek.transferOwnership(await escrow.getAddress());
+    await showdown.transferOwnership(await escrow.getAddress());
+    await view.transferOwnership(await escrow.getAddress());
+
+    await escrow.initializeHelpers(
+        await replay.getAddress(),
+        await peek.getAddress(),
+        await showdown.getAddress(),
+        await view.getAddress()
+    );
+
+    await escrow.wireHelpers();
+
+    return { escrow, replay, peek, showdown, view };
+}
+
 // Standard test wallet private keys
 export const wallet1 = new ethers.Wallet(
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"

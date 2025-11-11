@@ -14,6 +14,7 @@ import {
     createPlaintext,
     playPlayer1WinsShowdown,
     startGameWithDeck,
+    deployAndWireContracts,
 } from "../helpers/test-utils.js";
 
 const { ethers } = hre;
@@ -31,14 +32,7 @@ describe("HeadsUpPokerEscrow - Poker Hand Ranking Integration", function () {
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
-        const HeadsUpPokerEscrow = await ethers.getContractFactory(
-            "HeadsUpPokerEscrow"
-        );
-        escrow = await HeadsUpPokerEscrow.deploy();
-        view = await ethers.getContractAt(
-            "HeadsUpPokerView",
-            await escrow.viewContract()
-        );
+        ({ escrow, view } = await deployAndWireContracts());
 
         crypto = setupShowdownCrypto();
 
