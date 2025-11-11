@@ -15,7 +15,6 @@ export async function deployAndWireContracts() {
     const HeadsUpPokerShowdown = await ethers.getContractFactory(
         "HeadsUpPokerShowdown"
     );
-    const HeadsUpPokerView = await ethers.getContractFactory("HeadsUpPokerView");
 
     const replay = await HeadsUpPokerReplay.deploy();
     const escrow = await HeadsUpPokerEscrow.deploy();
@@ -29,21 +28,15 @@ export async function deployAndWireContracts() {
         await escrow.getAddress(),
         await peek.getAddress()
     );
-    const view = await HeadsUpPokerView.deploy(
-        await escrow.getAddress(),
-        await peek.getAddress(),
-        await showdown.getAddress()
-    );
 
     // Initialize helpers in escrow
     await escrow.initializeHelpers(
         await replay.getAddress(),
         await peek.getAddress(),
-        await showdown.getAddress(),
-        await view.getAddress()
+        await showdown.getAddress()
     );
 
-    return { escrow, replay, peek, showdown, view };
+    return { escrow, replay, peek, showdown };
 }
 
 // Standard test wallet private keys

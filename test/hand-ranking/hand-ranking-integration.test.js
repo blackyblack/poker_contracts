@@ -23,16 +23,16 @@ const deckContext = "hand_ranking_deck";
 
 describe("HeadsUpPokerEscrow - Poker Hand Ranking Integration", function () {
     let escrow;
+    let showdown;
     let player1, player2;
     const channelId = 1n;
     const deposit = ethers.parseEther("1.0");
 
     let crypto;
-    let view;
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
-        ({ escrow, view } = await deployAndWireContracts());
+        ({ escrow, showdown } = await deployAndWireContracts());
 
         crypto = setupShowdownCrypto();
 
@@ -136,7 +136,7 @@ describe("HeadsUpPokerEscrow - Poker Hand Ranking Integration", function () {
         expect(p1Stack).to.equal(deposit + 2n);
         expect(p2Stack).to.equal(deposit - 2n);
 
-        const sd = await view.getShowdown(channelId);
+        const sd = await showdown.getShowdown(channelId);
         expect(sd.cards[SLOT.A1]).to.equal(desiredCards[SLOT.A1]);
         expect(sd.cards[SLOT.B1]).to.equal(desiredCards[SLOT.B1]);
     });

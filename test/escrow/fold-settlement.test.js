@@ -8,15 +8,15 @@ const { ethers } = hre;
 
 describe("HeadsUpPokerEscrow Fold Settlement", function () {
     let escrow;
+    let showdown;
     let player1, player2;
     let chainId;
-    let view;
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
         chainId = (await ethers.provider.getNetwork()).chainId;
 
-        ({ escrow, view } = await deployAndWireContracts());
+        ({ escrow, showdown } = await deployAndWireContracts());
     });
 
     describe("Fold Settlement", function () {
@@ -213,7 +213,7 @@ describe("HeadsUpPokerEscrow Fold Settlement", function () {
             await expect(tx).to.emit(escrow, "ShowdownStarted").withArgs(channelId);
 
             // Verify showdown state was set up
-            const showdownState = await view.getShowdown(channelId);
+            const showdownState = await showdown.getShowdown(channelId);
             expect(showdownState.inProgress).to.be.true;
 
             // Channel should not be finalized yet - requires card reveals

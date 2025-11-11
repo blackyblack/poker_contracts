@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -13,7 +12,7 @@ import {HeadsUpPokerActionVerifier} from "./HeadsUpPokerActionVerifier.sol";
 import "./HeadsUpPokerErrors.sol";
 import {IHeadsUpPokerEscrow} from "./interfaces/IHeadsUpPokerEscrow.sol";
 
-contract HeadsUpPokerPeek is Ownable, ReentrancyGuard, HeadsUpPokerEIP712 {
+contract HeadsUpPokerPeek is ReentrancyGuard, HeadsUpPokerEIP712 {
     using ECDSA for bytes32;
     using HeadsUpPokerActionVerifier for Action[];
 
@@ -77,17 +76,13 @@ contract HeadsUpPokerPeek is Ownable, ReentrancyGuard, HeadsUpPokerEIP712 {
         _;
     }
 
-    constructor(address escrowAddress, HeadsUpPokerReplay replayAddress) Ownable(msg.sender) {
+    constructor(address escrowAddress, HeadsUpPokerReplay replayAddress) {
         if (escrowAddress == address(0) || address(replayAddress) == address(0)) {
             revert HelpersNotConfigured();
         }
 
         escrow = IHeadsUpPokerEscrow(escrowAddress);
         replay = replayAddress;
-    }
-
-    function _replay() private view returns (HeadsUpPokerReplay) {
-        return replay;
     }
 
     // ------------------------------------------------------------------
@@ -780,8 +775,7 @@ contract HeadsUpPokerPeek is Ownable, ReentrancyGuard, HeadsUpPokerEIP712 {
     ) internal view {
         if (actions.length == 0) revert NoActionsProvided();
         GameValidation memory gv;
-        HeadsUpPokerReplay replayContract = _replay();
-        (gv.ended, , gv.street) = replayContract.replayState(
+        (gv.ended, , gv.street) = replay.replayState(
             actions,
             ch.deposit1,
             ch.deposit2,
@@ -804,8 +798,7 @@ contract HeadsUpPokerPeek is Ownable, ReentrancyGuard, HeadsUpPokerEIP712 {
     ) internal view {
         if (actions.length == 0) revert NoActionsProvided();
         GameValidation memory gv;
-        HeadsUpPokerReplay replayContract = _replay();
-        (gv.ended, , gv.street) = replayContract.replayState(
+        (gv.ended, , gv.street) = replay.replayState(
             actions,
             ch.deposit1,
             ch.deposit2,

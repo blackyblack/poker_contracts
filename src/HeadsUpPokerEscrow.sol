@@ -11,7 +11,6 @@ import {HeadsUpPokerShowdown} from "./HeadsUpPokerShowdown.sol";
 import {Action} from "./HeadsUpPokerActions.sol";
 import {HeadsUpPokerActionVerifier} from "./HeadsUpPokerActionVerifier.sol";
 import "./HeadsUpPokerErrors.sol";
-import {HeadsUpPokerView} from "./HeadsUpPokerView.sol";
 import {IHeadsUpPokerEscrow} from "./interfaces/IHeadsUpPokerEscrow.sol";
 
 /// @title HeadsUpPokerEscrow - Simple escrow contract for heads up poker matches using ETH only
@@ -66,15 +65,13 @@ contract HeadsUpPokerEscrow is
 
     HeadsUpPokerPeek private peek;
     HeadsUpPokerShowdown private showdown;
-    HeadsUpPokerView public viewContract;
 
     bool private helpersInitialized;
 
     event HelpersInitialized(
         address replay,
         address peek,
-        address showdown,
-        address viewContract
+        address showdown
     );
 
     constructor() Ownable(msg.sender) {}
@@ -86,28 +83,24 @@ contract HeadsUpPokerEscrow is
     function initializeHelpers(
         HeadsUpPokerReplay replay_,
         HeadsUpPokerPeek peek_,
-        HeadsUpPokerShowdown showdown_,
-        HeadsUpPokerView viewContract_
+        HeadsUpPokerShowdown showdown_
     ) external onlyOwner {
         if (helpersInitialized) revert HelpersAlreadyConfigured();
         if (
             address(replay_) == address(0) ||
             address(peek_) == address(0) ||
-            address(showdown_) == address(0) ||
-            address(viewContract_) == address(0)
+            address(showdown_) == address(0)
         ) revert HelpersNotConfigured();
 
         replay = replay_;
         peek = peek_;
         showdown = showdown_;
-        viewContract = viewContract_;
         helpersInitialized = true;
 
         emit HelpersInitialized(
             address(replay_),
             address(peek_),
-            address(showdown_),
-            address(viewContract_)
+            address(showdown_)
         );
     }
 
@@ -116,7 +109,7 @@ contract HeadsUpPokerEscrow is
     }
 
     modifier helpersReady() {
-        if (!helpersConfigured()) revert HelpersNotConfigured();
+        if (!helpersInitialized) revert HelpersNotConfigured();
         _;
     }
 
@@ -136,12 +129,6 @@ contract HeadsUpPokerEscrow is
         HeadsUpPokerShowdown showdown_ = showdown;
         if (address(showdown_) == address(0)) revert HelpersNotConfigured();
         return showdown_;
-    }
-
-    function _view() private view returns (HeadsUpPokerView) {
-        HeadsUpPokerView viewContract_ = viewContract;
-        if (address(viewContract_) == address(0)) revert HelpersNotConfigured();
-        return viewContract_;
     }
 
     // ---------------------------------------------------------------------

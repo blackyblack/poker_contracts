@@ -28,13 +28,12 @@ describe("Peek - Request Validation", function () {
     let escrowAddress;
     let chainId;
     let peekContract;
-    let view;
     const channelId = 1n;
     const deposit = ethers.parseEther("1");
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
-        ({ escrow, peek: peekContract, view } = await deployAndWireContracts());
+        ({ escrow, peek: peekContract } = await deployAndWireContracts());
         escrowAddress = await escrow.getAddress();
         chainId = (await ethers.provider.getNetwork()).chainId;
 
@@ -106,7 +105,7 @@ describe("Peek - Request Validation", function () {
             .to.emit(peekContract, "PeekOpened")
             .withArgs(channelId, 1);
 
-        const state = await view.getPeek(channelId);
+        const state = await peekContract.getPeek(channelId);
         expect(state.stage).to.equal(1); // HOLE_A
         expect(state.inProgress).to.equal(true);
         expect(state.obligatedHelper).to.equal(player2.address);
@@ -167,7 +166,7 @@ describe("Peek - Request Validation", function () {
             .to.emit(peekContract, "PeekOpened")
             .withArgs(channelId, 3);
 
-        const state = await view.getPeek(channelId);
+        const state = await peekContract.getPeek(channelId);
         expect(state.stage).to.equal(3); // FLOP
         expect(state.obligatedHelper).to.equal(player2.address);
     });
@@ -176,7 +175,7 @@ describe("Peek - Request Validation", function () {
 describe("Peek - View", function () {
     it("stores public keys and deck data", async () => {
         const [player1, player2] = await ethers.getSigners();
-        const { escrow, view, peek } = await deployAndWireContracts();
+        const { escrow, peek } = await deployAndWireContracts();
         const crypto = setupShowdownCrypto();
 
         await escrow.open(
@@ -202,7 +201,7 @@ describe("Peek - View", function () {
         const canonicalDeck = createCanonicalDeck(deckContext);
         await startGameWithDeck(escrow, 1n, player1, player2, deck, canonicalDeck);
 
-        const [pkA, pkB] = await view.getPublicKeys(1n);
+        const [pkA, pkB] = await peek.getPublicKeys(1n);
         expect(pkA).to.equal(crypto.publicKeyA);
         expect(pkB).to.equal(crypto.publicKeyB);
 

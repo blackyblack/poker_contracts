@@ -24,7 +24,6 @@ describe("Peek - answer functions", function () {
     let escrow;
     let player1;
     let player2;
-    let view;
     let peekContract;
     let crypto;
     let deck;
@@ -35,7 +34,7 @@ describe("Peek - answer functions", function () {
 
     beforeEach(async () => {
         [player1, player2] = await ethers.getSigners();
-        ({ escrow, view, peek: peekContract } = await deployAndWireContracts());
+        ({ escrow, peek: peekContract } = await deployAndWireContracts());
         escrowAddress = await escrow.getAddress();
         chainId = (await ethers.provider.getNetwork()).chainId;
 
@@ -108,11 +107,11 @@ describe("Peek - answer functions", function () {
             .to.emit(peekContract, "PeekServed")
             .withArgs(channelId, 1);
 
-        const state = await view.getPeek(channelId);
+        const state = await peekContract.getPeek(channelId);
         expect(state.inProgress).to.equal(false);
         expect(state.served).to.equal(true);
-        expect(await view.getRevealedCardB(channelId, SLOT.A1)).to.equal(partialA1);
-        expect(await view.getRevealedCardB(channelId, SLOT.A2)).to.equal(partialA2);
+        expect(await peekContract.getRevealedCardB(channelId, SLOT.A1)).to.equal(partialA1);
+        expect(await peekContract.getRevealedCardB(channelId, SLOT.A2)).to.equal(partialA2);
     });
 
     it("reverts when non-helper attempts to answer hole A", async () => {
@@ -180,10 +179,10 @@ describe("Peek - answer functions", function () {
             .to.emit(peekContract, "PeekServed")
             .withArgs(channelId, 3);
 
-        const state = await view.getPeek(channelId);
+        const state = await peekContract.getPeek(channelId);
         expect(state.inProgress).to.equal(false);
         expect(state.served).to.equal(true);
-        expect(await view.getRevealedCardB(channelId, SLOT.FLOP1)).to.equal(
+        expect(await peekContract.getRevealedCardB(channelId, SLOT.FLOP1)).to.equal(
             helperPartials[0]
         );
     });
