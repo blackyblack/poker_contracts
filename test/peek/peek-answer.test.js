@@ -24,6 +24,7 @@ describe("Peek - answer functions", function () {
     let player1;
     let player2;
     let view;
+    let peekContract;
     let crypto;
     let deck;
     let escrowAddress;
@@ -38,6 +39,10 @@ describe("Peek - answer functions", function () {
         view = await ethers.getContractAt(
             "HeadsUpPokerView",
             await escrow.viewContract()
+        );
+        peekContract = await ethers.getContractAt(
+            "HeadsUpPokerPeek",
+            await view.getPeekAddress()
         );
         escrowAddress = await escrow.getAddress();
         chainId = (await ethers.provider.getNetwork()).chainId;
@@ -92,16 +97,24 @@ describe("Peek - answer functions", function () {
         ];
         const { actions, signatures } = await buildSequence(specs);
 
-        await escrow
-            .connect(player1)
-            .requestHoleA(channelId, actions, signatures);
+        await expect(
+            peekContract
+                .connect(player1)
+                .requestHoleA(channelId, actions, signatures)
+        )
+            .to.emit(peekContract, "PeekOpened")
+            .withArgs(channelId, 1);
 
         const partialA1 = await partialDecrypt(crypto.secretKeyB, SLOT.A1);
         const partialA2 = await partialDecrypt(crypto.secretKeyB, SLOT.A2);
 
-        await escrow
-            .connect(player2)
-            .answerHoleA(channelId, [partialA1, partialA2]);
+        await expect(
+            peekContract
+                .connect(player2)
+                .answerHoleA(channelId, [partialA1, partialA2])
+        )
+            .to.emit(peekContract, "PeekServed")
+            .withArgs(channelId, 1);
 
         const state = await view.getPeek(channelId);
         expect(state.inProgress).to.equal(false);
@@ -117,15 +130,20 @@ describe("Peek - answer functions", function () {
         ];
         const { actions, signatures } = await buildSequence(specs);
 
-        await escrow
+        await peekContract
             .connect(player1)
             .requestHoleA(channelId, actions, signatures);
 
         const partial = await partialDecrypt(crypto.secretKeyB, SLOT.A1);
 
         await expect(
-            escrow.connect(player1).answerHoleA(channelId, [partial, partial])
-        ).to.be.revertedWithCustomError(escrow, "ActionInvalidSender");
+            peekContract
+                .connect(player1)
+                .answerHoleA(channelId, [partial, partial])
+        ).to.be.revertedWithCustomError(
+            peekContract,
+            "ActionInvalidSender"
+        );
     });
 
     it("allows flop peek when requester supplies own partials", async () => {
@@ -143,9 +161,18 @@ describe("Peek - answer functions", function () {
             partialDecrypt(crypto.secretKeyA, SLOT.FLOP3),
         ]);
 
-        await escrow
-            .connect(player1)
-            .requestFlop(channelId, actions, signatures, requesterPartials);
+        await expect(
+            peekContract
+                .connect(player1)
+                .requestFlop(
+                    channelId,
+                    actions,
+                    signatures,
+                    requesterPartials
+                )
+        )
+            .to.emit(peekContract, "PeekOpened")
+            .withArgs(channelId, 3);
 
         const helperPartials = await Promise.all([
             partialDecrypt(crypto.secretKeyB, SLOT.FLOP1),
@@ -153,9 +180,13 @@ describe("Peek - answer functions", function () {
             partialDecrypt(crypto.secretKeyB, SLOT.FLOP3),
         ]);
 
-        await escrow
-            .connect(player2)
-            .answerFlop(channelId, helperPartials);
+        await expect(
+            peekContract
+                .connect(player2)
+                .answerFlop(channelId, helperPartials)
+        )
+            .to.emit(peekContract, "PeekServed")
+            .withArgs(channelId, 3);
 
         const state = await view.getPeek(channelId);
         expect(state.inProgress).to.equal(false);
