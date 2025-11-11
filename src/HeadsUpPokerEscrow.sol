@@ -21,7 +21,7 @@ contract HeadsUpPokerEscrow is
     IHeadsUpPokerEscrow
 {
     using HeadsUpPokerActionVerifier for Action[];
-    
+
     HeadsUpPokerReplay private replay;
 
     // ------------------------------------------------------------------
@@ -68,11 +68,7 @@ contract HeadsUpPokerEscrow is
 
     bool private helpersInitialized;
 
-    event HelpersInitialized(
-        address replay,
-        address peek,
-        address showdown
-    );
+    event HelpersInitialized(address replay, address peek, address showdown);
 
     constructor() Ownable(msg.sender) {}
 
@@ -111,24 +107,6 @@ contract HeadsUpPokerEscrow is
     modifier helpersReady() {
         if (!helpersInitialized) revert HelpersNotConfigured();
         _;
-    }
-
-    function _replay() private view returns (HeadsUpPokerReplay) {
-        HeadsUpPokerReplay replay_ = replay;
-        if (address(replay_) == address(0)) revert HelpersNotConfigured();
-        return replay_;
-    }
-
-    function _peek() private view returns (HeadsUpPokerPeek) {
-        HeadsUpPokerPeek peek_ = peek;
-        if (address(peek_) == address(0)) revert HelpersNotConfigured();
-        return peek_;
-    }
-
-    function _showdown() private view returns (HeadsUpPokerShowdown) {
-        HeadsUpPokerShowdown showdown_ = showdown;
-        if (address(showdown_) == address(0)) revert HelpersNotConfigured();
-        return showdown_;
     }
 
     // ---------------------------------------------------------------------
@@ -236,12 +214,7 @@ contract HeadsUpPokerEscrow is
         data.player2Signer = ch.player2Signer;
     }
 
-    function domainSeparator()
-        external
-        view
-        override
-        returns (bytes32)
-    {
+    function domainSeparator() external view override returns (bytes32) {
         return DOMAIN_SEPARATOR();
     }
 
@@ -313,10 +286,10 @@ contract HeadsUpPokerEscrow is
         ch.canonicalDeckHashPlayer2 = bytes32(0);
 
         // Reset peek related storage via manager
-        _peek().resetChannel(channelId);
+        peek.resetChannel(channelId);
 
         // Reset showdown state when reusing channel
-        _showdown().resetChannel(channelId);
+        showdown.resetChannel(channelId);
 
         // Reset dispute state when reusing channel
         DisputeState storage ds = disputes[channelId];
@@ -326,7 +299,7 @@ contract HeadsUpPokerEscrow is
             ds.actionCount = 0;
         }
 
-        _peek().setPublicKeyA(channelId, publicKeyA);
+        peek.setPublicKeyA(channelId, publicKeyA);
 
         emit ChannelOpened(
             channelId,
@@ -355,7 +328,7 @@ contract HeadsUpPokerEscrow is
         ch.deposit2 += msg.value; // Add to existing deposit instead of overwriting
         ch.player2Joined = true;
         ch.player2Signer = player2Signer;
-        _peek().setPublicKeyB(channelId, publicKeyB);
+        peek.setPublicKeyB(channelId, publicKeyB);
 
         emit ChannelJoined(channelId, msg.sender, msg.value);
     }
@@ -393,8 +366,10 @@ contract HeadsUpPokerEscrow is
         }
 
         if (
-            ch.deckHashPlayer1 == bytes32(0) || ch.deckHashPlayer2 == bytes32(0) ||
-            ch.canonicalDeckHashPlayer1 == bytes32(0) || ch.canonicalDeckHashPlayer2 == bytes32(0)
+            ch.deckHashPlayer1 == bytes32(0) ||
+            ch.deckHashPlayer2 == bytes32(0) ||
+            ch.canonicalDeckHashPlayer1 == bytes32(0) ||
+            ch.canonicalDeckHashPlayer2 == bytes32(0)
         ) {
             return;
         }
@@ -407,9 +382,8 @@ contract HeadsUpPokerEscrow is
             return;
         }
 
-        HeadsUpPokerPeek peekContract = _peek();
-        peekContract.storeDeck(channelId, deck);
-        peekContract.storeCanonicalDeck(channelId, canonicalDeck);
+        peek.storeDeck(channelId, deck);
+        peek.storeCanonicalDeck(channelId, canonicalDeck);
 
         ch.gameStarted = true;
         emit GameStarted(channelId, deckHash);
@@ -452,7 +426,7 @@ contract HeadsUpPokerEscrow is
         bytes[] calldata signatures
     ) external nonReentrant helpersReady {
         Channel storage ch = channels[channelId];
-        if (_showdown().isInProgress(channelId)) revert ShowdownInProgress();
+        if (showdown.isInProgress(channelId)) revert ShowdownInProgress();
         if (ch.player1 == address(0)) revert NoChannel();
         if (actions.length == 0) revert NoActionsProvided();
         if (ch.finalized) revert AlreadyFinalized();
@@ -473,7 +447,7 @@ contract HeadsUpPokerEscrow is
             HeadsUpPokerReplay.End endType,
             uint8 folder,
             uint256 calledAmount
-        ) = _replay().replayGame(
+        ) = replay.replayGame(
                 actions,
                 ch.deposit1,
                 ch.deposit2,
@@ -483,7 +457,7 @@ contract HeadsUpPokerEscrow is
             );
 
         if (endType != HeadsUpPokerReplay.End.FOLD) {
-            _showdown().initiateShowdown(channelId, calledAmount);
+            showdown.initiateShowdown(channelId, calledAmount);
             emit ShowdownStarted(channelId);
             return; // Exit early - settlement will happen after card reveals
         }
@@ -519,7 +493,7 @@ contract HeadsUpPokerEscrow is
         Channel storage ch = channels[channelId];
         DisputeState storage ds = disputes[channelId];
 
-        if (_showdown().isInProgress(channelId)) revert ShowdownInProgress();
+        if (showdown.isInProgress(channelId)) revert ShowdownInProgress();
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
         if (!ch.gameStarted) revert GameNotStarted();
@@ -543,7 +517,7 @@ contract HeadsUpPokerEscrow is
             HeadsUpPokerReplay.End endType,
             uint8 folder,
             uint256 calledAmount
-        ) = _replay().replayIncompleteGame(
+        ) = replay.replayIncompleteGame(
                 actions,
                 ch.deposit1,
                 ch.deposit2,
@@ -572,11 +546,9 @@ contract HeadsUpPokerEscrow is
     /// @dev Applies the projected outcome from the longest submitted sequence.
     /// For fold outcomes, transfers called amount. For showdown outcomes waits for cards reveal.
     /// @param channelId The channel identifier
-    function finalizeDispute(uint256 channelId)
-        external
-        nonReentrant
-        helpersReady
-    {
+    function finalizeDispute(
+        uint256 channelId
+    ) external nonReentrant helpersReady {
         Channel storage ch = channels[channelId];
         DisputeState storage ds = disputes[channelId];
 
@@ -595,7 +567,7 @@ contract HeadsUpPokerEscrow is
         }
 
         if (ds.endType != HeadsUpPokerReplay.End.FOLD) {
-            _showdown().initiateShowdown(channelId, ds.calledAmount);
+            showdown.initiateShowdown(channelId, ds.calledAmount);
             emit ShowdownStarted(channelId);
             return;
         }
@@ -679,8 +651,7 @@ contract HeadsUpPokerEscrow is
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
 
-        HeadsUpPokerShowdown showdownContract = _showdown();
-        (bool player1Ready, bool player2Ready) = showdownContract.revealCards(
+        (bool player1Ready, bool player2Ready) = showdown.revealCards(
             channelId,
             _showdownData(ch),
             decryptedCards,
@@ -698,8 +669,7 @@ contract HeadsUpPokerEscrow is
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
 
-        HeadsUpPokerShowdown showdownContract = _showdown();
-        (address winner, uint256 wonAmount) = showdownContract.finalizeReveals(
+        (address winner, uint256 wonAmount) = showdown.finalizeReveals(
             channelId,
             _showdownData(ch),
             plaintextCards,
@@ -709,17 +679,14 @@ contract HeadsUpPokerEscrow is
         _rewardWinner(channelId, winner, wonAmount);
     }
 
-    function finalizeShowdown(uint256 channelId)
-        external
-        nonReentrant
-        helpersReady
-    {
+    function finalizeShowdown(
+        uint256 channelId
+    ) external nonReentrant helpersReady {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
         if (ch.finalized) revert AlreadyFinalized();
 
-        HeadsUpPokerShowdown showdownContract = _showdown();
-        (address winner, uint256 wonAmount) = showdownContract.finalizeShowdown(
+        (address winner, uint256 wonAmount) = showdown.finalizeShowdown(
             channelId,
             _showdownData(ch)
         );
@@ -727,13 +694,9 @@ contract HeadsUpPokerEscrow is
         _rewardWinner(channelId, winner, wonAmount);
     }
 
-    function slashPeek(uint256 channelId)
-        external
-        nonReentrant
-        helpersReady
-    {
+    function slashPeek(uint256 channelId) external nonReentrant helpersReady {
         Channel storage ch = channels[channelId];
-        address obligatedHelper = _peek().slashPeek(channelId);
+        address obligatedHelper = peek.slashPeek(channelId);
 
         uint256 slashAmt = ch.slashAmount;
         if (obligatedHelper == ch.player1) {

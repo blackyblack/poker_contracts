@@ -38,9 +38,6 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
     address private immutable escrow;
     HeadsUpPokerPeek private immutable peek;
 
-    event ShowdownInitiated(uint256 indexed channelId, uint256 calledAmount);
-    event CardsRevealed(uint256 indexed channelId, address indexed player);
-
     mapping(uint256 => ShowdownState) private showdowns;
     mapping(uint256 => mapping(uint8 => bytes)) private revealedPartialsA;
     mapping(uint256 => mapping(uint8 => bytes)) private revealedPartialsB;
