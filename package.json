@@ -1,6 +1,7 @@
 {
     "name": "poker_contracts",
     "version": "1.0.0",
+    "license": "MIT",
     "type": "module",
     "scripts": {
         "compile": "hardhat compile",
