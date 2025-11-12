@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { ACTION } from "../helpers/actions.js";
+import { SLOT } from "../helpers/slots.js";
 import {
     buildActions,
     signActions,
@@ -385,9 +386,8 @@ describe("Integration Tests - Bad Actors", function () {
     });
 
     describe("Player Does Not Help Reveal Cards (Peek Contract)", function () {
-        // TODO: implement this test suite properly
-
         let crypto, deck, canonicalDeck;
+        const slashAmount = ethers.parseEther("0.1"); // Set a non-zero slash amount
 
         beforeEach(async function () {
             crypto = setupShowdownCrypto();
@@ -397,28 +397,316 @@ describe("Integration Tests - Bad Actors", function () {
                 player2.address,
                 minSmallBlind,
                 ethers.ZeroAddress,
-                0n,
+                slashAmount,
                 crypto.publicKeyA,
                 { value: deposit }
             );
             await escrow.connect(player2).join(channelId, ethers.ZeroAddress, crypto.publicKeyB, { value: deposit });
-            const deckContext = "peek_test";
+            const deckContext = "peek_bad_actor_test";
             deck = createEncryptedDeck(
                 crypto.secretKeyA,
                 crypto.secretKeyB,
                 deckContext
             );
-            canonicalDeck = createCanonicalDeck("canonical_deck");
+            canonicalDeck = createCanonicalDeck(deckContext);
 
             await escrow.connect(player1).startGame(channelId, deck, canonicalDeck);
             await escrow.connect(player2).startGame(channelId, deck, canonicalDeck);
         });
 
-        it("should allow peek contract to help reveal hole cards when player does not cooperate", async function () {
-            // Verify peek contract has access to the deck
+        it("should allow peek contract to help reveal hole cards when player cooperates", async function () {
+            // Verify peek contract has access to the deck and public keys
             const [pkA, pkB] = await peek.getPublicKeys(channelId);
             expect(pkA).to.not.equal("0x");
             expect(pkB).to.not.equal("0x");
+
+            // Player 1 requests to peek at their own hole cards (Player 2 must help)
+            const handId = await escrow.getHandId(channelId);
+            const actionSpecs = [
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
+            ];
+            const actions = buildActions(actionSpecs, channelId, handId);
+            const signatures = await signActions(
+                actions,
+                [wallet1, wallet2],
+                await escrow.getAddress(),
+                chainId
+            );
+
+            // Request peek for hole cards A
+            await expect(
+                peek.connect(player1).requestHoleA(channelId, actions, signatures)
+            ).to.emit(peek, "PeekOpened")
+              .withArgs(channelId, 1); // HOLE_A stage
+
+            // Player 2 (helper) provides partial decrypts
+            const partialA1 = await createPartialDecrypt(crypto.secretKeyB, deck[SLOT.A1]);
+            const partialA2 = await createPartialDecrypt(crypto.secretKeyB, deck[SLOT.A2]);
+
+            await expect(
+                peek.connect(player2).answerHoleA(channelId, [partialA1, partialA2])
+            ).to.emit(peek, "PeekServed")
+              .withArgs(channelId, 1);
+
+            // Verify cards were revealed
+            const revealedA1 = await peek.getRevealedCardB(channelId, SLOT.A1);
+            const revealedA2 = await peek.getRevealedCardB(channelId, SLOT.A2);
+            expect(revealedA1).to.equal(partialA1);
+            expect(revealedA2).to.equal(partialA2);
+        });
+
+        it("should slash player who does not help reveal hole cards (requestHoleA)", async function () {
+            const handId = await escrow.getHandId(channelId);
+            const actionSpecs = [
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
+            ];
+            const actions = buildActions(actionSpecs, channelId, handId);
+            const signatures = await signActions(
+                actions,
+                [wallet1, wallet2],
+                await escrow.getAddress(),
+                chainId
+            );
+
+            // Player 1 requests peek
+            await peek.connect(player1).requestHoleA(channelId, actions, signatures);
+
+            const peekState = await peek.getPeek(channelId);
+            expect(peekState.inProgress).to.be.true;
+            expect(peekState.obligatedHelper).to.equal(player2.address);
+
+            // Player 2 does NOT respond - fast forward past peek window
+            const peekWindow = await peek.peekWindow();
+            await ethers.provider.send("evm_increaseTime", [Number(peekWindow) + 1]);
+            await ethers.provider.send("evm_mine", []);
+
+            // Get initial deposits
+            const channelBefore = await escrow.getChannel(channelId);
+            const p1DepositBefore = channelBefore.deposit1;
+            const p2DepositBefore = channelBefore.deposit2;
+
+            // Slash the non-cooperative player
+            await expect(
+                escrow.connect(player1).slashPeek(channelId)
+            ).to.emit(peek, "PeekSlashed");
+
+            // Verify player 2 was slashed and player 1 received the slash amount
+            const channelAfter = await escrow.getChannel(channelId);
+            expect(channelAfter.deposit1).to.equal(p1DepositBefore + slashAmount);
+            expect(channelAfter.deposit2).to.equal(p2DepositBefore - slashAmount);
+
+            // Verify channel is finalized
+            expect(channelAfter.finalized).to.be.true;
+        });
+
+        it("should slash player who does not help reveal hole cards (requestHoleB)", async function () {
+            const handId = await escrow.getHandId(channelId);
+            const actionSpecs = [
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
+            ];
+            const actions = buildActions(actionSpecs, channelId, handId);
+            const signatures = await signActions(
+                actions,
+                [wallet1, wallet2],
+                await escrow.getAddress(),
+                chainId
+            );
+
+            // Player 2 requests peek for their hole cards (Player 1 must help)
+            await peek.connect(player2).requestHoleB(channelId, actions, signatures);
+
+            const peekState = await peek.getPeek(channelId);
+            expect(peekState.inProgress).to.be.true;
+            expect(peekState.obligatedHelper).to.equal(player1.address);
+
+            // Player 1 does NOT respond - fast forward past peek window
+            const peekWindow = await peek.peekWindow();
+            await ethers.provider.send("evm_increaseTime", [Number(peekWindow) + 1]);
+            await ethers.provider.send("evm_mine", []);
+
+            // Get initial deposits
+            const channelBefore = await escrow.getChannel(channelId);
+            const p1DepositBefore = channelBefore.deposit1;
+            const p2DepositBefore = channelBefore.deposit2;
+
+            // Slash the non-cooperative player
+            await expect(
+                escrow.connect(player2).slashPeek(channelId)
+            ).to.emit(peek, "PeekSlashed");
+
+            // Verify player 1 was slashed and player 2 received the slash amount
+            const channelAfter = await escrow.getChannel(channelId);
+            expect(channelAfter.deposit1).to.equal(p1DepositBefore - slashAmount);
+            expect(channelAfter.deposit2).to.equal(p2DepositBefore + slashAmount);
+
+            // Verify channel is finalized
+            expect(channelAfter.finalized).to.be.true;
+        });
+
+        it("should slash player who does not help reveal flop cards", async function () {
+            const handId = await escrow.getHandId(channelId);
+            const actionSpecs = [
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet1.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
+            ];
+            const actions = buildActions(actionSpecs, channelId, handId);
+            const signatures = await signActions(
+                actions,
+                [wallet1, wallet2],
+                await escrow.getAddress(),
+                chainId
+            );
+
+            // Player 1 provides their partial decrypts for flop and requests peek
+            const requesterPartials = await Promise.all([
+                createPartialDecrypt(crypto.secretKeyA, deck[SLOT.FLOP1]),
+                createPartialDecrypt(crypto.secretKeyA, deck[SLOT.FLOP2]),
+                createPartialDecrypt(crypto.secretKeyA, deck[SLOT.FLOP3]),
+            ]);
+
+            await peek.connect(player1).requestFlop(
+                channelId,
+                actions,
+                signatures,
+                requesterPartials
+            );
+
+            const peekState = await peek.getPeek(channelId);
+            expect(peekState.inProgress).to.be.true;
+            expect(peekState.obligatedHelper).to.equal(player2.address);
+
+            // Player 2 does NOT respond - fast forward past peek window
+            const peekWindow = await peek.peekWindow();
+            await ethers.provider.send("evm_increaseTime", [Number(peekWindow) + 1]);
+            await ethers.provider.send("evm_mine", []);
+
+            // Get initial deposits
+            const channelBefore = await escrow.getChannel(channelId);
+            const p1DepositBefore = channelBefore.deposit1;
+            const p2DepositBefore = channelBefore.deposit2;
+
+            // Slash the non-cooperative player
+            await expect(
+                escrow.connect(player1).slashPeek(channelId)
+            ).to.emit(peek, "PeekSlashed");
+
+            // Verify player 2 was slashed
+            const channelAfter = await escrow.getChannel(channelId);
+            expect(channelAfter.deposit1).to.equal(p1DepositBefore + slashAmount);
+            expect(channelAfter.deposit2).to.equal(p2DepositBefore - slashAmount);
+        });
+
+        it("should slash player who does not help reveal turn card", async function () {
+            const handId = await escrow.getHandId(channelId);
+            const actionSpecs = [
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet1.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet1.address },
+            ];
+            const actions = buildActions(actionSpecs, channelId, handId);
+            const signatures = await signActions(
+                actions,
+                [wallet1, wallet2],
+                await escrow.getAddress(),
+                chainId
+            );
+
+            // Player 1 provides their partial decrypt for turn and requests peek
+            const requesterPartial = await createPartialDecrypt(crypto.secretKeyA, deck[SLOT.TURN]);
+
+            await peek.connect(player1).requestTurn(
+                channelId,
+                actions,
+                signatures,
+                requesterPartial
+            );
+
+            const peekState = await peek.getPeek(channelId);
+            expect(peekState.inProgress).to.be.true;
+            expect(peekState.obligatedHelper).to.equal(player2.address);
+
+            // Player 2 does NOT respond - fast forward past peek window
+            const peekWindow = await peek.peekWindow();
+            await ethers.provider.send("evm_increaseTime", [Number(peekWindow) + 1]);
+            await ethers.provider.send("evm_mine", []);
+
+            // Get initial deposits
+            const channelBefore = await escrow.getChannel(channelId);
+            const p1DepositBefore = channelBefore.deposit1;
+            const p2DepositBefore = channelBefore.deposit2;
+
+            // Slash the non-cooperative player
+            await expect(
+                escrow.connect(player1).slashPeek(channelId)
+            ).to.emit(peek, "PeekSlashed");
+
+            // Verify player 2 was slashed
+            const channelAfter = await escrow.getChannel(channelId);
+            expect(channelAfter.deposit1).to.equal(p1DepositBefore + slashAmount);
+            expect(channelAfter.deposit2).to.equal(p2DepositBefore - slashAmount);
+        });
+
+        it("should slash player who does not help reveal river card", async function () {
+            const handId = await escrow.getHandId(channelId);
+            const actionSpecs = [
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet1.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet1.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet2.address },
+                { action: ACTION.CHECK_CALL, amount: 0n, sender: wallet1.address },
+            ];
+            const actions = buildActions(actionSpecs, channelId, handId);
+            const signatures = await signActions(
+                actions,
+                [wallet1, wallet2],
+                await escrow.getAddress(),
+                chainId
+            );
+
+            // Player 2 provides their partial decrypt for river and requests peek
+            const requesterPartial = await createPartialDecrypt(crypto.secretKeyB, deck[SLOT.RIVER]);
+
+            await peek.connect(player2).requestRiver(
+                channelId,
+                actions,
+                signatures,
+                requesterPartial
+            );
+
+            const peekState = await peek.getPeek(channelId);
+            expect(peekState.inProgress).to.be.true;
+            expect(peekState.obligatedHelper).to.equal(player1.address);
+
+            // Player 1 does NOT respond - fast forward past peek window
+            const peekWindow = await peek.peekWindow();
+            await ethers.provider.send("evm_increaseTime", [Number(peekWindow) + 1]);
+            await ethers.provider.send("evm_mine", []);
+
+            // Get initial deposits
+            const channelBefore = await escrow.getChannel(channelId);
+            const p1DepositBefore = channelBefore.deposit1;
+            const p2DepositBefore = channelBefore.deposit2;
+
+            // Slash the non-cooperative player
+            await expect(
+                escrow.connect(player2).slashPeek(channelId)
+            ).to.emit(peek, "PeekSlashed");
+
+            // Verify player 1 was slashed
+            const channelAfter = await escrow.getChannel(channelId);
+            expect(channelAfter.deposit1).to.equal(p1DepositBefore - slashAmount);
+            expect(channelAfter.deposit2).to.equal(p2DepositBefore + slashAmount);
         });
     });
 
