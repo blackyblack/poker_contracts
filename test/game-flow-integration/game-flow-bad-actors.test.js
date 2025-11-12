@@ -73,9 +73,7 @@ describe("Integration Tests - Bad Actors", function () {
             ).to.be.revertedWithCustomError(escrow, "ChannelNotReady");
         });
 
-        // This test is marked as expected to fail because there's currently no mechanism
-        // for player 1 to withdraw funds if player 2 never joins
-        it.skip("FAILING: should allow player 1 to withdraw if player 2 never joins - NOT IMPLEMENTED", async function () {
+        it("should allow player 1 to withdraw if player 2 never joins after deadline", async function () {
             // Player 1 opens channel
             await escrow.connect(player1).open(
                 channelId,
@@ -87,22 +85,35 @@ describe("Integration Tests - Bad Actors", function () {
                 { value: deposit }
             );
 
-            // Player 2 never joins
-            // According to the problem statement, there's no way to withdraw funds
-            // if player does not join. This test documents that gap.
+            // Player 2 never joins - get the deadline window
+            const startDeadlineWindow = await escrow.startDeadlineWindow();
 
-            // This should work but currently doesn't:
-            // await expect(escrow.connect(player1).withdraw(channelId))
-            //     .to.emit(escrow, "Withdrawn");
+            // Fast forward past the deadline
+            await ethers.provider.send("evm_increaseTime", [Number(startDeadlineWindow) + 1]);
+            await ethers.provider.send("evm_mine", []);
 
-            // Workaround might be: cancel channel or timeout mechanism (not implemented)
+            // Finalize the stale channel
+            await expect(
+                escrow.connect(player1).finalizeStaleChannel(channelId)
+            ).to.emit(escrow, "ChannelStaleFinalized")
+                .withArgs(channelId);
+
+            // Verify channel is finalized
+            const channel = await escrow.getChannel(channelId);
+            expect(channel.finalized).to.be.true;
+
+            // Now player 1 can withdraw their funds
             await expect(
                 escrow.connect(player1).withdraw(channelId)
-            ).to.be.reverted; // Currently expected to fail
+            ).to.emit(escrow, "Withdrawn")
+                .withArgs(channelId, player1.address, deposit);
+
+            // Verify player 1's balance is zero after withdrawal
+            const [p1Stack] = await escrow.stacks(channelId);
+            expect(p1Stack).to.equal(0);
         });
     });
 
-    // TODO: same issue as above: if another player does not respond, there is no way to withdraw funds
     describe("Player Does Not Start The Game", function () {
         beforeEach(async function () {
             // Both players join
@@ -171,6 +182,70 @@ describe("Integration Tests - Bad Actors", function () {
             await expect(
                 escrow.connect(player1).settle(channelId, actions, signatures)
             ).to.be.revertedWithCustomError(escrow, "GameNotStarted");
+        });
+
+        it("should allow finalization if only one player submits deck after deadline", async function () {
+            const deck = createMockDeck();
+            const canonicalDeck = createMockCanonicalDeck();
+
+            // Player 1 submits deck
+            await escrow.connect(player1).startGame(channelId, deck, canonicalDeck);
+
+            // Player 2 does not submit deck
+            // Fast forward past the deadline
+            const startDeadlineWindow = await escrow.startDeadlineWindow();
+            await ethers.provider.send("evm_increaseTime", [Number(startDeadlineWindow) + 1]);
+            await ethers.provider.send("evm_mine", []);
+
+            // Finalize the stale channel
+            await expect(
+                escrow.connect(player1).finalizeStaleChannel(channelId)
+            ).to.emit(escrow, "ChannelStaleFinalized")
+                .withArgs(channelId);
+
+            // Verify channel is finalized
+            const channel = await escrow.getChannel(channelId);
+            expect(channel.finalized).to.be.true;
+
+            // Both players can withdraw their funds
+            await expect(
+                escrow.connect(player1).withdraw(channelId)
+            ).to.emit(escrow, "Withdrawn")
+                .withArgs(channelId, player1.address, deposit);
+
+            await expect(
+                escrow.connect(player2).withdraw(channelId)
+            ).to.emit(escrow, "Withdrawn")
+                .withArgs(channelId, player2.address, deposit);
+        });
+
+        it("should allow finalization if neither player submits deck after deadline", async function () {
+            // Neither player submits deck
+            // Fast forward past the deadline
+            const startDeadlineWindow = await escrow.startDeadlineWindow();
+            await ethers.provider.send("evm_increaseTime", [Number(startDeadlineWindow) + 1]);
+            await ethers.provider.send("evm_mine", []);
+
+            // Finalize the stale channel
+            await expect(
+                escrow.connect(player1).finalizeStaleChannel(channelId)
+            ).to.emit(escrow, "ChannelStaleFinalized")
+                .withArgs(channelId);
+
+            // Verify channel is finalized
+            const channel = await escrow.getChannel(channelId);
+            expect(channel.finalized).to.be.true;
+
+            // Both players can withdraw their funds
+            await expect(
+                escrow.connect(player1).withdraw(channelId)
+            ).to.emit(escrow, "Withdrawn")
+                .withArgs(channelId, player1.address, deposit);
+
+            await expect(
+                escrow.connect(player2).withdraw(channelId)
+            ).to.emit(escrow, "Withdrawn")
+                .withArgs(channelId, player2.address, deposit);
         });
     });
 
