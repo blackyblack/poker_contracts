@@ -14,6 +14,7 @@ interface IHeadsUpPokerEscrow {
         uint256 minSmallBlind;
         address player1Signer;
         address player2Signer;
+        uint256 startDeadline;
     }
 
     function getChannelData(
@@ -21,4 +22,6 @@ interface IHeadsUpPokerEscrow {
     ) external view returns (ChannelData memory);
 
     function domainSeparator() external view returns (bytes32);
+
+    function finalizeStaleChannel(uint256 channelId) external;
 }

@@ -16,13 +16,16 @@ This is the primary contract that tracks channel balances, enforces signed actio
 ### Constants
 - `revealWindow` – duration players have to reveal cards during a showdown (currently 1 hour).
 - `disputeWindow` – time allowed for submitting longer action histories in a dispute (currently 1 hour).
+- `startDeadlineWindow` – grace period for opponents to join and for the second encrypted deck submission during game setup (currently 1 hour).
 
 ### Events
 Backends can subscribe to these topics to react to state transitions:
 - `ChannelOpened`, `ChannelJoined`, `ChannelTopUp`
+- `ChannelDeadlineUpdated` (emitted whenever the join/start deadline changes; a zero deadline means the timer is cleared)
 - `GameStarted`
 - `Settled`, `ShowdownStarted`, `ShowdownFinalized`, `RevealsUpdated`
 - `DisputeStarted`, `DisputeExtended`, `DisputeFinalized`
+- `ChannelStaleFinalized`
 - `Withdrawn`
 Each event carries the channel id and relevant payload such as participant, amount, or the updated commit mask.
 
@@ -31,13 +34,14 @@ Each event carries the channel id and relevant payload such as participant, amou
 - `getHandId(channelId)` -> `uint256`: current hand counter used to salt commitments and action chains.
 - `getMinSmallBlind(channelId)` -> `uint256`: minimum small blind enforced for the channel.
 - `getDispute(channelId)` -> `DisputeState`: view current dispute deadlines and projected outcomes.
-- `getChannel(channelId)` -> `Channel`: returns the complete channel information including player addresses, deposits, finalization status, hand ID, join status, minimum small blind, and optional signing addresses for both players. Returns `address(0)` for optional signers if no optional signer is set.
+- `getChannel(channelId)` -> `Channel`: returns the complete channel information including player addresses, deposits, finalization status, hand ID, join status, minimum small blind, start deadline, and optional signing addresses for both players. Returns `address(0)` for optional signers if no optional signer is set.
 - `viewContract()` -> `address`: returns the dedicated read-only facade for peek and showdown data.
 
 ### Channel lifecycle
-- `open(channelId, opponent, minSmallBlind, player1Signer)` (payable): seat player 1, set the opponent address, optionally deposit ETH, and start a new hand id. The `player1Signer` parameter allows setting an optional additional signer address that can sign actions and card commits on behalf of player 1. Pass `address(0)` if no additional signer is needed. Reuses existing balances when reopening a finished channel and resets showdown/dispute state.
-- `join(channelId, player2Signer)` (payable): opponent deposits ETH to activate the channel. The `player2Signer` parameter allows setting an optional additional signer address that can sign actions and card commits on behalf of player 2. Pass `address(0)` if no additional signer is needed. Allows zero value only if previous winnings already left funds in escrow.
-- `startGame(channelId, deck, canonicalDeck)`: both players must call this function with matching encrypted decks (9 cards) and canonical decks (52 unencrypted base points) for the game to be considered started. The `deck` parameter contains 9 encrypted G1 points for the 9 slots (2 hole cards per player + 5 board cards). The `canonicalDeck` parameter contains 52 unencrypted G1 base points in canonical order representing all cards in a standard deck, enabling card-ID resolution by comparing decrypted points against these known values. Once both submissions match, the escrow forwards the deck to `HeadsUpPokerPeek` and emits `GameStarted`.
+- `open(channelId, opponent, minSmallBlind, player1Signer)` (payable): seat player 1, set the opponent address, optionally deposit ETH, and start a new hand id. The `player1Signer` parameter allows setting an optional additional signer address that can sign actions and card commits on behalf of player 1. Pass `address(0)` if no additional signer is needed. Reuses existing balances when reopening a finished channel, resets showdown/dispute state, and starts a deadline for the opponent to join.
+- `join(channelId, player2Signer)` (payable): opponent deposits ETH to activate the channel. The `player2Signer` parameter allows setting an optional additional signer address that can sign actions and card commits on behalf of player 2. Pass `address(0)` if no additional signer is needed. Allows zero value only if previous winnings already left funds in escrow. Joining extends the deadline, giving both sides time to submit their decks.
+- `startGame(channelId, deck, canonicalDeck)`: both players must call this function with matching encrypted decks (9 cards) and canonical decks (52 unencrypted base points) for the game to be considered started. The `deck` parameter contains 9 encrypted G1 points for the 9 slots (2 hole cards per player + 5 board cards). The `canonicalDeck` parameter contains 52 unencrypted G1 base points in canonical order representing all cards in a standard deck, enabling card-ID resolution by comparing decrypted points against these known values. Each submission must arrive before the running deadline; the first submission extends the timer and the second, if matching, clears it and emits `GameStarted`.
+- `finalizeStaleChannel(channelId)`: anyone can stop an unopened or unstated channel once the deadline expires, marking it finalized so both players can withdraw their funds.
 - `topUp(channelId)` (payable): lets player 1 add funds after player 2 has joined, but never beyond player 2’s total escrowed balance.
 
 ### Settlement and disputes

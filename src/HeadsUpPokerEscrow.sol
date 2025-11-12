@@ -28,6 +28,7 @@ contract HeadsUpPokerEscrow is
     // Slot layout constants
     // ------------------------------------------------------------------
     uint256 public constant disputeWindow = 1 hours;
+    uint256 public constant startDeadlineWindow = 1 hours;
     // ------------------------------------------------------------------
     // Dispute state
     // ------------------------------------------------------------------
@@ -59,6 +60,7 @@ contract HeadsUpPokerEscrow is
         bytes32 deckHashPlayer2;
         bytes32 canonicalDeckHashPlayer1;
         bytes32 canonicalDeckHashPlayer2;
+        uint256 startDeadline;
     }
 
     mapping(uint256 => Channel) private channels;
@@ -167,6 +169,8 @@ contract HeadsUpPokerEscrow is
         uint256 amount
     );
     event GameStarted(uint256 indexed channelId, bytes32 deckHash);
+    event ChannelDeadlineUpdated(uint256 indexed channelId, uint256 deadline);
+    event ChannelStaleFinalized(uint256 indexed channelId);
 
     // ---------------------------------------------------------------------
     // View helpers
@@ -212,6 +216,7 @@ contract HeadsUpPokerEscrow is
         data.minSmallBlind = ch.minSmallBlind;
         data.player1Signer = ch.player1Signer;
         data.player2Signer = ch.player2Signer;
+        data.startDeadline = ch.startDeadline;
     }
 
     function domainSeparator() external view override returns (bytes32) {
@@ -277,6 +282,7 @@ contract HeadsUpPokerEscrow is
         ch.player2Joined = false;
         ch.minSmallBlind = minSmallBlind;
         ch.player1Signer = player1Signer;
+        ch.player2Signer = address(0);
         ch.gameStarted = false;
         // TODO: maybe limit to deposit?
         ch.slashAmount = slashAmount;
@@ -284,6 +290,8 @@ contract HeadsUpPokerEscrow is
         ch.deckHashPlayer2 = bytes32(0);
         ch.canonicalDeckHashPlayer1 = bytes32(0);
         ch.canonicalDeckHashPlayer2 = bytes32(0);
+        uint256 deadline = block.timestamp + startDeadlineWindow;
+        ch.startDeadline = deadline;
 
         // Reset peek related storage via manager
         peek.resetChannel(channelId);
@@ -309,6 +317,7 @@ contract HeadsUpPokerEscrow is
             handId,
             minSmallBlind
         );
+        emit ChannelDeadlineUpdated(channelId, deadline);
     }
 
     /// @notice Opponent joins an open channel by matching deposit
@@ -319,8 +328,12 @@ contract HeadsUpPokerEscrow is
     ) external payable nonReentrant helpersReady {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
+        if (ch.finalized) revert AlreadyFinalized();
         if (ch.player2 != msg.sender) revert NotOpponent();
         if (ch.player2Joined) revert AlreadyJoined();
+        uint256 deadline = ch.startDeadline;
+        if (deadline == 0) revert ChannelDeadlineInactive();
+        if (block.timestamp > deadline) revert ChannelDeadlineExpired();
 
         // Allow zero deposit only if there's existing deposit from previous games
         if (msg.value == 0 && ch.deposit2 == 0) revert NoDeposit();
@@ -331,6 +344,9 @@ contract HeadsUpPokerEscrow is
         peek.setPublicKeyB(channelId, publicKeyB);
 
         emit ChannelJoined(channelId, msg.sender, msg.value);
+        deadline = block.timestamp + startDeadlineWindow;
+        ch.startDeadline = deadline;
+        emit ChannelDeadlineUpdated(channelId, deadline);
     }
 
     /// @notice Both players must call this function with matching encrypted decks and canonical deck to start the game
@@ -347,10 +363,14 @@ contract HeadsUpPokerEscrow is
     ) external nonReentrant helpersReady {
         Channel storage ch = channels[channelId];
         if (ch.player1 == address(0)) revert NoChannel();
+        if (ch.finalized) revert AlreadyFinalized();
         if (!ch.player2Joined) revert ChannelNotReady();
         if (ch.gameStarted) revert GameAlreadyStarted();
         if (msg.sender != ch.player1 && msg.sender != ch.player2)
             revert NotPlayer();
+        uint256 deadline = ch.startDeadline;
+        if (deadline == 0) revert ChannelDeadlineInactive();
+        if (block.timestamp > deadline) revert ChannelDeadlineExpired();
         if (deck.length != SLOT_RIVER + 1) revert InvalidDeck();
         if (canonicalDeck.length != FULL_DECK_SIZE) revert InvalidDeck();
 
@@ -365,12 +385,17 @@ contract HeadsUpPokerEscrow is
             ch.canonicalDeckHashPlayer2 = canonicalDeckHash;
         }
 
-        if (
-            ch.deckHashPlayer1 == bytes32(0) ||
-            ch.deckHashPlayer2 == bytes32(0) ||
-            ch.canonicalDeckHashPlayer1 == bytes32(0) ||
-            ch.canonicalDeckHashPlayer2 == bytes32(0)
-        ) {
+        bool player1Ready =
+            ch.deckHashPlayer1 != bytes32(0) &&
+            ch.canonicalDeckHashPlayer1 != bytes32(0);
+        bool player2Ready =
+            ch.deckHashPlayer2 != bytes32(0) &&
+            ch.canonicalDeckHashPlayer2 != bytes32(0);
+
+        if (!(player1Ready && player2Ready)) {
+            deadline = block.timestamp + startDeadlineWindow;
+            ch.startDeadline = deadline;
+            emit ChannelDeadlineUpdated(channelId, deadline);
             return;
         }
 
@@ -386,6 +411,8 @@ contract HeadsUpPokerEscrow is
         peek.storeCanonicalDeck(channelId, canonicalDeck);
 
         ch.gameStarted = true;
+        ch.startDeadline = 0;
+        emit ChannelDeadlineUpdated(channelId, 0);
         emit GameStarted(channelId, deckHash);
     }
 
@@ -406,6 +433,11 @@ contract HeadsUpPokerEscrow is
         if (msg.sender != ch.player1) revert NotPlayer();
         if (ch.finalized) revert AlreadyFinalized();
         if (!ch.player2Joined) revert ChannelNotReady();
+        if (!ch.gameStarted) {
+            uint256 deadline = ch.startDeadline;
+            if (deadline == 0) revert ChannelDeadlineInactive();
+            if (block.timestamp > deadline) revert ChannelDeadlineExpired();
+        }
         if (msg.value == 0) revert NoDeposit();
         if (ch.deposit1 + msg.value > ch.deposit2)
             revert DepositExceedsOpponent();
@@ -413,6 +445,28 @@ contract HeadsUpPokerEscrow is
         ch.deposit1 += msg.value;
 
         emit ChannelTopUp(channelId, msg.sender, msg.value);
+    }
+
+    function finalizeStaleChannel(
+        uint256 channelId
+    ) external nonReentrant helpersReady {
+        Channel storage ch = channels[channelId];
+        if (ch.player1 == address(0)) revert NoChannel();
+        if (ch.finalized) revert AlreadyFinalized();
+        if (ch.gameStarted) revert GameAlreadyStarted();
+        uint256 deadline = ch.startDeadline;
+        if (deadline == 0) revert ChannelDeadlineInactive();
+        if (block.timestamp <= deadline) revert ChannelDeadlineStillActive();
+
+        ch.finalized = true;
+        ch.deckHashPlayer1 = bytes32(0);
+        ch.deckHashPlayer2 = bytes32(0);
+        ch.canonicalDeckHashPlayer1 = bytes32(0);
+        ch.canonicalDeckHashPlayer2 = bytes32(0);
+        ch.startDeadline = 0;
+
+        emit ChannelDeadlineUpdated(channelId, 0);
+        emit ChannelStaleFinalized(channelId);
     }
 
     /// @notice Settles terminal action sequences (Fold or Showdown)
