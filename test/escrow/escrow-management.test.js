@@ -5,6 +5,11 @@ import { buildActions, signActions, wallet1, wallet2, startGameWithDeck, createM
 
 const { ethers } = hre;
 
+async function advanceTime(seconds) {
+    await ethers.provider.send("evm_increaseTime", [Number(seconds)]);
+    await ethers.provider.send("evm_mine");
+}
+
 describe("HeadsUpPokerEscrow Management", function () {
     let escrow;
     let player1, player2, other;
@@ -172,6 +177,162 @@ describe("HeadsUpPokerEscrow Management", function () {
         });
     });
 
+    describe("Stale channel protection", function () {
+        const deposit = ethers.parseEther("1.0");
+        let startWindow;
+
+        beforeEach(async function () {
+            startWindow = Number(await escrow.startDeadlineWindow());
+        });
+
+        it("should track a join deadline when channel opens", async function () {
+            const channelId = 10n;
+            const tx = await escrow
+                .connect(player1)
+                .open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
+            const receipt = await tx.wait();
+            const block = await ethers.provider.getBlock(receipt.blockNumber);
+            const channel = await escrow.getChannel(channelId);
+
+            expect(channel.startDeadline).to.equal(BigInt(block.timestamp) + BigInt(startWindow));
+        });
+
+        it("should reject joins after the deadline expires", async function () {
+            const channelId = 11n;
+            await escrow
+                .connect(player1)
+                .open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
+
+            await advanceTime(startWindow + 1);
+
+            await expect(
+                escrow
+                    .connect(player2)
+                    .join(channelId, ethers.ZeroAddress, "0x", { value: deposit })
+            ).to.be.revertedWithCustomError(escrow, "ChannelDeadlineExpired");
+        });
+
+        it("should not finalize while the deadline is still active", async function () {
+            const channelId = 11_1n;
+            await escrow
+                .connect(player1)
+                .open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
+
+            await expect(escrow.finalizeStaleChannel(channelId))
+                .to.be.revertedWithCustomError(escrow, "ChannelDeadlineStillActive");
+        });
+
+        it("should allow anyone to finalize a channel when no one joins", async function () {
+            const channelId = 12n;
+            await escrow
+                .connect(player1)
+                .open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
+
+            await advanceTime(startWindow + 1);
+
+            await expect(escrow.finalizeStaleChannel(channelId))
+                .to.emit(escrow, "ChannelStaleFinalized")
+                .withArgs(channelId);
+
+            const channel = await escrow.getChannel(channelId);
+            expect(channel.finalized).to.equal(true);
+            expect(channel.startDeadline).to.equal(0n);
+        });
+
+        it("should extend the deadline when player2 joins", async function () {
+            const channelId = 13n;
+            await escrow
+                .connect(player1)
+                .open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
+
+            const beforeJoin = await escrow.getChannel(channelId);
+
+            await escrow
+                .connect(player2)
+                .join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
+
+            const afterJoin = await escrow.getChannel(channelId);
+            expect(afterJoin.startDeadline).to.be.gt(beforeJoin.startDeadline);
+        });
+
+        it("should clear the deadline once both decks match", async function () {
+            const channelId = 15n;
+            await escrow
+                .connect(player1)
+                .open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
+            await escrow
+                .connect(player2)
+                .join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
+
+            const deck = createMockDeck();
+            const canonicalDeck = createMockCanonicalDeck();
+
+            await escrow
+                .connect(player1)
+                .startGame(channelId, deck, canonicalDeck);
+            await escrow
+                .connect(player2)
+                .startGame(channelId, deck, canonicalDeck);
+
+            const channel = await escrow.getChannel(channelId);
+            expect(channel.gameStarted).to.equal(true);
+            expect(channel.startDeadline).to.equal(0n);
+        });
+
+        it("should allow deck submissions after the deadline", async function () {
+            const channelId = 16n;
+            await escrow
+                .connect(player1)
+                .open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
+            await escrow
+                .connect(player2)
+                .join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
+
+            const deck = createMockDeck();
+            const canonicalDeck = createMockCanonicalDeck();
+
+            await escrow
+                .connect(player1)
+                .startGame(channelId, deck, canonicalDeck);
+
+            await advanceTime(startWindow + 1);
+
+            await escrow
+                .connect(player2)
+                .startGame(channelId, deck, canonicalDeck);
+
+            const channel = await escrow.getChannel(channelId);
+            expect(channel.gameStarted).to.equal(true);
+        });
+
+        it("should finalize if the second deck never arrives", async function () {
+            const channelId = 17n;
+            await escrow
+                .connect(player1)
+                .open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
+            await escrow
+                .connect(player2)
+                .join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
+
+            const deck = createMockDeck();
+            const canonicalDeck = createMockCanonicalDeck();
+
+            await escrow
+                .connect(player1)
+                .startGame(channelId, deck, canonicalDeck);
+
+            await advanceTime(startWindow + 1);
+
+            await expect(escrow.finalizeStaleChannel(channelId))
+                .to.emit(escrow, "ChannelStaleFinalized")
+                .withArgs(channelId);
+
+            const channel = await escrow.getChannel(channelId);
+            expect(channel.finalized).to.equal(true);
+            expect(channel.gameStarted).to.equal(false);
+        });
+    });
+
     describe("Channel Top Up", function () {
         const channelId = 5n;
         const player1Deposit = ethers.parseEther("1.0");
@@ -251,7 +412,7 @@ describe("HeadsUpPokerEscrow Management", function () {
 
         it("should emit GameStarted when both players submit matching hashes", async function () {
             await escrow.connect(player1).startGame(channelId, deck, canonicalDeck);
-            
+
             const tx = await escrow.connect(player2).startGame(channelId, deck, canonicalDeck);
             await expect(tx)
                 .to.emit(escrow, "GameStarted")
@@ -268,7 +429,7 @@ describe("HeadsUpPokerEscrow Management", function () {
 
             await escrow.connect(player1).startGame(channelId, deck1, canonicalDeck1);
             await escrow.connect(player2).startGame(channelId, deck2, canonicalDeck1);
-            
+
             // Game should not have started
             const channel = await escrow.getChannel(channelId);
             expect(channel.gameStarted).to.be.false;
@@ -317,7 +478,7 @@ describe("HeadsUpPokerEscrow Management", function () {
 
             // Open new hand
             await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
-            
+
             const channel = await escrow.getChannel(channelId);
             expect(channel.gameStarted).to.be.false;
             expect(channel.deckHashPlayer1).to.equal(ethers.ZeroHash);

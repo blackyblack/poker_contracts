@@ -62,3 +62,6 @@ error InvalidGameState();
 error NotEscrow();
 error HelpersNotConfigured();
 error HelpersAlreadyConfigured();
+error ChannelDeadlineExpired();
+error ChannelDeadlineInactive();
+error ChannelDeadlineStillActive();
