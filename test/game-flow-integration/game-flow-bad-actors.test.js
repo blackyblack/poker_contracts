@@ -198,7 +198,7 @@ describe("Integration Tests - Bad Actors", function () {
 
             // Player 2 submits different deck - game should not start
             await escrow.connect(player2).startGame(channelId, deck2, canonicalDeck);
-            
+
             // Verify game has not started
             const channel = await escrow.getChannel(channelId);
             expect(channel.gameStarted).to.be.false;
@@ -234,7 +234,7 @@ describe("Integration Tests - Bad Actors", function () {
 
             // Player 2 submits different canonical deck - game should not start
             await escrow.connect(player2).startGame(channelId, deck, canonicalDeck2);
-            
+
             // Verify game has not started
             const channel = await escrow.getChannel(channelId);
             expect(channel.gameStarted).to.be.false;
@@ -280,7 +280,7 @@ describe("Integration Tests - Bad Actors", function () {
 
         it("should allow dispute when player stops responding mid-game", async function () {
             const handId = await escrow.getHandId(channelId);
-            
+
             // Partial action sequence - player 2 doesn't respond after small blind posts
             const actionSpecs = [
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
@@ -309,7 +309,7 @@ describe("Integration Tests - Bad Actors", function () {
 
         it("should allow dispute to be extended with longer action history", async function () {
             const handId = await escrow.getHandId(channelId);
-            
+
             // First partial sequence
             const actionSpecs1 = [
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
@@ -349,7 +349,7 @@ describe("Integration Tests - Bad Actors", function () {
 
         it("should finalize dispute after timeout", async function () {
             const handId = await escrow.getHandId(channelId);
-            
+
             // Submit incomplete game ending in fold
             const actionSpecs = [
                 { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
@@ -369,7 +369,7 @@ describe("Integration Tests - Bad Actors", function () {
 
             // Get dispute window duration
             const disputeWindow = await escrow.disputeWindow();
-            
+
             // Fast forward time past dispute window
             await ethers.provider.send("evm_increaseTime", [Number(disputeWindow) + 1]);
             await ethers.provider.send("evm_mine", []);
@@ -391,7 +391,7 @@ describe("Integration Tests - Bad Actors", function () {
 
         beforeEach(async function () {
             crypto = setupShowdownCrypto();
-            
+
             await escrow.connect(player1).open(
                 channelId,
                 player2.address,
@@ -438,7 +438,7 @@ describe("Integration Tests - Bad Actors", function () {
             await expect(
                 peek.connect(player1).requestHoleA(channelId, actions, signatures)
             ).to.emit(peek, "PeekOpened")
-              .withArgs(channelId, 1); // HOLE_A stage
+                .withArgs(channelId, 1); // HOLE_A stage
 
             // Player 2 (helper) provides partial decrypts
             const partialA1 = await createPartialDecrypt(crypto.secretKeyB, deck[SLOT.A1]);
@@ -447,7 +447,7 @@ describe("Integration Tests - Bad Actors", function () {
             await expect(
                 peek.connect(player2).answerHoleA(channelId, [partialA1, partialA2])
             ).to.emit(peek, "PeekServed")
-              .withArgs(channelId, 1);
+                .withArgs(channelId, 1);
 
             // Verify cards were revealed
             const revealedA1 = await peek.getRevealedCardB(channelId, SLOT.A1);
@@ -715,7 +715,7 @@ describe("Integration Tests - Bad Actors", function () {
 
         beforeEach(async function () {
             crypto = setupShowdownCrypto();
-            
+
             await escrow.connect(player1).open(
                 channelId,
                 player2.address,
@@ -782,7 +782,7 @@ describe("Integration Tests - Bad Actors", function () {
             await expect(
                 escrow.connect(player1).finalizeShowdown(channelId)
             ).to.emit(escrow, "ShowdownFinalized")
-              .withArgs(channelId, player1.address, 2n);
+                .withArgs(channelId, player1.address, 2n);
 
             // Verify player 1 won
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);
@@ -878,7 +878,7 @@ describe("Integration Tests - Bad Actors", function () {
             await expect(
                 escrow.connect(player2).finalizeShowdown(channelId)
             ).to.emit(escrow, "ShowdownFinalized")
-              .withArgs(channelId, player2.address, 2n);
+                .withArgs(channelId, player2.address, 2n);
 
             // Verify player 2 won
             const [p1Stack, p2Stack] = await escrow.stacks(channelId);

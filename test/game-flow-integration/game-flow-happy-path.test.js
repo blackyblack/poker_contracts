@@ -27,7 +27,7 @@ const { ethers } = hre;
  * 3. Game is finalized after either a showdown or fold
  */
 describe("Integration Tests - Happy Path", function () {
-    let escrow, showdown;
+    let escrow, showdown, peek;
     let player1, player2;
     let chainId;
     const channelId = 1n;
@@ -36,7 +36,7 @@ describe("Integration Tests - Happy Path", function () {
 
     beforeEach(async function () {
         [player1, player2] = await ethers.getSigners();
-        ({ escrow, showdown } = await deployAndWireContracts());
+        ({ escrow, showdown, peek } = await deployAndWireContracts());
         chainId = (await ethers.provider.getNetwork()).chainId;
     });
 
@@ -44,7 +44,7 @@ describe("Integration Tests - Happy Path", function () {
         it("should complete full game: open, join, start, showdown, reveal, finalize, withdraw", async function () {
             // Step 1: Setup crypto first (needed for opening channel)
             const crypto = setupShowdownCrypto();
-            
+
             // Step 2: Player 1 opens channel with public key
             await expect(
                 escrow.connect(player1).open(
@@ -101,7 +101,7 @@ describe("Integration Tests - Happy Path", function () {
 
             // Step 5: Both players start game with matching decks
             const deckHash = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes[]"], [deck]));
-            
+
             await expect(
                 escrow.connect(player1).startGame(channelId, deck, canonicalDeck)
             ).to.not.be.reverted;
@@ -210,7 +210,7 @@ describe("Integration Tests - Happy Path", function () {
         it("should complete full game: open, join, start, fold, withdraw", async function () {
             // Step 1: Setup crypto
             const crypto = setupShowdownCrypto();
-            
+
             // Step 2: Player 1 opens channel
             await escrow.connect(player1).open(
                 channelId,
@@ -280,7 +280,7 @@ describe("Integration Tests - Happy Path", function () {
         it("should verify canonical deck is used for card resolution after decryption", async function () {
             // Setup crypto first
             const crypto = setupShowdownCrypto();
-            
+
             // Setup channel with public keys
             await escrow.connect(player1).open(
                 channelId,
@@ -381,6 +381,79 @@ describe("Integration Tests - Happy Path", function () {
             expect(sd.cards[SLOT.FLOP3]).to.equal(desiredCards[SLOT.FLOP3]);
             expect(sd.cards[SLOT.TURN]).to.equal(desiredCards[SLOT.TURN]);
             expect(sd.cards[SLOT.RIVER]).to.equal(desiredCards[SLOT.RIVER]);
+        });
+    });
+
+    describe("Player Helps Reveal Cards (Peek Contract)", function () {
+        let crypto;
+        let deck;
+        let canonicalDeck;
+
+        beforeEach(async function () {
+            crypto = setupShowdownCrypto();
+
+            await escrow.connect(player1).open(
+                channelId,
+                player2.address,
+                minSmallBlind,
+                ethers.ZeroAddress,
+                0n,
+                crypto.publicKeyA,
+                { value: deposit }
+            );
+            await escrow.connect(player2).join(channelId, ethers.ZeroAddress, crypto.publicKeyB, { value: deposit });
+            const deckContext = "peek_actor_test";
+            deck = createEncryptedDeck(
+                crypto.secretKeyA,
+                crypto.secretKeyB,
+                deckContext
+            );
+            canonicalDeck = createCanonicalDeck(deckContext);
+
+            await escrow.connect(player1).startGame(channelId, deck, canonicalDeck);
+            await escrow.connect(player2).startGame(channelId, deck, canonicalDeck);
+        });
+
+        it("should allow peek contract to help reveal hole cards when player cooperates", async function () {
+            // Verify peek contract has access to the deck and public keys
+            const [pkA, pkB] = await peek.getPublicKeys(channelId);
+            expect(pkA).to.not.equal("0x");
+            expect(pkB).to.not.equal("0x");
+
+            // Player 1 requests to peek at their own hole cards (Player 2 must help)
+            const handId = await escrow.getHandId(channelId);
+            const actionSpecs = [
+                { action: ACTION.SMALL_BLIND, amount: 1n, sender: wallet1.address },
+                { action: ACTION.BIG_BLIND, amount: 2n, sender: wallet2.address },
+            ];
+            const actions = buildActions(actionSpecs, channelId, handId);
+            const signatures = await signActions(
+                actions,
+                [wallet1, wallet2],
+                await escrow.getAddress(),
+                chainId
+            );
+
+            // Request peek for hole cards A
+            await expect(
+                peek.connect(player1).requestHoleA(channelId, actions, signatures)
+            ).to.emit(peek, "PeekOpened")
+                .withArgs(channelId, 1); // HOLE_A stage
+
+            // Player 2 (helper) provides partial decrypts
+            const partialA1 = await createPartialDecrypt(crypto.secretKeyB, deck[SLOT.A1]);
+            const partialA2 = await createPartialDecrypt(crypto.secretKeyB, deck[SLOT.A2]);
+
+            await expect(
+                peek.connect(player2).answerHoleA(channelId, [partialA1, partialA2])
+            ).to.emit(peek, "PeekServed")
+                .withArgs(channelId, 1);
+
+            // Verify cards were revealed
+            const revealedA1 = await peek.getRevealedCardB(channelId, SLOT.A1);
+            const revealedA2 = await peek.getRevealedCardB(channelId, SLOT.A2);
+            expect(revealedA1).to.equal(partialA1);
+            expect(revealedA2).to.equal(partialA2);
         });
     });
 });
