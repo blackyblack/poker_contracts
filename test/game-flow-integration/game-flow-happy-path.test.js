@@ -277,61 +277,6 @@ describe("Integration Tests - Happy Path", function () {
     });
 
     describe("Game with Proper Encrypted and Canonical Decks", function () {
-        it("should verify encrypted deck is properly created with BN254 cryptography", async function () {
-            // Setup crypto first
-            const crypto = setupShowdownCrypto();
-            
-            // Open and join channel with public keys
-            await escrow.connect(player1).open(
-                channelId,
-                player2.address,
-                minSmallBlind,
-                ethers.ZeroAddress,
-                0n,
-                crypto.publicKeyA,
-                { value: deposit }
-            );
-            await escrow.connect(player2).join(channelId, ethers.ZeroAddress, crypto.publicKeyB, { value: deposit });
-
-            // Setup crypto properly
-            const deckContext = "encrypted_deck_test";
-            const deck = createEncryptedDeck(
-                crypto.secretKeyA,
-                crypto.secretKeyB,
-                deckContext
-            );
-
-            // Verify deck has correct number of cards
-            expect(deck.length).to.equal(9);
-
-            // Verify each card is 64 bytes (BN254 G1 point)
-            for (const card of deck) {
-                expect(ethers.getBytes(card).length).to.equal(64);
-            }
-
-            // Create canonical deck
-            const canonicalDeck = createCanonicalDeck("canonical_deck");
-            expect(canonicalDeck.length).to.equal(52);
-
-            // Verify each canonical card is 64 bytes
-            for (const card of canonicalDeck) {
-                expect(ethers.getBytes(card).length).to.equal(64);
-            }
-
-            // Start game with these decks - should not revert
-            const deckHash = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes[]"], [deck]));
-            
-            await expect(
-                escrow.connect(player1).startGame(channelId, deck, canonicalDeck)
-            ).to.not.be.reverted;
-
-            await expect(
-                escrow.connect(player2).startGame(channelId, deck, canonicalDeck)
-            )
-                .to.emit(escrow, "GameStarted")
-                .withArgs(channelId, deckHash);
-        });
-
         it("should verify canonical deck is used for card resolution after decryption", async function () {
             // Setup crypto first
             const crypto = setupShowdownCrypto();

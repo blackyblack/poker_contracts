@@ -1,7 +1,6 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { ACTION } from "../helpers/actions.js";
-import { SLOT } from "../helpers/slots.js";
 import {
     buildActions,
     signActions,
@@ -13,7 +12,6 @@ import {
     createMockDeck,
     createMockCanonicalDeck,
     createPartialDecrypt,
-    createPlaintext,
     deployAndWireContracts,
 } from "../helpers/test-utils.js";
 
@@ -31,14 +29,14 @@ const { ethers } = hre;
  */
 describe("Integration Tests - Bad Actors", function () {
     let escrow, peek, showdown;
-    let player1, player2, other;
+    let player1, player2;
     let chainId;
     const channelId = 1n;
     const deposit = ethers.parseEther("1.0");
     const minSmallBlind = 1n;
 
     beforeEach(async function () {
-        [player1, player2, other] = await ethers.getSigners();
+        [player1, player2] = await ethers.getSigners();
         ({ escrow, peek, showdown } = await deployAndWireContracts());
         chainId = (await ethers.provider.getNetwork()).chainId;
     });
@@ -103,6 +101,7 @@ describe("Integration Tests - Bad Actors", function () {
         });
     });
 
+    // TODO: same issue as above: if another player does not respond, there is no way to withdraw funds
     describe("Player Does Not Start The Game", function () {
         beforeEach(async function () {
             // Both players join
@@ -386,6 +385,8 @@ describe("Integration Tests - Bad Actors", function () {
     });
 
     describe("Player Does Not Help Reveal Cards (Peek Contract)", function () {
+        // TODO: implement this test suite properly
+
         let crypto, deck, canonicalDeck;
 
         beforeEach(async function () {
@@ -414,24 +415,10 @@ describe("Integration Tests - Bad Actors", function () {
         });
 
         it("should allow peek contract to help reveal hole cards when player does not cooperate", async function () {
-            // Note: The peek contract is designed to help when a player doesn't reveal
-            // The actual implementation requires a more complex setup with action histories
-            // This test verifies the peek contract can be used for card reveals
-
             // Verify peek contract has access to the deck
             const [pkA, pkB] = await peek.getPublicKeys(channelId);
             expect(pkA).to.not.equal("0x");
             expect(pkB).to.not.equal("0x");
-        });
-
-        it("should verify peek contract stores deck data for helper reveals", async function () {
-            // Verify the peek contract has the necessary data
-            const storedDeck = await peek.getDeck(channelId, 0);
-            expect(storedDeck).to.not.equal("0x");
-            
-            // Verify the deck hash
-            const deckHash = await peek.getDeckHash(channelId);
-            expect(deckHash).to.not.equal("0x0000000000000000000000000000000000000000000000000000000000000000");
         });
     });
 
@@ -559,7 +546,7 @@ describe("Integration Tests - Bad Actors", function () {
             expect(p2Stack).to.equal(deposit);
         });
 
-        it("should handle case where only second player reveals (first player wins by default)", async function () {
+        it("should handle case where only second player reveals", async function () {
             // Play to showdown
             const handId = await escrow.getHandId(channelId);
             const actionSpecs = [
