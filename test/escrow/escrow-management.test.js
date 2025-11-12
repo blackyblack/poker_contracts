@@ -255,29 +255,6 @@ describe("HeadsUpPokerEscrow Management", function () {
             expect(afterJoin.startDeadline).to.be.gt(beforeJoin.startDeadline);
         });
 
-        it("should extend the deadline after the first deck submission", async function () {
-            const channelId = 14n;
-            await escrow
-                .connect(player1)
-                .open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
-            await escrow
-                .connect(player2)
-                .join(channelId, ethers.ZeroAddress, "0x", { value: deposit });
-
-            const deck = createMockDeck();
-            const canonicalDeck = createMockCanonicalDeck();
-
-            const afterJoin = await escrow.getChannel(channelId);
-
-            await escrow
-                .connect(player1)
-                .startGame(channelId, deck, canonicalDeck);
-
-            const afterFirstStart = await escrow.getChannel(channelId);
-            expect(afterFirstStart.startDeadline).to.be.gt(afterJoin.startDeadline);
-            expect(afterFirstStart.gameStarted).to.equal(false);
-        });
-
         it("should clear the deadline once both decks match", async function () {
             const channelId = 15n;
             await escrow
@@ -302,7 +279,7 @@ describe("HeadsUpPokerEscrow Management", function () {
             expect(channel.startDeadline).to.equal(0n);
         });
 
-        it("should revert deck submissions after the deadline", async function () {
+        it("should allow deck submissions after the deadline", async function () {
             const channelId = 16n;
             await escrow
                 .connect(player1)
@@ -320,11 +297,12 @@ describe("HeadsUpPokerEscrow Management", function () {
 
             await advanceTime(startWindow + 1);
 
-            await expect(
-                escrow
-                    .connect(player2)
-                    .startGame(channelId, deck, canonicalDeck)
-            ).to.be.revertedWithCustomError(escrow, "ChannelDeadlineExpired");
+            await escrow
+                .connect(player2)
+                .startGame(channelId, deck, canonicalDeck);
+
+            const channel = await escrow.getChannel(channelId);
+            expect(channel.gameStarted).to.equal(true);
         });
 
         it("should finalize if the second deck never arrives", async function () {
@@ -434,7 +412,7 @@ describe("HeadsUpPokerEscrow Management", function () {
 
         it("should emit GameStarted when both players submit matching hashes", async function () {
             await escrow.connect(player1).startGame(channelId, deck, canonicalDeck);
-            
+
             const tx = await escrow.connect(player2).startGame(channelId, deck, canonicalDeck);
             await expect(tx)
                 .to.emit(escrow, "GameStarted")
@@ -451,7 +429,7 @@ describe("HeadsUpPokerEscrow Management", function () {
 
             await escrow.connect(player1).startGame(channelId, deck1, canonicalDeck1);
             await escrow.connect(player2).startGame(channelId, deck2, canonicalDeck1);
-            
+
             // Game should not have started
             const channel = await escrow.getChannel(channelId);
             expect(channel.gameStarted).to.be.false;
@@ -500,7 +478,7 @@ describe("HeadsUpPokerEscrow Management", function () {
 
             // Open new hand
             await escrow.connect(player1).open(channelId, player2.address, 1n, ethers.ZeroAddress, 0n, "0x", { value: deposit });
-            
+
             const channel = await escrow.getChannel(channelId);
             expect(channel.gameStarted).to.be.false;
             expect(channel.deckHashPlayer1).to.equal(ethers.ZeroHash);

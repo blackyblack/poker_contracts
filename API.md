@@ -21,7 +21,6 @@ This is the primary contract that tracks channel balances, enforces signed actio
 ### Events
 Backends can subscribe to these topics to react to state transitions:
 - `ChannelOpened`, `ChannelJoined`, `ChannelTopUp`
-- `ChannelDeadlineUpdated` (emitted whenever the join/start deadline changes; a zero deadline means the timer is cleared)
 - `GameStarted`
 - `Settled`, `ShowdownStarted`, `ShowdownFinalized`, `RevealsUpdated`
 - `DisputeStarted`, `DisputeExtended`, `DisputeFinalized`
@@ -38,8 +37,8 @@ Each event carries the channel id and relevant payload such as participant, amou
 - `viewContract()` -> `address`: returns the dedicated read-only facade for peek and showdown data.
 
 ### Channel lifecycle
-- `open(channelId, opponent, minSmallBlind, player1Signer)` (payable): seat player 1, set the opponent address, optionally deposit ETH, and start a new hand id. The `player1Signer` parameter allows setting an optional additional signer address that can sign actions and card commits on behalf of player 1. Pass `address(0)` if no additional signer is needed. Reuses existing balances when reopening a finished channel, resets showdown/dispute state, and starts a deadline for the opponent to join.
-- `join(channelId, player2Signer)` (payable): opponent deposits ETH to activate the channel. The `player2Signer` parameter allows setting an optional additional signer address that can sign actions and card commits on behalf of player 2. Pass `address(0)` if no additional signer is needed. Allows zero value only if previous winnings already left funds in escrow. Joining extends the deadline, giving both sides time to submit their decks.
+- `open(channelId, opponent, minSmallBlind, player1Signer)` (payable): seat player 1, set the opponent address, optionally deposit ETH, and start a new hand id. The `player1Signer` parameter allows setting an optional additional signer address that can sign actions on behalf of player 1. Pass `address(0)` if no additional signer is needed. Reuses existing balances when reopening a finished channel, resets showdown/dispute state, and starts a deadline for the opponent to join.
+- `join(channelId, player2Signer)` (payable): opponent deposits ETH to activate the channel. The `player2Signer` parameter allows setting an optional additional signer address that can sign actions on behalf of player 2. Pass `address(0)` if no additional signer is needed. Allows zero value only if previous winnings already left funds in escrow. Joining extends the deadline, giving both sides time to submit their decks.
 - `startGame(channelId, deck, canonicalDeck)`: both players must call this function with matching encrypted decks (9 cards) and canonical decks (52 unencrypted base points) for the game to be considered started. The `deck` parameter contains 9 encrypted G1 points for the 9 slots (2 hole cards per player + 5 board cards). The `canonicalDeck` parameter contains 52 unencrypted G1 base points in canonical order representing all cards in a standard deck, enabling card-ID resolution by comparing decrypted points against these known values. Each submission must arrive before the running deadline; the first submission extends the timer and the second, if matching, clears it and emits `GameStarted`.
 - `finalizeStaleChannel(channelId)`: anyone can stop an unopened or unstated channel once the deadline expires, marking it finalized so both players can withdraw their funds.
 - `topUp(channelId)` (payable): lets player 1 add funds after player 2 has joined, but never beyond player 2’s total escrowed balance.
@@ -61,8 +60,6 @@ Each event carries the channel id and relevant payload such as participant, amou
 This helper contract exposes EIP-712 hash builders so the backend can mirror the exact digests used on-chain:
 - `DOMAIN_SEPARATOR()` returns the live EIP-712 domain separator.
 - `digestAction(Action act)` produces the typed-data hash for an action before signing.
-- `digestCardCommit(CardCommit cc)` produces the typed-data hash for a historical card commitment message. While the live showdown flow relies on encrypted decks, this helper remains available for tools that still need to verify legacy commitments.
-- `recoverActionSigner(Action act, bytes sig)` and `recoverCommitSigner(CardCommit cc, bytes sig)` are convenience views that recover the signer from a provided signature, mirroring how the escrow verifies them.
 
 ## `HeadsUpPokerReplay`
 `HeadsUpPokerReplay` deterministically replays signed action sequences to classify outcomes and compute the called amount that should change hands. It is deployed from `HeadsUpPokerEscrow` and can also be used off-chain to validate transcripts.

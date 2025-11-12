@@ -169,7 +169,6 @@ contract HeadsUpPokerEscrow is
         uint256 amount
     );
     event GameStarted(uint256 indexed channelId, bytes32 deckHash);
-    event ChannelDeadlineUpdated(uint256 indexed channelId, uint256 deadline);
     event ChannelStaleFinalized(uint256 indexed channelId);
 
     // ---------------------------------------------------------------------
@@ -316,9 +315,10 @@ contract HeadsUpPokerEscrow is
         ch.player2Signer = player2Signer;
         peek.setPublicKeyB(channelId, publicKeyB);
 
-        emit ChannelJoined(channelId, msg.sender, msg.value);
         deadline = block.timestamp + startDeadlineWindow;
         ch.startDeadline = deadline;
+
+        emit ChannelJoined(channelId, msg.sender, msg.value);
     }
 
     /// @notice Both players must call this function with matching encrypted decks and canonical deck to start the game
@@ -340,9 +340,6 @@ contract HeadsUpPokerEscrow is
         if (ch.gameStarted) revert GameAlreadyStarted();
         if (msg.sender != ch.player1 && msg.sender != ch.player2)
             revert NotPlayer();
-        uint256 deadline = ch.startDeadline;
-        if (deadline == 0) revert ChannelDeadlineInactive();
-        if (block.timestamp > deadline) revert ChannelDeadlineExpired();
         if (deck.length != SLOT_RIVER + 1) revert InvalidDeck();
         if (canonicalDeck.length != FULL_DECK_SIZE) revert InvalidDeck();
 
@@ -355,18 +352,6 @@ contract HeadsUpPokerEscrow is
         } else {
             ch.deckHashPlayer2 = deckHash;
             ch.canonicalDeckHashPlayer2 = canonicalDeckHash;
-        }
-
-        bool player1Ready = ch.deckHashPlayer1 != bytes32(0) &&
-            ch.canonicalDeckHashPlayer1 != bytes32(0);
-        bool player2Ready = ch.deckHashPlayer2 != bytes32(0) &&
-            ch.canonicalDeckHashPlayer2 != bytes32(0);
-
-        if (!player1Ready || !player2Ready) {
-            deadline = block.timestamp + startDeadlineWindow;
-            ch.startDeadline = deadline;
-            emit ChannelDeadlineUpdated(channelId, deadline);
-            return;
         }
 
         if (ch.deckHashPlayer1 != ch.deckHashPlayer2) {
