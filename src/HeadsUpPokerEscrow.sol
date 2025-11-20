@@ -201,6 +201,16 @@ contract HeadsUpPokerEscrow is
         return channels[channelId];
     }
 
+    /// @notice Get the Showdown contract address
+    function getShowdownAddress() external view returns (address) {
+        return address(showdown);
+    }
+
+    /// @notice Get the Peek contract address
+    function getPeekAddress() external view returns (address) {
+        return address(peek);
+    }
+
     function getChannelData(
         uint256 channelId
     ) external view override returns (ChannelData memory data) {
