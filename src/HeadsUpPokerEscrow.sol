@@ -211,6 +211,11 @@ contract HeadsUpPokerEscrow is
         return address(peek);
     }
 
+    /// @notice Get the Replay contract address
+    function getReplayAddress() external view returns (address) {
+        return address(replay);
+    }
+
     function getChannelData(
         uint256 channelId
     ) external view override returns (ChannelData memory data) {
