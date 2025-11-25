@@ -66,6 +66,18 @@ contract HeadsUpPokerShowdown is HeadsUpPokerEIP712 {
         return showdowns[channelId].inProgress;
     }
 
+    function getRevealedPartials(
+        uint256 channelId
+    ) external view returns (bytes[] memory partialsA, bytes[] memory partialsB) {
+        partialsA = new bytes[](SLOT_RIVER + 1);
+        partialsB = new bytes[](SLOT_RIVER + 1);
+
+        for (uint8 i = 0; i <= SLOT_RIVER; i++) {
+            partialsA[i] = revealedPartialsA[channelId][i];
+            partialsB[i] = revealedPartialsB[channelId][i];
+        }
+    }
+
     function resetChannel(uint256 channelId) external onlyEscrow {
         delete showdowns[channelId];
         // don't delete revealed cards - they will be reset in initiateShowdown

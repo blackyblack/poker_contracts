@@ -163,6 +163,32 @@ describe("Showdown - DecryptedCard Verification", function () {
         expect(sd.cards[SLOT.B2]).to.equal(desiredCards[SLOT.B2]);
     });
 
+    it("exposes revealed partials for both players", async () => {
+        await initiateShowdown();
+
+        const player1Partials = await generatePartials(crypto.secretKeyA);
+        await escrow.connect(player1).revealCards(channelId, player1Partials);
+
+        let [partialsA, partialsB] = await showdownContract.getRevealedPartials(
+            channelId
+        );
+        expect(partialsA[SLOT.A1]).to.equal(player1Partials[SLOT.A1]);
+        expect(partialsA[SLOT.RIVER]).to.equal(player1Partials[SLOT.RIVER]);
+        expect(partialsB[SLOT.A1]).to.equal("0x");
+        expect(partialsB[SLOT.RIVER]).to.equal("0x");
+
+        const player2Partials = await generatePartials(crypto.secretKeyB);
+        await escrow.connect(player2).revealCards(channelId, player2Partials);
+
+        [partialsA, partialsB] = await showdownContract.getRevealedPartials(
+            channelId
+        );
+        expect(partialsA[SLOT.TURN]).to.equal(player1Partials[SLOT.TURN]);
+        expect(partialsB[SLOT.TURN]).to.equal(player2Partials[SLOT.TURN]);
+        expect(partialsA[SLOT.B2]).to.equal(player1Partials[SLOT.B2]);
+        expect(partialsB[SLOT.B2]).to.equal(player2Partials[SLOT.B2]);
+    });
+
     it("requires both players to reveal before finalizing", async () => {
         await initiateShowdown();
 
